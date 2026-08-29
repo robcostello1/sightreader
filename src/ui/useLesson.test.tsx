@@ -94,7 +94,7 @@ async function startAndGetSchedule(result: { current: ReturnType<typeof useLesso
   return buildSchedule(result.current.exercise!, {
     startMs: LEAD_IN,
     countInBars: CONFIG.countInBars,
-    clickThroughExercise: CONFIG.clickThroughExercise,
+    clickThroughExercise: false, // clicks are mocked out; irrelevant to windows
     attackGuardMs: CONFIG.scoring.attackGuardMs,
   });
 }
@@ -222,6 +222,126 @@ describe('useLesson', () => {
     expect(first.completed).toBe(1);
     expect(first.passed).toBe(first.scorable);
     expect(first.scorable).toBeGreaterThan(0);
+
+    // History drives progression, one accuracy per completed exercise.
+    expect(result.current.history).toEqual([1]);
+  });
+
+  it('records a per-exercise accuracy even when nothing is played', async () => {
+    const { result } = renderLesson();
+    const schedule = await startAndGetSchedule(result);
+
+    for (const window of schedule.windows) {
+      act(() => {
+        for (let t = window.scoreFromMs; t < window.endMs; t += HOP_MS) {
+          emit({ hz: null, confidence: 0, timestamp: t });
+        }
+      });
+    }
+    await advanceTo(schedule.endMs + 10);
+    expect(result.current.history).toEqual([0]);
+  });
+
+  it('clears history when asked, so a level change starts a fresh window', async () => {
+    const { result } = renderLesson();
+    const schedule = await startAndGetSchedule(result);
+    playCorrectly(schedule);
+    await advanceTo(schedule.endMs + 10);
+    expect(result.current.history).toHaveLength(1);
+
+    act(() => result.current.clearHistory());
+    expect(result.current.history).toEqual([]);
+    // Session totals are untouched — only the progression window resets.
+    expect(result.current.stats.completed).toBe(1);
+  });
+
+  describe('level progression', () => {
+    it('advances after enough accurate exercises, and resets the window', async () => {
+      const advances: number[] = [];
+      const { result } = renderHook(() =>
+        useLesson({
+          level: 3,
+          leadInMs: LEAD_IN,
+          autoAdvance: true,
+          advanceDelayMs: ADVANCE_MS,
+          onAdvance: (next) => advances.push(next),
+        }),
+      );
+
+      // Five clean exercises is the agreed bar: 80% over 5.
+      for (let i = 0; i < 5; i++) {
+        act(() => result.current.start());
+        await flush();
+        const schedule = buildSchedule(result.current.exercise!, {
+          startMs: clock.currentTime * 1000 + LEAD_IN,
+          countInBars: CONFIG.countInBars,
+          clickThroughExercise: false,
+          attackGuardMs: CONFIG.scoring.attackGuardMs,
+        });
+        playCorrectly(schedule);
+        await advanceTo(schedule.endMs + 10);
+        if (i < 4) expect(advances).toHaveLength(0);
+      }
+
+      expect(advances).toEqual([3.1]);
+      // The window rolls rather than resetting, so it stays full.
+      expect(result.current.history).toHaveLength(5);
+    });
+
+    it('keeps climbing while accuracy holds up', async () => {
+      const advances: number[] = [];
+      const { result } = renderHook(() =>
+        useLesson({ level: 3, leadInMs: LEAD_IN, onAdvance: (n) => advances.push(n) }),
+      );
+
+      // Eight clean exercises: five to fill the window, then one step each.
+      for (let i = 0; i < 8; i++) {
+        act(() => result.current.start());
+        await flush();
+        const schedule = buildSchedule(result.current.exercise!, {
+          startMs: clock.currentTime * 1000 + LEAD_IN,
+          countInBars: CONFIG.countInBars,
+          clickThroughExercise: false,
+          attackGuardMs: CONFIG.scoring.attackGuardMs,
+        });
+        playCorrectly(schedule);
+        await advanceTo(schedule.endMs + 10);
+      }
+
+      // A rolling window keeps nudging rather than stalling for five more.
+      expect(advances.length).toBeGreaterThan(1);
+    });
+
+    it('does not advance on poor accuracy', async () => {
+      const advances: number[] = [];
+      const { result } = renderHook(() =>
+        useLesson({ level: 3, leadInMs: LEAD_IN, onAdvance: (n) => advances.push(n) }),
+      );
+
+      for (let i = 0; i < 6; i++) {
+        act(() => result.current.start());
+        await flush();
+        const schedule = buildSchedule(result.current.exercise!, {
+          startMs: clock.currentTime * 1000 + LEAD_IN,
+          countInBars: CONFIG.countInBars,
+          clickThroughExercise: false,
+          attackGuardMs: CONFIG.scoring.attackGuardMs,
+        });
+        // Play nothing at all.
+        act(() => {
+          for (const w of schedule.windows) {
+            for (let t = w.scoreFromMs; t < w.endMs; t += HOP_MS) {
+              emit({ hz: null, confidence: 0, timestamp: t });
+            }
+          }
+        });
+        await advanceTo(schedule.endMs + 10);
+      }
+
+      expect(advances).toEqual([]);
+      // Capped at the rolling window, not an unbounded log.
+      expect(result.current.history).toHaveLength(5);
+    });
   });
 
   describe('auto-advance', () => {
@@ -259,7 +379,7 @@ describe('useLesson', () => {
       schedule = buildSchedule(result.current.exercise!, {
         startMs: clock.currentTime * 1000 + LEAD_IN,
         countInBars: CONFIG.countInBars,
-        clickThroughExercise: CONFIG.clickThroughExercise,
+        clickThroughExercise: false, // clicks are mocked out; irrelevant to windows
         attackGuardMs: CONFIG.scoring.attackGuardMs,
       });
       await advanceTo(schedule.endMs + 10);

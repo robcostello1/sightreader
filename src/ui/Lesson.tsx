@@ -6,6 +6,7 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 const Score = lazy(() => import('../notation').then((m) => ({ default: m.Score })));
 import { MAX_LEVEL, clampLevel, levelConfig, levelSummary } from '../config/levels';
 import { loadSetting, saveSetting } from '../lib/storage';
+import { DEFAULT_PROGRESSION, progressionState } from '../config/progression';
 import { POSITIONS, fretRangeLabel, regionById, regionPool } from '../config/regions';
 import { midiToName } from '../lib/pitch';
 import { centsFromTarget, nearestMidi } from '../lib/pitch';
@@ -87,7 +88,10 @@ export function Lesson() {
   const region = regionById(regionId);
   const config = levelConfig(level);
   const pool = regionPool(region);
-  const lesson = useLesson({ level, region, autoAdvance });
+  // Advancement is gated on the same pass/fail scores used for feedback — no
+  // separate mastery signal (spec §7).
+  const lesson = useLesson({ level, region, autoAdvance, onAdvance: setLevel });
+  const progress = progressionState(level, lesson.history);
   const running = lesson.phase === 'count-in' || lesson.phase === 'playing';
   const listening = running || lesson.phase === 'results';
 
@@ -100,11 +104,14 @@ export function Lesson() {
       <section>
         <div className="controls">
           <label className="level-control">
-            Level <strong>{level}</strong>
+            Level <strong>{level.toFixed(1)}</strong>
             <input
               type="range"
               min={1}
               max={MAX_LEVEL}
+              // Tenths: within a level, the decimal is how often its new ideas
+              // turn up. 3.0 still plays like level 2; 3.9 is nearly level 4.
+              step={0.1}
               value={level}
               onChange={(event) => setLevel(Number(event.target.value))}
               disabled={running}
@@ -151,6 +158,25 @@ export function Lesson() {
 
         <p className="muted level-summary">{levelSummary(config).join(' · ')}</p>
         <p className="muted">
+          {progress.atCeiling ? (
+            <>Top level reached.</>
+          ) : progress.completed < progress.needed ? (
+            <>
+              Levels up at {Math.round(DEFAULT_PROGRESSION.threshold * 100)}% across{' '}
+              {progress.needed} exercises — {progress.completed}/{progress.needed} played
+              {progress.accuracy !== null &&
+                `, averaging ${Math.round(progress.accuracy * 100)}%`}
+            </>
+          ) : (
+            <>
+              Last {progress.needed} exercises: {Math.round(progress.accuracy! * 100)}%
+              {progress.ready
+                ? ' — levelling up'
+                : ` (${Math.round(DEFAULT_PROGRESSION.threshold * 100)}% to level up)`}
+            </>
+          )}
+        </p>
+        <p className="muted">
           {region.name} — {fretRangeLabel(region)} · {pool.length} pitches,{' '}
           {midiToName(pool[0])}–{midiToName(pool[pool.length - 1])}
         </p>
@@ -172,7 +198,7 @@ export function Lesson() {
             />
           </Suspense>
           <p className="muted">
-            Level {config.level} · {region.name} ({fretRangeLabel(region)}) ·{' '}
+            Level {config.level.toFixed(1)} · {region.name} ({fretRangeLabel(region)}) ·{' '}
             {lesson.exercise.key.name} major · {lesson.exercise.bpm} bpm · seed {lesson.seed}
           </p>
         </section>

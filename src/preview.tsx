@@ -10,7 +10,11 @@ import './index.css';
  * Dev-only page for eyeballing notation across tiers and seeds without playing
  * through a lesson. Served at /preview.html in dev; not part of the build.
  */
-const SAMPLES = Array.from({ length: 10 }, (_, i) => ({ level: i + 1, seed: 42 }));
+// Whole levels plus the fade across level 3, to show new ideas arriving.
+const SAMPLES = [
+  ...Array.from({ length: 10 }, (_, i) => ({ level: i + 1, seed: 42 })),
+  ...[3.0, 3.3, 3.6, 3.9].map((level) => ({ level, seed: 8 })),
+];
 
 // eslint-disable-next-line react/only-export-components -- dev-only entry point
 function Preview() {
@@ -21,9 +25,9 @@ function Preview() {
         const config = levelConfig(level);
         const exercise = generateExercise({ level: config, region: POSITIONS[0], seed });
         return (
-          <section key={level}>
+          <section key={`${level}`}>
             <p className="muted">
-              <strong>Level {level}</strong> · {exercise.key.name} major ·{' '}
+              <strong>Level {level.toFixed(1)}</strong> · {exercise.key.name} major ·{' '}
               {exercise.notes.length} notes
             </p>
             <p className="muted">{levelSummary(config).join(' · ')}</p>

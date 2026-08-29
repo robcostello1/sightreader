@@ -73,9 +73,14 @@ dev server works without extra setup.
 
 ## Difficulty
 
-Ten levels, with every continuous parameter **interpolated** rather than
-stepped, so no single level is a cliff. Each device ramps in at its own level
-and grows from there: note values get shorter *and* more likely, rests from
+Ten levels on a **fractional** dial (3.0, 3.1, … 3.9, 4.0). Across levels the
+settled parameters interpolate; *within* a level the newly introduced ones fade
+in by probability, so level 3.0 still plays like level 2 and 3.9 has level 3's
+ideas in nearly every exercise. Availability is rolled per exercise, not merely
+weighted — weighting alone does not hold a short note value back, because once
+the first idiom has eaten into the bar budget only short candidates still fit.
+
+Each device arrives at its own level and grows from there: note values get shorter *and* more likely, rests from
 level 3, triplets from 4 (quintuplets from 9), transposed sequences from 4,
 accidentals from 6, keys widening from level 3, and leaps from 2 to 12
 semitones across the range.
@@ -89,6 +94,19 @@ neck changes *what* you are practising — the same notes in a new place — rat
 than how hard the reading is, so it is chosen independently. Positions are named
 for the fret the index finger sits on and span four frets; open position is the
 exception, being open strings plus the first four frets.
+
+## Progression
+
+The level advances on its own: **80% mean accuracy across the last 5 exercises
+moves you up 0.1**. The window rolls rather than resetting, so sustained
+accuracy keeps nudging the level up instead of stalling for five more exercises
+after each step, and the level settles wherever you stop clearing the bar. The
+slider still overrides it at any time.
+
+Gating uses the pass/fail occupancy scores directly — no separate mastery
+signal (spec §7). The threshold is short of perfect on purpose: sight-reading is
+meant to be attempted at the edge of fluency, and demanding a clean run would
+stall anyone on their first misread note.
 
 ## Session behaviour
 

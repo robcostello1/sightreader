@@ -78,7 +78,12 @@ describe('generateExercise', () => {
       for (const exercise of exercises) {
         let previous: (typeof exercise.notes)[number] | null = null;
         for (const note of exercise.notes) {
-          if (note.midi === null) continue;
+          // A rest breaks the line: the constraint is about consecutive sounding
+          // notes, and the reader re-orients across a gap anyway.
+          if (note.midi === null) {
+            previous = null;
+            continue;
+          }
           if (previous?.midi != null && previous.instance === note.instance) {
             expect(Math.abs(note.midi - previous.midi)).toBeLessThanOrEqual(
               config.maxLocalInterval + 1, // +1 allows a chromatic alteration
@@ -93,14 +98,18 @@ describe('generateExercise', () => {
       for (const exercise of exercises) {
         for (const note of exercise.notes) {
           if (note.idiomId === PADDING_IDIOM_ID) continue;
-          expect(config.categories).toContain(idiomById(note.idiomId)!.category);
+          const category = idiomById(note.idiomId)!.category;
+          expect(config.categoryChance[category]).toBeGreaterThan(0);
         }
       }
     });
 
     it('only uses keys the level admits', () => {
       for (const exercise of exercises) {
-        expect(Math.abs(exercise.key.accidentals)).toBeLessThanOrEqual(config.maxKeyAccidentals);
+        // The fractional part allows one more accidental than the whole part.
+        expect(Math.abs(exercise.key.accidentals)).toBeLessThanOrEqual(
+          Math.ceil(config.maxKeyAccidentals),
+        );
       }
     });
 
@@ -160,6 +169,29 @@ describe('generateExercise', () => {
       // And no single note swallows a whole bar on its own.
       expect(exercise.notes.every((n) => n.value <= 1 + 1e-9)).toBe(true);
     }
+  });
+
+  it('leaves a whole level playing like the one below it', () => {
+    // 3.0 should feel like level 2: the ideas level 3 brings arrive across it.
+    const at3 = SEEDS.map((seed) => generateExercise({ level: 3, seed }));
+    expect(at3.some((e) => e.notes.some((n) => n.midi === null))).toBe(false);
+    expect(at3.every((e) => e.key.name === 'C')).toBe(true);
+    for (const exercise of at3) {
+      for (const note of exercise.notes) {
+        if (note.idiomId === PADDING_IDIOM_ID) continue;
+        expect(idiomById(note.idiomId)!.category).not.toBe('arpeggio');
+      }
+    }
+  });
+
+  it('phases a level’s new ideas in across its tenths', () => {
+    const restsAt = (level: number) =>
+      SEEDS.filter((seed) =>
+        generateExercise({ level, seed }).notes.some((n) => n.midi === null),
+      ).length;
+    // None at 3.0, some part-way, more by 3.9.
+    expect(restsAt(3)).toBe(0);
+    expect(restsAt(3.9)).toBeGreaterThan(restsAt(3.4));
   });
 
   it('introduces devices only once their level is reached', () => {

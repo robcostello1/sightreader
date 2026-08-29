@@ -1,12 +1,12 @@
 import { OPEN_POSITION, regionPool, type FretboardRegion } from '../config/regions';
-import { levelConfig, type LevelConfig, type TupletRatio } from '../config/levels';
+import { levelConfig, type LevelConfig } from '../config/levels';
 import { IDIOM_LIBRARY, idiomDuration, instantiateIdiom, placementPitches } from '../idioms';
 import type { IdiomPlacement } from '../idioms';
 import { decompose } from '../lib/duration';
 import { keysUpTo, type MusicalKey } from '../lib/key';
 import { mulberry32, pick, weightedPick, type Rng } from './rng';
 import { startPitchWeight, validPlacements } from './placement';
-import type { Exercise, ExerciseNote, Idiom, Midi, NoteValue } from '../lib/types';
+import type { Exercise, ExerciseNote, Idiom, IdiomCategory, Midi, NoteValue } from '../lib/types';
 
 /** idiomId carried by rests inserted to fill out a bar; not a library idiom. */
 export const PADDING_IDIOM_ID = 'padding';
@@ -48,12 +48,12 @@ function keyCentreFor(key: MusicalKey, low: Midi): Midi {
 
 function buildCandidates(
   idioms: readonly Idiom[],
-  config: LevelConfig,
+  noteValues: readonly { value: NoteValue; weight: number }[],
   constraints: Parameters<typeof validPlacements>[2],
 ): Candidate[] {
   const candidates: Candidate[] = [];
   for (const idiom of idioms) {
-    for (const { value, weight } of config.noteValues) {
+    for (const { value, weight } of noteValues) {
       const placements = validPlacements(idiom, value, constraints);
       if (placements.length > 0) {
         candidates.push({
@@ -91,11 +91,25 @@ export function generateExercise(options: GenerateOptions): Exercise {
   const low = poolList[0];
   const high = poolList[poolList.length - 1];
 
-  const key = options.key ?? pick(rng, keysUpTo(config.maxKeyAccidentals));
+  // The fractional part is the chance of admitting one more accidental than the
+  // whole part, so a new key signature turns up occasionally before always.
+  const keyTier = Math.floor(config.maxKeyAccidentals);
+  const accidentals = rng() < config.maxKeyAccidentals - keyTier ? keyTier + 1 : keyTier;
+  const key = options.key ?? pick(rng, keysUpTo(accidentals));
   const keyCenter = keyCentreFor(key, low);
   const constraints = { keyCenter, pool, maxInterval: config.maxLocalInterval };
 
-  const eligible = IDIOM_LIBRARY.filter((idiom) => config.categories.includes(idiom.category));
+  // Categories are rolled per exercise, so a newly introduced one shows up in
+  // some exercises before all of them.
+  const categories = (Object.keys(config.categoryChance) as IdiomCategory[]).filter(
+    (category) => rng() < config.categoryChance[category] + 1e-9,
+  );
+  // Note values are admitted per exercise too, for the same reason as
+  // categories: a value that is still arriving should be absent from most
+  // exercises, not merely unlikely within them.
+  const noteValues = config.noteValues.filter((entry) => rng() < entry.chance + 1e-9);
+
+  const eligible = IDIOM_LIBRARY.filter((idiom) => categories.includes(idiom.category));
   const phrase = eligible.filter((idiom) => idiom.category !== 'cadential');
   const cadential = eligible.filter((idiom) => idiom.category === 'cadential');
 
@@ -105,8 +119,8 @@ export function generateExercise(options: GenerateOptions): Exercise {
   // Reserve the cadence up front so the phrase cannot fill the bar and leave no
   // room to land, which is the whole point of having one.
   let cadence: { placement: IdiomPlacement; duration: NoteValue } | null = null;
-  if (config.endOnCadence && cadential.length > 0) {
-    const candidates = buildCandidates(cadential, config, constraints)
+  if (cadential.length > 0 && rng() < config.cadenceChance) {
+    const candidates = buildCandidates(cadential, noteValues, constraints)
       // Cadential idioms resolve to their anchor degree, so only a tonic anchor
       // actually lands the phrase on the tonic.
       .map((c) => ({ ...c, placements: c.placements.filter((p) => p.startDegree % 7 === 0) }))
@@ -123,7 +137,7 @@ export function generateExercise(options: GenerateOptions): Exercise {
 
   const budget = Math.max(0, target - (cadence?.duration ?? 0));
   const notes: ExerciseNote[] = [];
-  const phraseCandidates = buildCandidates(phrase, config, constraints);
+  const phraseCandidates = buildCandidates(phrase, noteValues, constraints);
 
   let used = 0;
   let instance = 0;
@@ -159,7 +173,8 @@ export function generateExercise(options: GenerateOptions): Exercise {
     let duration = candidate.duration;
 
     if (config.tupletRatios.length > 0 && rng() < config.tupletChance) {
-      const ratio = pick(rng, config.tupletRatios);
+      // Weighted, so quintuplets stay rare while they are being introduced.
+      const ratio = weightedPick(rng, config.tupletRatios, (r) => r.weight);
       // A tuplet of `num` notes takes the space of `inSpaceOf`, so the instance
       // loses the difference. Scaling a whole idiom instead would yield
       // durations no combination of symbols can draw.
@@ -283,15 +298,39 @@ function padTo(
   cadenceFollows: boolean,
 ): void {
   const last = notes[notes.length - 1];
-  const extendable = last && !last.tuplet;
+  const extendable = last !== undefined && last.tuplet === undefined;
+  const headroom = extendable ? Math.max(0, barSize - last.value) : 0;
 
-  if (extendable && (last.value + shortfall <= barSize + 1e-9 || !cadenceFollows)) {
-    last.value += shortfall;
+  let remaining = shortfall;
+  if (extendable && headroom > 1e-9) {
+    const taken = Math.min(remaining, headroom);
+    last.value += taken;
+    remaining -= taken;
+  }
+  if (remaining <= 1e-9) return;
+
+  const rests = decompose(remaining).map((value) => ({
+    midi: null,
+    value,
+    idiomId: PADDING_IDIOM_ID,
+    instance,
+  }));
+
+  if (cadenceFollows) {
+    // padTo runs before the cadence is appended, so these land ahead of it.
+    notes.push(...rests);
     return;
   }
-  for (const value of decompose(shortfall)) {
-    notes.push({ midi: null, value, idiomId: PADDING_IDIOM_ID, instance });
+
+  // Nothing follows, so a trailing rest would end the exercise on silence. Put
+  // the breath before the closing note instead — and before its whole tuplet
+  // group, since splitting one would break the bracket.
+  let insertAt = notes.length - 1;
+  const group = notes[insertAt]?.tuplet?.group;
+  if (group !== undefined) {
+    while (insertAt > 0 && notes[insertAt - 1].tuplet?.group === group) insertAt--;
   }
+  notes.splice(insertAt, 0, ...rests);
 }
 
 /**
@@ -304,7 +343,7 @@ function applyTuplet(
   rendered: ExerciseNote[],
   candidate: Candidate,
   group: number,
-  ratio: TupletRatio,
+  ratio: { num: number; inSpaceOf: number },
 ): boolean {
   const events = candidate.idiom.events;
   const starts: number[] = [];

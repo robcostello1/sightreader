@@ -5,6 +5,7 @@ import { buildSchedule, detectFalseStart, scheduleClicks, windowAt } from '../sc
 import type { Schedule, ScheduledClicks } from '../scheduler';
 import { scoreWindow, summarise, type ExerciseSummary } from '../scoring';
 import { levelConfig } from '../config/levels';
+import { DEFAULT_PROGRESSION, advanceLevel } from '../config/progression';
 import type { FretboardRegion } from '../config/regions';
 import type { Exercise, NoteResult, OnsetEvent, PitchSample } from '../lib/types';
 
@@ -18,6 +19,8 @@ export interface SessionStats {
 }
 
 export interface LessonState {
+  /** Accuracy of each completed exercise, newest last. Drives progression. */
+  history: number[];
   phase: LessonPhase;
   exercise: Exercise | null;
   /** Seed that produced the current exercise, so a bad one can be reproduced. */
@@ -46,11 +49,18 @@ export interface UseLessonOptions {
   autoAdvance?: boolean;
   /** How long results stay up before the next exercise starts. */
   advanceDelayMs?: number;
+  /**
+   * Called when accuracy over the recent window earns a level change. Fired from
+   * the completion itself rather than an effect watching history, so the level
+   * moves as a consequence of the event that caused it.
+   */
+  onAdvance?: (level: number) => void;
 }
 
 const EMPTY_STATS: SessionStats = { completed: 0, passed: 0, scorable: 0 };
 
 const INITIAL: LessonState = {
+  history: [],
   phase: 'idle',
   exercise: null,
   seed: null,
@@ -87,6 +97,7 @@ export function useLesson(options: UseLessonOptions) {
     leadInMs = 300,
     autoAdvance = false,
     advanceDelayMs = 2500,
+    onAdvance,
   } = options;
 
   const [state, setState] = useState<LessonState>(INITIAL);
@@ -100,12 +111,31 @@ export function useLesson(options: UseLessonOptions) {
   const latestRef = useRef<PitchSample | null>(null);
   const frameRef = useRef<number | null>(null);
   const advanceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Mirrored outside React state so completion can act on them immediately.
+  const resultsRef = useRef<NoteResult[]>([]);
+  const historyRef = useRef<number[]>([]);
 
   // Read through refs inside the animation loop so it never restarts mid-exercise.
-  const settingsRef = useRef({ level, region, bpm, leadInMs, autoAdvance, advanceDelayMs });
+  const settingsRef = useRef({
+    level,
+    region,
+    bpm,
+    leadInMs,
+    autoAdvance,
+    advanceDelayMs,
+    onAdvance,
+  });
   useEffect(() => {
-    settingsRef.current = { level, region, bpm, leadInMs, autoAdvance, advanceDelayMs };
-  }, [level, region, bpm, leadInMs, autoAdvance, advanceDelayMs]);
+    settingsRef.current = {
+      level,
+      region,
+      bpm,
+      leadInMs,
+      autoAdvance,
+      advanceDelayMs,
+      onAdvance,
+    };
+  }, [level, region, bpm, leadInMs, autoAdvance, advanceDelayMs, onAdvance]);
 
   // Lets the loop queue the next exercise without beginExercise capturing itself.
   const beginExerciseRef = useRef<((session: MicSession) => void) | null>(null);
@@ -131,8 +161,16 @@ export function useLesson(options: UseLessonOptions) {
     latestRef.current = null;
   }, [haltExercise]);
 
+  /** Called after a level change, so the next decision starts from scratch. */
+  const clearHistory = useCallback(() => {
+    historyRef.current = [];
+    setState((prev) => ({ ...prev, history: [] }));
+  }, []);
+
   const stop = useCallback(() => {
     closeSession();
+    resultsRef.current = [];
+    historyRef.current = [];
     setState(INITIAL);
   }, [closeSession]);
 
@@ -156,6 +194,7 @@ export function useLesson(options: UseLessonOptions) {
     samplesRef.current = [];
     onsetsRef.current = [];
     scoredRef.current = new Set();
+    resultsRef.current = [];
     latestRef.current = null;
 
     // Anchored on the same AudioContext clock the samples are stamped with, so
@@ -163,7 +202,7 @@ export function useLesson(options: UseLessonOptions) {
     const schedule = buildSchedule(exercise, {
       startMs: session.context.currentTime * 1000 + lead,
       countInBars: config.countInBars,
-      clickThroughExercise: config.clickThroughExercise,
+      clickThroughExercise: Math.random() < config.clickThroughChance,
       attackGuardMs: config.scoring.attackGuardMs,
     });
     scheduleRef.current = schedule;
@@ -204,32 +243,46 @@ export function useLesson(options: UseLessonOptions) {
       const beatsLeft =
         now < active.t0 ? Math.ceil((active.t0 - now) / active.beatMs) : null;
 
-      setState((prev) => {
-        const results = closed.length > 0 ? [...prev.results, ...closed] : prev.results;
-        const summary = finished ? summarise(results) : null;
-        return {
-          ...prev,
-          phase: finished ? 'results' : now >= active.t0 ? 'playing' : 'count-in',
-          activeIndex: windowAt(active, now)?.index ?? null,
-          results,
-          summary,
-          falseStart:
-            prev.falseStart ?? detectFalseStart(samples, active, scoring.confidenceGate),
-          livePitch: latestRef.current,
-          onsetCount: onsetsRef.current.length,
-          beatsUntilStart: beatsLeft,
-          stats: summary
-            ? {
-                completed: prev.stats.completed + 1,
-                passed: prev.stats.passed + summary.passed,
-                scorable: prev.stats.scorable + (summary.total - summary.unscorable),
-              }
-            : prev.stats,
-        };
-      });
+      if (closed.length > 0) resultsRef.current = [...resultsRef.current, ...closed];
+      const results = resultsRef.current;
+      const summary = finished ? summarise(results) : null;
+      if (summary) {
+        // Rolling: only the most recent exercises count, so the window keeps
+        // sliding rather than starting over.
+        historyRef.current = [...historyRef.current, summary.accuracy].slice(
+          -DEFAULT_PROGRESSION.windowSize,
+        );
+      }
+
+      setState((prev) => ({
+        ...prev,
+        phase: finished ? 'results' : now >= active.t0 ? 'playing' : 'count-in',
+        activeIndex: windowAt(active, now)?.index ?? null,
+        results,
+        summary,
+        falseStart: prev.falseStart ?? detectFalseStart(samples, active, scoring.confidenceGate),
+        livePitch: latestRef.current,
+        onsetCount: onsetsRef.current.length,
+        beatsUntilStart: beatsLeft,
+        history: historyRef.current,
+        stats: summary
+          ? {
+              completed: prev.stats.completed + 1,
+              passed: prev.stats.passed + summary.passed,
+              scorable: prev.stats.scorable + (summary.total - summary.unscorable),
+            }
+          : prev.stats,
+      }));
 
       if (finished) {
         haltExercise();
+
+        // Decide progression here, at the completion that caused it. The window
+        // is not cleared: it keeps rolling, so sustained accuracy keeps nudging
+        // the level up rather than stalling for another full window each time.
+        const { level: playedAt, onAdvance: notify } = settingsRef.current;
+        const next = advanceLevel(playedAt, historyRef.current);
+        if (next !== playedAt) notify?.(next);
         if (settingsRef.current.autoAdvance) {
           advanceRef.current = setTimeout(() => {
             const open = sessionRef.current;
@@ -282,5 +335,5 @@ export function useLesson(options: UseLessonOptions) {
 
   useEffect(() => closeSession, [closeSession]);
 
-  return { ...state, start, stop };
+  return { ...state, start, stop, clearHistory };
 }

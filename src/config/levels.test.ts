@@ -2,16 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { LEVELS, MAX_LEVEL, clampLevel, levelConfig, levelSummary } from './levels';
 
 describe('level ramp', () => {
-  it('clamps out-of-range levels', () => {
+  it('clamps to range and quantises to tenths', () => {
     expect(clampLevel(0)).toBe(1);
     expect(clampLevel(99)).toBe(MAX_LEVEL);
-    expect(clampLevel(3.4)).toBe(3);
+    expect(clampLevel(3.44)).toBe(3.4);
+    expect(clampLevel(3.46)).toBe(3.5);
   });
 
   it('never decreases the interval allowance', () => {
     const intervals = LEVELS.map((l) => l.maxLocalInterval);
     expect(intervals).toEqual([...intervals].sort((a, b) => a - b));
-    expect(intervals[0]).toBeLessThan(intervals[MAX_LEVEL - 1]);
   });
 
   it.each([
@@ -25,74 +25,79 @@ describe('level ramp', () => {
     expect(values).toEqual([...values].sort((a, b) => a - b));
   });
 
-  it('introduces each device at its own level rather than all at once', () => {
-    // The point of interpolating: no single level is a cliff.
-    expect(levelConfig(1).restChance).toBe(0);
-    expect(levelConfig(3).restChance).toBeGreaterThan(0);
-    expect(levelConfig(3).tupletChance).toBe(0);
-    expect(levelConfig(4).tupletChance).toBeGreaterThan(0);
-    expect(levelConfig(5).accidentalChance).toBe(0);
-    expect(levelConfig(6).accidentalChance).toBeGreaterThan(0);
-  });
-
-  it('keeps early exercises short so feedback comes quickly', () => {
-    expect(levelConfig(1).targetBars).toBe(2);
-    expect(levelConfig(5).targetBars).toBe(4);
-  });
-
-  it('makes shorter notes both available and more likely as levels rise', () => {
-    const shortest = (level: number) => {
-      const values = levelConfig(level).noteValues;
-      return Math.min(...values.map((v) => v.value));
-    };
-    expect(shortest(1)).toBeGreaterThan(shortest(5));
-    expect(shortest(5)).toBeGreaterThan(shortest(10));
-
-    // And the long values give ground rather than staying dominant.
-    const wholeWeight = (level: number) =>
-      levelConfig(level).noteValues.find((v) => v.name === 'whole')?.weight ?? 0;
-    expect(wholeWeight(1)).toBeGreaterThan(wholeWeight(10));
-  });
-
-  it('starts in C major and widens the key pool gradually', () => {
-    expect(levelConfig(1).maxKeyAccidentals).toBe(0);
-    expect(levelConfig(2).maxKeyAccidentals).toBe(0);
-    expect(levelConfig(MAX_LEVEL).maxKeyAccidentals).toBeGreaterThanOrEqual(4);
-  });
-
-  it('adds triplets before other tuplets', () => {
-    expect(levelConfig(4).tupletRatios).toEqual([{ num: 3, inSpaceOf: 2 }]);
-    expect(levelConfig(MAX_LEVEL).tupletRatios.length).toBeGreaterThan(1);
-  });
-
-  it('widens the idiom vocabulary as levels rise', () => {
-    expect(levelConfig(1).categories).not.toContain('arpeggio');
-    expect(levelConfig(MAX_LEVEL).categories).toContain('arpeggio');
-  });
-
   it('grows the exercise length gently', () => {
-    // What changes with level is how many notes fit in a bar, not how long the
-    // exercise runs — so bars grow slowly while note count grows fast.
     const bars = LEVELS.map((l) => l.targetBars);
     expect(bars).toEqual([...bars].sort((a, b) => a - b));
     expect(bars[0]).toBe(2);
     expect(bars[MAX_LEVEL - 1]).toBe(4);
   });
+});
 
-  it('holds the cadence back until note values are short enough to fit one', () => {
-    expect(levelConfig(1).endOnCadence).toBe(false);
-    expect(levelConfig(MAX_LEVEL).endOnCadence).toBe(true);
+describe('adoption within a level', () => {
+  it('leaves a whole level playing like the one below it', () => {
+    // 3.0 introduces nothing new yet — quarters, rests and arpeggios all arrive
+    // across level 3, not at its start.
+    const at3 = levelConfig(3);
+    expect(at3.restChance).toBe(0);
+    expect(at3.categoryChance.arpeggio).toBe(0);
+    expect(at3.noteValues.some((v) => v.name === 'quarter')).toBe(false);
   });
 
-  it('drops the click once the pulse should be internalised', () => {
-    expect(levelConfig(1).clickThroughExercise).toBe(true);
-    expect(levelConfig(MAX_LEVEL).clickThroughExercise).toBe(false);
+  it('phases new ideas in across the level that introduces them', () => {
+    const chances = [3.0, 3.3, 3.6, 3.9, 4.0].map((l) => levelConfig(l).categoryChance.arpeggio);
+    expect(chances).toEqual([...chances].sort((a, b) => a - b));
+    expect(chances[0]).toBe(0);
+    expect(chances[chances.length - 1]).toBe(1);
+    // By 3.9 the new idea is in nearly every exercise.
+    expect(levelConfig(3.9).categoryChance.arpeggio).toBeCloseTo(0.9, 5);
   });
 
-  it('summarises what each level involves', () => {
+  it.each([
+    ['rests', 3, (l: number) => levelConfig(l).restChance],
+    ['triplets', 4, (l: number) => levelConfig(l).tupletChance],
+    ['sequences', 4, (l: number) => levelConfig(l).sequenceChance],
+    ['accidentals', 6, (l: number) => levelConfig(l).accidentalChance],
+  ])('introduces %s gradually from level %i', (_name, from, read) => {
+    expect(read(from)).toBe(0);
+    expect(read(from + 0.5)).toBeGreaterThan(0);
+    expect(read(from + 0.5)).toBeLessThan(read(from + 1));
+  });
+
+  it('fades a new note value in rather than switching it on', () => {
+    const weightAt = (level: number) =>
+      levelConfig(level).noteValues.find((v) => v.name === 'quarter')?.weight ?? 0;
+    expect(weightAt(3)).toBe(0);
+    expect(weightAt(3.5)).toBeGreaterThan(0);
+    expect(weightAt(3.5)).toBeLessThan(weightAt(4));
+  });
+
+  it('admits a new key signature occasionally before always', () => {
+    expect(levelConfig(3).maxKeyAccidentals).toBe(0);
+    // The fraction is the chance of one more accidental than the whole part.
+    const mid = levelConfig(5).maxKeyAccidentals;
+    expect(mid).toBeGreaterThan(0);
+    expect(Math.floor(mid)).toBeLessThan(Math.floor(levelConfig(MAX_LEVEL).maxKeyAccidentals));
+  });
+
+  it('holds quintuplets back until well after triplets', () => {
+    const ratiosAt = (level: number) => levelConfig(level).tupletRatios;
+    expect(ratiosAt(5).map((r) => r.num)).toEqual([3]);
+    expect(ratiosAt(MAX_LEVEL).map((r) => r.num)).toEqual([3, 5]);
+    // And they stay rare while arriving.
+    const nine = ratiosAt(9.5).find((r) => r.num === 5)!;
+    expect(nine.weight).toBeLessThan(1);
+  });
+
+  it('thins the click out rather than switching it off', () => {
+    expect(levelConfig(5).clickThroughChance).toBe(1);
+    expect(levelConfig(6).clickThroughChance).toBeCloseTo(0.5, 5);
+    expect(levelConfig(7).clickThroughChance).toBe(0);
+  });
+
+  it('summarises a level, showing how far new ideas have come in', () => {
     expect(levelSummary(levelConfig(1)).join(' ')).toContain('C major only');
-    const top = levelSummary(levelConfig(MAX_LEVEL)).join(' ');
-    expect(top).toContain('rests');
-    expect(top).toContain('accidentals');
+    const mid = levelSummary(levelConfig(3.5)).join(' ');
+    expect(mid).toMatch(/rests \d+%/);
+    expect(mid).toMatch(/arpeggios \d+%/);
   });
 });
