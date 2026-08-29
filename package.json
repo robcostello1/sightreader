@@ -1,0 +1,35 @@
+{
+  "name": "sightreader",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b --noEmit"
+  },
+  "dependencies": {
+    "pitchy": "^4.1.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "vexflow": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.1.0",
+    "oxlint": "^1.79.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
+  },
+  "description": "Client-side guitar sight-reading trainer with microphone pitch and rhythm scoring",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  }
+}
