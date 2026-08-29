@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 
 export interface WaveformProps {
-  analyser: AnalyserNode;
+  /** Null before the microphone is open; the line rests flat until it is. */
+  analyser: AnalyserNode | null;
   width?: number;
   height?: number;
   /**
@@ -44,7 +45,9 @@ export function Waveform({
     const context = canvas?.getContext('2d');
     if (!canvas || !context) return;
 
-    const samples = new Float32Array(analyser.fftSize);
+    // Silence stands in until the microphone opens, so the slot holds its shape
+    // rather than appearing from nowhere when a session starts.
+    const samples = new Float32Array(analyser?.fftSize ?? 1024);
     let frame = requestAnimationFrame(function draw() {
       frame = requestAnimationFrame(draw);
 
@@ -57,7 +60,7 @@ export function Waveform({
         canvas.height = pixelHeight;
       }
 
-      analyser.getFloatTimeDomainData(samples);
+      analyser?.getFloatTimeDomainData(samples);
 
       context.clearRect(0, 0, pixelWidth, pixelHeight);
       // Follows the page's text colour, so it works in either theme.

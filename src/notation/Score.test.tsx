@@ -2,6 +2,7 @@
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Score } from './Score';
+import { VERDICT_FALLBACKS } from './colours';
 import { generateExercise } from '../generator';
 import { NOTE_VALUES } from '../lib/types';
 import { keyByName } from '../lib/key';
@@ -85,14 +86,16 @@ describe('Score', () => {
       { index: 3, passed: false, verdict: 'unclear', occupancy: 0.3, sampleCount: 10 },
     ];
     const markup = render(<Score exercise={simple} results={results} />).container.innerHTML;
-    expect(markup).toContain('#2e9e5b'); // pass
-    expect(markup).toContain('#d1495b'); // fail
-    expect(markup).toContain('#c77b18'); // unclear
+    // Resolved from CSS variables in the browser; these are the fallbacks used
+    // where no stylesheet is loaded.
+    expect(markup).toContain(VERDICT_FALLBACKS.pass);
+    expect(markup).toContain(VERDICT_FALLBACKS.fail);
+    expect(markup).toContain(VERDICT_FALLBACKS.unclear);
   });
 
   it('marks the active note distinctly from scored ones', () => {
     const markup = render(<Score exercise={simple} activeIndex={2} />).container.innerHTML;
-    expect(markup).toContain('#2f6fed');
+    expect(markup).toContain(VERDICT_FALLBACKS.active);
   });
 
   it('redraws rather than appending when the exercise changes', () => {

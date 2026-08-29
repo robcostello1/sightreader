@@ -14,6 +14,7 @@ import { DEFAULT_PROGRESSION, progressionState } from '../config/progression';
 import { BPM_STEP, MAX_BPM, MIN_BPM, clampBpm } from '../config/tempo';
 import { loadSetting, saveSetting } from '../lib/storage';
 import { midiToName } from '../lib/pitch';
+import { keyByName } from '../lib/key';
 import { LivePitch } from './LivePitch';
 import { Waveform } from './Waveform';
 import { useLesson } from './useLesson';
@@ -36,6 +37,9 @@ const VERDICT_LABELS: Record<NoteResult['verdict'], string> = {
 const readLevel = (value: unknown) => (typeof value === 'number' ? clampLevel(value) : null);
 const readRegionId = (value: unknown) =>
   typeof value === 'string' && POSITIONS.some((p) => p.id === value) ? value : null;
+/** Fallback for the readout before an exercise names a key. */
+const C_MAJOR = keyByName('C');
+
 const readFlag = (value: unknown) => (typeof value === 'boolean' ? value : null);
 const readBpm = (value: unknown) => (typeof value === 'number' ? clampBpm(value) : null);
 
@@ -161,73 +165,58 @@ export function Lesson() {
               )}
             </div>
 
-            {lesson.exercise && (
-              <Suspense fallback={<p className="muted">Loading notation…</p>}>
-                <Score
-                  exercise={lesson.exercise}
-                  results={lesson.results}
-                  activeIndex={lesson.activeIndex ?? undefined}
-                />
-              </Suspense>
-            )}
+            <div className="score-area">
+              {lesson.exercise && (
+                <Suspense fallback={<p className="muted">Loading notation…</p>}>
+                  <Score
+                    exercise={lesson.exercise}
+                    results={lesson.results}
+                    activeIndex={lesson.activeIndex ?? undefined}
+                  />
+                </Suspense>
+              )}
+            </div>
 
             <div className="status">
-              {/*
-                The slot is held for the whole session, so nothing shifts as
-                notes come and go or between exercises. It is not reserved
-                before one starts, where it would only be an empty gap.
-              */}
-              {lesson.phase !== 'idle' && lesson.phase !== 'error' && (
-                <div className="monitor">
-                  {running && lesson.exercise && (
-                    <>
-                      <LivePitch
-                        hz={lesson.livePitch?.hz ?? null}
-                        confidence={lesson.livePitch?.confidence ?? 0}
-                        gate={config.scoring.confidenceGate}
-                        musicalKey={lesson.exercise.key}
-                      />
-                      {lesson.analyser && <Waveform analyser={lesson.analyser} />}
-                    </>
-                  )}
-                </div>
-              )}
+              <div className="card monitor">
+                <LivePitch
+                  hz={lesson.livePitch?.hz ?? null}
+                  confidence={lesson.livePitch?.confidence ?? 0}
+                  gate={config.scoring.confidenceGate}
+                  musicalKey={lesson.exercise?.key ?? C_MAJOR}
+                />
+                <Waveform analyser={lesson.analyser} />
+              </div>
 
               <section className="card progress-card">
                 <h2>Levelling up</h2>
-                {progress.atCeiling ? (
-                  <p className="small">Top level reached.</p>
-                ) : (
-                  <>
-                    <div
-                      className="window"
-                      role="img"
-                      aria-label={`${progress.completed} of ${progress.needed} exercises played`}
-                    >
-                      {Array.from({ length: progress.needed }, (_, i) => (
-                        <span
-                          key={i}
-                          className={
-                            i < progress.completed ? (progress.ready ? 'strong' : 'played') : ''
-                          }
-                        />
-                      ))}
-                    </div>
-                    <p className="small">
-                      {progress.accuracy === null
-                        ? `Reach ${threshold}% accuracy across ${progress.needed} exercises to level up.`
-                        : `${Math.round(progress.accuracy * 100)}% accuracy over ${progress.completed} of ${progress.needed} — ${threshold}% needed.`}
-                    </p>
-                  </>
-                )}
-                {lesson.stats.completed > 0 && (
-                  <p className="muted small">
-                    {lesson.stats.completed} exercise
-                    {lesson.stats.completed === 1 ? '' : 's'} this session
-                    {lesson.stats.scorable > 0 &&
-                      `, ${Math.round((lesson.stats.passed / lesson.stats.scorable) * 100)}% of notes correct`}
-                  </p>
-                )}
+                <div
+                  className="window"
+                  role="img"
+                  aria-label={
+                    progress.atCeiling
+                      ? 'Top level reached'
+                      : `${progress.completed} of ${progress.needed} exercises played, ` +
+                        `${Math.round((progress.accuracy ?? 0) * 100)}% accuracy, ` +
+                        `${threshold}% needed to level up`
+                  }
+                >
+                  {Array.from({ length: progress.needed }, (_, i) => {
+                    const accuracy = lesson.history[i];
+                    return (
+                      <span key={i} className="window-slot">
+                        {accuracy !== undefined && (
+                          <span
+                            className={`window-fill ${
+                              accuracy >= DEFAULT_PROGRESSION.threshold ? 'is-pass' : ''
+                            }`}
+                            style={{ width: `${Math.max(4, accuracy * 100)}%` }}
+                          />
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
               </section>
             </div>
 

@@ -13,6 +13,7 @@ import {
   // Only the Bravura font, not every music font the default entry bundles.
 } from 'vexflow/bravura';
 import { beamBar } from './beaming';
+import { verdictColours, type VerdictColours } from './colours';
 import { layoutExercise, midiToVexKey, soundingToWritten, type NotatedNote } from './layout';
 import type { Exercise, NoteResult } from '../lib/types';
 import type { MusicalKey } from '../lib/key';
@@ -38,14 +39,6 @@ function followPageColour(root: Element): void {
     }
   }
 }
-
-const COLOURS = {
-  pass: '#2e9e5b',
-  fail: '#d1495b',
-  unclear: '#c77b18',
-  active: '#2f6fed',
-  idle: 'currentColor',
-} as const;
 
 /**
  * Vertical budget. Guitar's written range in open position runs from E3, three
@@ -84,12 +77,13 @@ function colourFor(
   sourceIndex: number,
   results: readonly NoteResult[] | undefined,
   activeIndex: number | undefined,
+  colours: VerdictColours,
 ): string {
-  if (activeIndex === sourceIndex) return COLOURS.active;
+  if (activeIndex === sourceIndex) return colours.active;
   const result = results?.find((r) => r.index === sourceIndex);
-  if (!result) return COLOURS.idle;
-  if (result.passed) return COLOURS.pass;
-  return result.verdict === 'unclear' ? COLOURS.unclear : COLOURS.fail;
+  if (!result) return colours.idle;
+  if (result.passed) return colours.pass;
+  return result.verdict === 'unclear' ? colours.unclear : colours.fail;
 }
 
 function buildNote(notated: NotatedNote, key: MusicalKey): StaveNote {
@@ -135,6 +129,7 @@ export function Score({ exercise, results, activeIndex, width }: ScoreProps) {
     if (!host) return;
     host.replaceChildren();
 
+    const colours = verdictColours(host);
     const bars = layoutExercise(exercise);
 
     // Width is driven by how many notes a bar holds. Giving every bar an equal
@@ -195,7 +190,7 @@ export function Score({ exercise, results, activeIndex, width }: ScoreProps) {
 
         const notes = bar.notes.map((notated) => {
           const note = buildNote(notated, exercise.key);
-          const colour = colourFor(notated.sourceIndex, results, activeIndex);
+          const colour = colourFor(notated.sourceIndex, results, activeIndex, colours);
           note.setStyle({ fillStyle: colour, strokeStyle: colour });
           const existing = drawn.get(notated.sourceIndex) ?? [];
           existing.push({ note, system: systemIndex });
@@ -265,6 +260,21 @@ export function Score({ exercise, results, activeIndex, width }: ScoreProps) {
     }
 
     followPageColour(host);
+
+    // The notation area is a fixed height, so a long exercise scrolls. Keep the
+    // note being played in view rather than leaving the reader behind it.
+    if (activeIndex !== undefined) {
+      const activeSystem = systems.findIndex((system) =>
+        system.some((bar) => bar.notes.some((n) => n.sourceIndex === activeIndex)),
+      );
+      const scroller = host.parentElement;
+      if (activeSystem >= 0 && scroller && scroller.scrollHeight > scroller.clientHeight) {
+        scroller.scrollTo({
+          top: Math.max(0, activeSystem * SYSTEM_HEIGHT - SYSTEM_HEIGHT / 2),
+          behavior: 'smooth',
+        });
+      }
+    }
   }, [exercise, results, activeIndex, renderWidth]);
 
   return <div ref={hostRef} className="score" aria-label="Notated exercise" />;

@@ -16,8 +16,17 @@
   --fg: #1a1a1a;
   --fg-muted: #5c5c5c;
   --line: rgb(0 0 0 / 0.16);
-  --accent: #2a63d6;
-  --danger: #b3243a;
+
+  /*
+   * Verdict colours, shared by the notation and the level-up bars so a note and
+   * its score never disagree. Hues are pulled slightly off primary — the blue
+   * towards violet, success towards cyan, failure towards magenta — which keeps
+   * them distinguishable without reading as traffic lights.
+   */
+  --accent: #4b45c9;
+  --pass: #0b7469;
+  --fail: #b01e52;
+  --unclear: #855800;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -27,8 +36,10 @@
     --fg: #f2f2f2;
     --fg-muted: #a9a9a9;
     --line: rgb(255 255 255 / 0.22);
-    --accent: #6c9bff;
-    --danger: #ef7a8b;
+    --accent: #9a8cff;
+    --pass: #3fd6bb;
+    --fail: #f27aab;
+    --unclear: #e0a648;
   }
 }
 
@@ -74,9 +85,17 @@ h2 {
   }
 }
 
-/* Reserved so the page does not jump between phases. */
 .stage {
-  min-height: 22rem;
+  min-width: 0;
+}
+
+/* A permanent home for the notation, so nothing below it moves as exercises
+   change length. Scrolls when the music outgrows it. */
+.score-area {
+  height: 17rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin-bottom: 1rem;
 }
 
 .stage-controls {
@@ -242,26 +261,31 @@ input[type='range'] {
   text-align: right;
 }
 
-/* One segment per exercise in the level-up window. */
+/* One segment per exercise in the level-up window: the fill is how accurate
+   that exercise was, the colour whether it cleared the bar on its own. */
 .window {
   display: flex;
-  gap: 0.25rem;
-  margin: 0.5rem 0 0.4rem;
+  gap: 0.3rem;
+  margin: 0.25rem 0 0;
 }
 
-.window span {
+.window-slot {
   flex: 1;
   height: 0.5rem;
   border-radius: 999px;
   background: var(--line);
+  overflow: hidden;
 }
 
-.window span.played {
+.window-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
   background: var(--fg-muted);
 }
 
-.window span.strong {
-  background: var(--accent);
+.window-fill.is-pass {
+  background: var(--pass);
 }
 
 .score {
@@ -359,17 +383,16 @@ input[type='range'] {
 }
 
 [role='alert'] {
-  color: var(--danger);
+  color: var(--fail);
 }
 
 
-/* The live readout and the level-up window sit side by side under the score. */
+/* The live readout and the level-up window sit side by side under the score.
+   Both slots are permanent, so neither moves when a session starts or ends. */
 .status {
   display: flex;
-  align-items: flex-start;
-  gap: 2rem;
-  flex-wrap: wrap;
-  margin-top: 1rem;
+  align-items: stretch;
+  gap: 1rem;
 }
 
 /* Fixed slots throughout: the note and the marker come and go constantly, and
@@ -377,15 +400,15 @@ input[type='range'] {
 .monitor {
   display: flex;
   align-items: center;
-  gap: 2rem;
-  height: 4.5rem;
-  flex: none;
-  min-width: 15rem;
+  gap: 1.5rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.875rem 1.125rem;
 }
 
 .progress-card {
   flex: none;
-  min-width: 15rem;
+  width: 13rem;
   padding: 0.875rem 1.125rem;
 }
 

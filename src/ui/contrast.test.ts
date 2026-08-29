@@ -54,7 +54,7 @@ describe('palette contrast', () => {
     ['dark', () => dark],
   ])('meets WCAG AA for body text in %s', (_scheme, read) => {
     const tokens = read();
-    for (const name of ['fg', 'fg-muted', 'accent', 'danger']) {
+    for (const name of ['fg', 'fg-muted', 'accent', 'pass', 'fail', 'unclear']) {
       // 4.5:1 is the AA threshold for normal-sized text, which all of these are.
       // Checked on the card surface as well as the page, since most of the
       // secondary text now sits on a card.

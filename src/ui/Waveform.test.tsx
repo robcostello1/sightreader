@@ -25,6 +25,18 @@ function fakeAnalyser(fill: (i: number) => number) {
 }
 
 describe('Waveform', () => {
+  it('rests flat before a microphone is open', () => {
+    vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame'] });
+    const { container } = render(<Waveform analyser={null} />);
+    expect(container.querySelector('canvas')).not.toBeNull();
+    // Draws without an analyser rather than throwing or vanishing.
+    expect(() =>
+      act(() => {
+        vi.advanceTimersByTime(60);
+      }),
+    ).not.toThrow();
+  });
+
   it('renders a canvas sized to the requested height', () => {
     const { analyser } = fakeAnalyser(() => 0);
     const { container } = render(<Waveform analyser={analyser} height={40} />);

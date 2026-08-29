@@ -139,7 +139,14 @@ weight than tempo or position beside it.
 Colours are explicit tokens rather than opacity on the foreground: dimming by
 opacity makes contrast depend on whatever is behind, and the secondary text was
 landing below WCAG AA. `contrast.test.ts` reads the stylesheet and checks every
-pair against the 4.5:1 threshold, so the palette cannot regress unnoticed.
+token against both the page and the card surface at the 4.5:1 threshold, so the
+palette cannot regress unnoticed — it has already caught one regression that
+passed on white and failed on a card.
+
+The verdict colours (`--pass`, `--fail`, `--unclear`, `--accent`) are read from
+the stylesheet by the notation layer too, so a note on the staff and its bar in
+the level-up window are the same colour by construction rather than by two lists
+happening to agree.
 
 ## Session behaviour
 
