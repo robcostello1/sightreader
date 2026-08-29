@@ -1,11 +1,18 @@
 import workletUrl from './pitch-processor.ts?audio-worklet';
-import { PITCH_PROCESSOR_NAME } from './constants';
+import { PITCH_PROCESSOR_NAME, type WorkletMessage } from './constants';
 import type { PitchyDetectorOptions } from './detector';
-import type { PitchSample } from '../lib/types';
+import type { OnsetDetectorOptions } from './onset';
+import type { OnsetEvent, PitchSample } from '../lib/types';
 
-export interface MicCaptureOptions extends PitchyDetectorOptions {
+export interface MicCaptureOptions extends PitchyDetectorOptions, OnsetDetectorOptions {
   /** Called once per hop (~11.6ms at the default 512-sample hop). */
   onSample: (sample: PitchSample) => void;
+  /**
+   * Called when an attack is detected. Peak-picking needs the frames after the
+   * peak, so this arrives a few hops late — the event's own timestamp is the
+   * accurate one, not the moment of the callback.
+   */
+  onOnset?: (event: OnsetEvent) => void;
   deviceId?: string;
 }
 
@@ -31,7 +38,7 @@ export function isMicCaptureSupported(): boolean {
  * getUserMedia prompt and AudioContext.resume() outside one.
  */
 export async function startMicCapture(options: MicCaptureOptions): Promise<MicSession> {
-  const { onSample, deviceId, ...detectorOptions } = options;
+  const { onSample, onOnset, deviceId, ...detectorOptions } = options;
 
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
@@ -67,7 +74,11 @@ export async function startMicCapture(options: MicCaptureOptions): Promise<MicSe
     throw error;
   }
 
-  node.port.onmessage = (event: MessageEvent<PitchSample>) => onSample(event.data);
+  node.port.onmessage = (event: MessageEvent<WorkletMessage>) => {
+    const message = event.data;
+    if (message.type === 'pitch') onSample(message.sample);
+    else onOnset?.(message.event);
+  };
 
   const source = context.createMediaStreamSource(stream);
   // The graph only pulls nodes that reach the destination, so route through a

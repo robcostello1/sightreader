@@ -1,5 +1,6 @@
 import { PITCH_PROCESSOR_NAME } from './constants';
 import { PitchyDetector, type PitchyDetectorOptions } from './detector';
+import { SpectralFluxOnsetDetector, type OnsetDetectorOptions } from './onset';
 
 // AudioWorklet globals. Declared module-locally rather than in a .d.ts so they
 // don't leak into the main app's type scope, where `sampleRate` in particular
@@ -15,12 +16,14 @@ declare const sampleRate: number;
 declare const currentTime: number;
 
 /**
- * Runs pitch detection on the audio thread and posts one PitchSample per hop.
+ * Runs pitch and onset detection on the audio thread, posting one PitchSample
+ * per hop plus an OnsetEvent whenever an attack is found.
  * Keeps a ring buffer of the last frameSize samples so each hop analyses a full
  * overlapping frame rather than only the 128 samples of one render quantum.
  */
 class PitchProcessor extends AudioWorkletProcessor {
   private readonly detector: PitchyDetector;
+  private readonly onsets: SpectralFluxOnsetDetector;
   private readonly frameSize: number;
   private readonly hopSize: number;
   private readonly ring: Float32Array;
@@ -33,9 +36,11 @@ class PitchProcessor extends AudioWorkletProcessor {
 
   constructor(options?: AudioWorkletNodeOptions) {
     super();
-    this.detector = new PitchyDetector(
-      (options?.processorOptions ?? {}) as PitchyDetectorOptions,
-    );
+    const processorOptions = (options?.processorOptions ?? {}) as PitchyDetectorOptions &
+      OnsetDetectorOptions;
+    this.detector = new PitchyDetector(processorOptions);
+    // Shares the pitch frame, so onset and pitch samples land on the same clock.
+    this.onsets = new SpectralFluxOnsetDetector(processorOptions);
     this.frameSize = this.detector.frameSize;
     this.hopSize = this.detector.hopSize;
     this.ring = new Float32Array(this.frameSize);
@@ -75,8 +80,6 @@ class PitchProcessor extends AudioWorkletProcessor {
     this.frame.set(this.ring.subarray(head), 0);
     this.frame.set(this.ring.subarray(0, head), this.frameSize - head);
 
-    const { hz, confidence } = this.detector.detect(this.frame, sampleRate);
-
     // `currentTime` is the start of this render quantum, on the same
     // AudioContext clock the scheduler will use for note windows. The frame ends
     // at the sample just written; stamp its midpoint, the best single instant to
@@ -84,7 +87,13 @@ class PitchProcessor extends AudioWorkletProcessor {
     const frameEndSec = currentTime + (offsetInBlock + 1) / sampleRate;
     const timestamp = (frameEndSec - this.frameSize / 2 / sampleRate) * 1000;
 
-    this.port.postMessage({ hz, confidence, timestamp });
+    const { hz, confidence } = this.detector.detect(this.frame, sampleRate);
+    this.port.postMessage({ type: 'pitch', sample: { hz, confidence, timestamp } });
+
+    // Peak-picking lags by a few hops, so this event's timestamp is earlier than
+    // the pitch sample posted alongside it.
+    const onset = this.onsets.push(this.frame, timestamp);
+    if (onset) this.port.postMessage({ type: 'onset', event: onset });
   }
 }
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { startMicCapture, type MicSession } from '../audio';
-import type { PitchSample } from '../lib/types';
+import type { OnsetEvent, PitchSample } from '../lib/types';
 
 export type LivePitchStatus = 'idle' | 'starting' | 'listening' | 'error';
 
@@ -9,6 +9,9 @@ export interface LivePitch {
   error: string | null;
   /** Most recent sample, refreshed at frame rate rather than per hop. */
   sample: PitchSample | null;
+  /** Most recent detected attack, and how many have been seen this session. */
+  lastOnset: OnsetEvent | null;
+  onsetCount: number;
   sampleRate: number | null;
   start: () => void;
   stop: () => void;
@@ -23,6 +26,8 @@ export function useLivePitch(): LivePitch {
   const [status, setStatus] = useState<LivePitchStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [sample, setSample] = useState<PitchSample | null>(null);
+  const [lastOnset, setLastOnset] = useState<OnsetEvent | null>(null);
+  const [onsetCount, setOnsetCount] = useState(0);
   const [sampleRate, setSampleRate] = useState<number | null>(null);
 
   const sessionRef = useRef<MicSession | null>(null);
@@ -36,6 +41,8 @@ export function useLivePitch(): LivePitch {
     sessionRef.current = null;
     latestRef.current = null;
     setSample(null);
+    setLastOnset(null);
+    setOnsetCount(0);
     setSampleRate(null);
     setStatus('idle');
   }, []);
@@ -48,6 +55,11 @@ export function useLivePitch(): LivePitch {
     startMicCapture({
       onSample: (next) => {
         latestRef.current = next;
+      },
+      // Onsets are rare enough to set state directly, unlike the pitch stream.
+      onOnset: (event) => {
+        setLastOnset(event);
+        setOnsetCount((count) => count + 1);
       },
     }).then(
       (session) => {
@@ -71,5 +83,5 @@ export function useLivePitch(): LivePitch {
   // Release the mic if the component unmounts mid-session.
   useEffect(() => stop, [stop]);
 
-  return { status, error, sample, sampleRate, start, stop };
+  return { status, error, sample, lastOnset, onsetCount, sampleRate, start, stop };
 }

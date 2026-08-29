@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { DEFAULT_FRAME_SIZE, DEFAULT_HOP_SIZE } from './detector';
 import { centsFromTarget, midiToHz } from '../lib/pitch';
 import type { PitchSample } from '../lib/types';
+import type { WorkletMessage } from './constants';
 
 const SAMPLE_RATE = 44100;
 const RENDER_QUANTUM = 128;
@@ -15,13 +16,22 @@ const RENDER_QUANTUM = 128;
  * without a browser — and those are exactly the parts the scorer will trust.
  */
 class WorkletHarness {
-  readonly posted: PitchSample[] = [];
+  readonly messages: WorkletMessage[] = [];
+
+  /** Pitch samples only — onsets are asserted separately. */
+  get posted(): PitchSample[] {
+    return this.messages.flatMap((m) => (m.type === 'pitch' ? [m.sample] : []));
+  }
+
+  get onsets() {
+    return this.messages.flatMap((m) => (m.type === 'onset' ? [m.event] : []));
+  }
   private readonly processor: { process: (inputs: Float32Array[][]) => boolean };
   private now = 0;
 
   constructor(code: string) {
-    const posted = this.posted;
-    const port = { postMessage: (message: PitchSample) => posted.push(message), onmessage: null };
+    const messages = this.messages;
+    const port = { postMessage: (message: WorkletMessage) => messages.push(message), onmessage: null };
 
     let Registered: (new (options?: unknown) => unknown) | undefined;
     const sandbox: Record<string, unknown> = {
@@ -53,6 +63,13 @@ class WorkletHarness {
         phase += 1 / SAMPLE_RATE;
       }
       this.processor.process([[block]]);
+      this.now += RENDER_QUANTUM / SAMPLE_RATE;
+    }
+  }
+
+  renderSilence(blocks: number): void {
+    for (let b = 0; b < blocks; b++) {
+      this.processor.process([[new Float32Array(RENDER_QUANTUM)]]);
       this.now += RENDER_QUANTUM / SAMPLE_RATE;
     }
   }
@@ -107,16 +124,27 @@ describe('pitch-processor worklet', () => {
     expect(timestamps).toEqual([...timestamps].sort((a, b) => a - b));
   });
 
+  it('posts onsets alongside pitch samples on the same clock', () => {
+    const harness = new WorkletHarness(code);
+    // Lead-in matters: the detector must be warmed up before the attack, or the
+    // ring buffer is already full of steady tone by its first analysed frame.
+    harness.renderSilence(32);
+    harness.render(midiToHz(45), 64);
+
+    expect(harness.onsets.length).toBeGreaterThan(0);
+    const [onset] = harness.onsets;
+    expect(onset.strength).toBeGreaterThan(1);
+    // Onset timestamps share the pitch stream's clock and stay within its span.
+    const times = harness.posted.map((s) => s.timestamp);
+    expect(onset.timestamp).toBeGreaterThanOrEqual(times[0]);
+    expect(onset.timestamp).toBeLessThanOrEqual(times[times.length - 1]);
+  });
+
   it('reports silence rather than a guess when the input is quiet', () => {
     const harness = new WorkletHarness(code);
     harness.render(midiToHz(45), 64);
-    harness.posted.length = 0;
-    // Feed digital silence for a full frame plus hops.
-    for (let b = 0; b < 64; b++) {
-      (harness as unknown as { processor: { process: (i: Float32Array[][]) => boolean } }).processor.process([
-        [new Float32Array(RENDER_QUANTUM)],
-      ]);
-    }
+    harness.messages.length = 0;
+    harness.renderSilence(64);
     const tail = harness.posted.slice(-3);
     expect(tail.length).toBeGreaterThan(0);
     for (const sample of tail) {

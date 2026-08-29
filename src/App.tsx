@@ -6,7 +6,7 @@ import { useLivePitch } from './ui/useLivePitch';
 const CONFIDENCE_GATE = TIERS.simple.scoring.confidenceGate;
 
 function PitchReadout() {
-  const { status, error, sample, sampleRate, start, stop } = useLivePitch();
+  const { status, error, sample, lastOnset, onsetCount, sampleRate, start, stop } = useLivePitch();
 
   const confident = sample !== null && sample.hz !== null && sample.confidence >= CONFIDENCE_GATE;
   const midi = sample?.hz != null ? nearestMidi(sample.hz) : null;
@@ -41,6 +41,10 @@ function PitchReadout() {
           <p className="muted">
             Confidence {(sample?.confidence ?? 0).toFixed(2)} (gate {CONFIDENCE_GATE}) · capture{' '}
             {sampleRate} Hz
+          </p>
+          <p className="muted">
+            Attacks detected: {onsetCount}
+            {lastOnset && ` · last strength ${lastOnset.strength.toFixed(1)}`}
           </p>
 
           <button onClick={stop}>Stop</button>

@@ -14,10 +14,10 @@ random notes. See `docs/spec.md` for the full design.
 
 ## Status
 
-Build order step 1 is done: mic capture through an AudioWorklet to a
-confidence-scored pitch stream. The domain types, fretboard region model and
-difficulty tier config are in place. Onset detection, the scheduler, scorer,
-generator and notation rendering are not yet implemented.
+Build order steps 1-2 are done: mic capture through an AudioWorklet to a
+confidence-scored pitch stream, plus spectral-flux onset detection. The domain types, fretboard region model and
+difficulty tier config are in place. The scheduler, scorer, generator and
+notation rendering are not yet implemented.
 
 `npm run dev` gives a live pitch readout (note name, Hz, cents, confidence)
 to sanity-check the pipeline against a real guitar.
@@ -61,7 +61,7 @@ dev server works without extra setup.
 ## Build order
 
 1. ~~Audio pipeline — mic → AudioWorklet → pitch stream with confidence values~~ ✅
-2. Onset detection (spectral flux)
+2. ~~Onset detection (spectral flux)~~ ✅
 3. Tempo/count-in scheduler producing note-window timestamps
 4. Windowed occupancy scorer consuming the pitch stream
 5. Idiom data model + a handful of hardcoded idioms
@@ -89,6 +89,10 @@ dev server works without extra setup.
   fails in `vite dev`. `vite/audio-worklet.ts` bundles the worklet to a
   self-contained IIFE in both modes. Import it as
   `./pitch-processor.ts?audio-worklet`.
+- **Onset thresholds are per-instrument and only synthetically calibrated.**
+  Defaults come from synthetic plucks, not real guitars; `ONSET_PRESETS` is the
+  tuning knob. Recall degrades when several notes sustain and beat together,
+  because the constant flux inflates the adaptive median.
 - **Mic input disables `echoCancellation`, `noiseSuppression` and
   `autoGainControl`.** All three are tuned for speech: AGC pumps the level and
   noise suppression mangles the harmonic structure the pitch detector reads.

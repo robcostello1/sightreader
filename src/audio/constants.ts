@@ -1,3 +1,5 @@
+import type { OnsetEvent, PitchSample } from '../lib/types';
+
 /**
  * Shared between the worklet and the main thread. Kept in its own module so
  * capture.ts can name the processor without importing the worklet entry, which
@@ -9,3 +11,8 @@ export const PITCH_PROCESSOR_NAME = 'pitch-processor';
 export interface StopMessage {
   type: 'stop';
 }
+
+/** Everything the worklet posts back, tagged so the two streams stay distinct. */
+export type WorkletMessage =
+  | { type: 'pitch'; sample: PitchSample }
+  | { type: 'onset'; event: OnsetEvent };
