@@ -23,7 +23,7 @@ export interface IdiomDial {
   categories: IdiomCategory[];
   /** Idiom instances per exercise. */
   instances: [min: number, max: number];
-  /** Transposed instances of the same idiom are allowed. */
+  /** The same idiom may recur at a different starting degree within one exercise. */
   allowTransposition: boolean;
   /** Max semitone leap between consecutive notes — the local movement constraint (§3). */
   maxLocalInterval: number;
@@ -96,7 +96,12 @@ export interface TierConfig {
   regionId: string;
   density: DensityDial;
   idioms: IdiomDial;
-  bars: number;
+  /**
+   * Bars the generator should fill, or null to let a single idiom set the
+   * length. Simple is "1 idiom, whole notes" per spec §2, so its length follows
+   * from the idiom rather than being fixed in advance.
+   */
+  targetBars: number | null;
   timeSignature: [number, number];
   /** Count-in length in bars; provides the scheduler's t0 reference (§2). */
   countInBars: number;
@@ -112,7 +117,7 @@ export const TIERS: Record<TierId, TierConfig> = {
     regionId: 'open-position',
     density: DENSITIES['whole-only'],
     idioms: IDIOM_DIALS.simple,
-    bars: 1,
+    targetBars: null,
     timeSignature: [4, 4],
     countInBars: 1,
     clickThroughExercise: true,
@@ -124,7 +129,7 @@ export const TIERS: Record<TierId, TierConfig> = {
     regionId: 'open-position',
     density: DENSITIES['to-eighth'],
     idioms: IDIOM_DIALS.medium,
-    bars: 2,
+    targetBars: 2,
     timeSignature: [4, 4],
     countInBars: 1,
     clickThroughExercise: false,

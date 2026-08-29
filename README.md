@@ -14,10 +14,11 @@ random notes. See `docs/spec.md` for the full design.
 
 ## Status
 
-Build order steps 1-5 are done: mic capture through an AudioWorklet to a
+Build order steps 1-6 are done: mic capture through an AudioWorklet to a
 confidence-scored pitch stream, spectral-flux onset detection, the
-tempo/count-in scheduler, the windowed occupancy scorer, and the idiom library. The domain types, fretboard region model and
-difficulty tier config are in place. The generator and notation rendering are
+tempo/count-in scheduler, the windowed occupancy scorer, the idiom library, and
+the procedural exercise generator. The domain types, fretboard region model and
+difficulty tier config are in place. Notation rendering and the lesson UI are
 not yet implemented.
 
 `npm run dev` gives a live pitch readout (note name, Hz, cents, confidence)
@@ -66,7 +67,7 @@ dev server works without extra setup.
 3. ~~Tempo/count-in scheduler producing note-window timestamps~~ ✅
 4. ~~Windowed occupancy scorer consuming the pitch stream~~ ✅
 5. ~~Idiom data model + a handful of hardcoded idioms~~ ✅
-6. Procedural exercise generator
+6. ~~Procedural exercise generator~~ ✅
 7. Notation rendering
 8. Difficulty tier wiring
 9. Lesson UI

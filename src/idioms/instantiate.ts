@@ -30,7 +30,7 @@ export function placementPitches(placement: IdiomPlacement): Midi[] {
   );
 }
 
-export function instantiateIdiom(placement: IdiomPlacement): ExerciseNote[] {
+export function instantiateIdiom(placement: IdiomPlacement, instance = 0): ExerciseNote[] {
   const { idiom, startDegree, keyCenter, unitValue } = placement;
   return idiom.events.map((event) => ({
     midi:
@@ -39,6 +39,7 @@ export function instantiateIdiom(placement: IdiomPlacement): ExerciseNote[] {
         : degreeToMidi(keyCenter, startDegree + event.degree, event.alteration ?? 0),
     value: event.beats * unitValue,
     idiomId: idiom.id,
+    instance,
   }));
 }
 

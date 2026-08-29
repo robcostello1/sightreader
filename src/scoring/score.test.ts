@@ -12,6 +12,7 @@ const note = (value: number, midi: number | null = 60): ExerciseNote => ({
   midi,
   value,
   idiomId: 'test',
+  instance: 0,
 });
 
 function exercise(notes: ExerciseNote[], bpm = 60): Exercise {

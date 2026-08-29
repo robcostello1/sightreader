@@ -60,8 +60,13 @@ export interface ExerciseNote {
   /** Null = rest (scored per §6 as "did the prior pitch stop ringing"). */
   midi: Midi | null;
   value: NoteValue;
-  /** Which idiom instance produced this note; kept for diagnostics. */
   idiomId: string;
+  /**
+   * Which idiom instance produced this note. Two placements of the same idiom
+   * in one exercise share an idiomId but differ here, so the local movement
+   * constraint can be checked within an instance rather than across a join.
+   */
+  instance: number;
 }
 
 export interface Exercise {

@@ -76,7 +76,8 @@ export default function App() {
         <ul>
           {Object.values(TIERS).map((tier) => (
             <li key={tier.id}>
-              <strong>{tier.name}</strong> — {tier.bars} bar(s), {tier.density.id} density,{' '}
+              <strong>{tier.name}</strong> — {tier.targetBars ?? 'idiom-length'} bar(s),{' '}
+              {tier.density.id} density,{' '}
               {tier.idioms.id} idioms, click{' '}
               {tier.clickThroughExercise ? 'throughout' : 'count-in only'}
             </li>

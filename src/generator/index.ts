@@ -3,4 +3,9 @@
  * against a region pool under the local-interval constraint, with weighted
  * starting-pitch selection favouring the extremes of the range.
  */
-export {};
+export { generateExercise } from './generate';
+export type { GenerateOptions } from './generate';
+export { startPitchWeight, validPlacements } from './placement';
+export type { PlacementConstraints } from './placement';
+export { mulberry32, pick, randomInt, weightedPick } from './rng';
+export type { Rng } from './rng';
