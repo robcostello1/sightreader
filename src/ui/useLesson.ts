@@ -35,6 +35,8 @@ export interface LessonState {
   results: NoteResult[];
   summary: ExerciseSummary | null;
   paused: boolean;
+  /** Live input tap, for the waveform. Null until the microphone is open. */
+  analyser: AnalyserNode | null;
   livePitch: PitchSample | null;
   onsetCount: number;
   beatsUntilStart: number | null;
@@ -74,6 +76,7 @@ const INITIAL: LessonState = {
   results: [],
   summary: null,
   paused: false,
+  analyser: null,
   livePitch: null,
   onsetCount: 0,
   beatsUntilStart: null,
@@ -380,6 +383,7 @@ export function useLesson(options: UseLessonOptions) {
     }).then(
       (session) => {
         sessionRef.current = session;
+        setState((prev) => ({ ...prev, analyser: session.analyser }));
         beginExercise(session);
       },
       (cause: unknown) => {

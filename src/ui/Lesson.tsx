@@ -15,6 +15,7 @@ import { BPM_STEP, MAX_BPM, MIN_BPM, clampBpm } from '../config/tempo';
 import { loadSetting, saveSetting } from '../lib/storage';
 import { centsFromTarget, midiToName, nearestMidi } from '../lib/pitch';
 import { formatSpelled, spellInKey, type MusicalKey } from '../lib/key';
+import { Waveform } from './Waveform';
 import { useLesson } from './useLesson';
 import type { NoteResult } from '../lib/types';
 
@@ -61,7 +62,7 @@ function LivePitch({
       <span className="detail">
         {confident && hz !== null
           ? `${hz.toFixed(1)} Hz · ${cents! >= 0 ? '+' : ''}${cents!.toFixed(0)} cents`
-          : 'listening…'}
+          : ''}
       </span>
     </div>
   );
@@ -199,12 +200,15 @@ export function Lesson() {
             )}
 
             {running && lesson.exercise && (
-              <LivePitch
-                hz={lesson.livePitch?.hz ?? null}
-                confidence={lesson.livePitch?.confidence ?? 0}
-                gate={config.scoring.confidenceGate}
-                musicalKey={lesson.exercise.key}
-              />
+              <div className="monitor">
+                <LivePitch
+                  hz={lesson.livePitch?.hz ?? null}
+                  confidence={lesson.livePitch?.confidence ?? 0}
+                  gate={config.scoring.confidenceGate}
+                  musicalKey={lesson.exercise.key}
+                />
+                {lesson.analyser && <Waveform analyser={lesson.analyser} />}
+              </div>
             )}
 
             {lesson.phase === 'results' && lesson.summary && (

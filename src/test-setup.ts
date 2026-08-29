@@ -7,6 +7,7 @@ if (typeof HTMLCanvasElement !== 'undefined') {
   HTMLCanvasElement.prototype.getContext = (() => ({
     measureText: (text: string) => ({ width: text.length * 6 }),
     fillText: () => {},
+    clearRect: () => {},
     save: () => {},
     restore: () => {},
     scale: () => {},

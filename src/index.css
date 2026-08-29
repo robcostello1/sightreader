@@ -221,3 +221,16 @@ input[type='range'] {
 [role='alert'] {
   color: #d1495b;
 }
+
+.monitor {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.waveform {
+  display: block;
+  width: 100%;
+  opacity: 0.55;
+}

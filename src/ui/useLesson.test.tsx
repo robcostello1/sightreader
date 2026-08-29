@@ -35,6 +35,7 @@ beforeEach(() => {
     emit = options.onSample;
     return {
       context: clock as unknown as AudioContext,
+      analyser: { fftSize: 1024 } as unknown as AnalyserNode,
       sampleRate: 44100,
       stop: async () => {
         stopped = true;

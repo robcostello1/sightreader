@@ -18,6 +18,13 @@ export interface MicCaptureOptions extends PitchyDetectorOptions, OnsetDetectorO
 
 export interface MicSession {
   readonly context: AudioContext;
+  /**
+   * Time-domain tap on the input, for showing that audio is arriving. Kept out
+   * of the worklet and off the message port: a waveform only needs whatever the
+   * current frame holds, so reading it per animation frame costs nothing the
+   * detection path has to pay for.
+   */
+  readonly analyser: AnalyserNode;
   /** Hardware rate actually granted, which is not always 44.1kHz. */
   readonly sampleRate: number;
   stop: () => Promise<void>;
@@ -81,18 +88,24 @@ export async function startMicCapture(options: MicCaptureOptions): Promise<MicSe
   };
 
   const source = context.createMediaStreamSource(stream);
+  const analyser = context.createAnalyser();
+  analyser.fftSize = 1024;
   // The graph only pulls nodes that reach the destination, so route through a
   // silent gain rather than relying on a zero-output node being scheduled. The
   // processor writes nothing to its output, so this stays inaudible regardless.
   const silence = context.createGain();
   silence.gain.value = 0;
   source.connect(node).connect(silence).connect(context.destination);
+  // Routed into the same muted gain so the graph pulls it; an analyser with no
+  // path to the destination is not guaranteed to update.
+  source.connect(analyser).connect(silence);
 
   if (context.state === 'suspended') await context.resume();
 
   let stopped = false;
   return {
     context,
+    analyser,
     sampleRate: context.sampleRate,
     stop: async () => {
       if (stopped) return;
@@ -100,6 +113,7 @@ export async function startMicCapture(options: MicCaptureOptions): Promise<MicSe
       node.port.postMessage({ type: 'stop' });
       node.port.onmessage = null;
       source.disconnect();
+      analyser.disconnect();
       node.disconnect();
       silence.disconnect();
       teardownStream();
