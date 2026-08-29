@@ -33,6 +33,11 @@ export function matchesTarget(hz: number, target: Midi, toleranceCents = 50): bo
   return Math.abs(centsFromTarget(hz, target)) <= toleranceCents;
 }
 
+/** Nearest equal-tempered semitone to a detected frequency. */
+export function nearestMidi(hz: number, a4 = A4_HZ): Midi {
+  return Math.round(hzToMidi(hz, a4));
+}
+
 export function midiToName(midi: Midi): string {
   const name = SHARP_NAMES[((midi % 12) + 12) % 12];
   const octave = Math.floor(midi / 12) - 1;

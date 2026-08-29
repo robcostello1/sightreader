@@ -1,0 +1,98 @@
+import workletUrl from './pitch-processor.ts?audio-worklet';
+import { PITCH_PROCESSOR_NAME } from './constants';
+import type { PitchyDetectorOptions } from './detector';
+import type { PitchSample } from '../lib/types';
+
+export interface MicCaptureOptions extends PitchyDetectorOptions {
+  /** Called once per hop (~11.6ms at the default 512-sample hop). */
+  onSample: (sample: PitchSample) => void;
+  deviceId?: string;
+}
+
+export interface MicSession {
+  readonly context: AudioContext;
+  /** Hardware rate actually granted, which is not always 44.1kHz. */
+  readonly sampleRate: number;
+  stop: () => Promise<void>;
+}
+
+export function isMicCaptureSupported(): boolean {
+  return (
+    typeof navigator !== 'undefined' &&
+    navigator.mediaDevices?.getUserMedia !== undefined &&
+    typeof AudioWorkletNode !== 'undefined'
+  );
+}
+
+/**
+ * Opens the microphone and starts the pitch stream.
+ *
+ * Must be called from a user-gesture handler: browsers refuse both the
+ * getUserMedia prompt and AudioContext.resume() outside one.
+ */
+export async function startMicCapture(options: MicCaptureOptions): Promise<MicSession> {
+  const { onSample, deviceId, ...detectorOptions } = options;
+
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      // All three of these are tuned for speech and actively harm instrument
+      // input: AGC pumps the level (which would wreck onset detection later),
+      // and noise suppression mangles the harmonic structure the detector reads.
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+      channelCount: 1,
+      ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+    },
+  });
+
+  const context = new AudioContext({ latencyHint: 'interactive' });
+
+  const teardownStream = () => {
+    for (const track of stream.getTracks()) track.stop();
+  };
+
+  let node: AudioWorkletNode;
+  try {
+    await context.audioWorklet.addModule(workletUrl);
+    node = new AudioWorkletNode(context, PITCH_PROCESSOR_NAME, {
+      numberOfInputs: 1,
+      numberOfOutputs: 1,
+      outputChannelCount: [1],
+      processorOptions: detectorOptions,
+    });
+  } catch (error) {
+    teardownStream();
+    await context.close();
+    throw error;
+  }
+
+  node.port.onmessage = (event: MessageEvent<PitchSample>) => onSample(event.data);
+
+  const source = context.createMediaStreamSource(stream);
+  // The graph only pulls nodes that reach the destination, so route through a
+  // silent gain rather than relying on a zero-output node being scheduled. The
+  // processor writes nothing to its output, so this stays inaudible regardless.
+  const silence = context.createGain();
+  silence.gain.value = 0;
+  source.connect(node).connect(silence).connect(context.destination);
+
+  if (context.state === 'suspended') await context.resume();
+
+  let stopped = false;
+  return {
+    context,
+    sampleRate: context.sampleRate,
+    stop: async () => {
+      if (stopped) return;
+      stopped = true;
+      node.port.postMessage({ type: 'stop' });
+      node.port.onmessage = null;
+      source.disconnect();
+      node.disconnect();
+      silence.disconnect();
+      teardownStream();
+      await context.close();
+    },
+  };
+}

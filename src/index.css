@@ -21,3 +21,52 @@ h1 {
 section {
   margin-top: 2rem;
 }
+
+button {
+  font: inherit;
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.readout {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 1rem 0;
+  opacity: 0.45;
+}
+
+.readout.is-confident {
+  opacity: 1;
+}
+
+.readout .note {
+  font-size: 3rem;
+  font-variant-numeric: tabular-nums;
+  min-width: 4ch;
+}
+
+.readout .detail {
+  font-variant-numeric: tabular-nums;
+}
+
+.meter {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 15%, transparent);
+  overflow: hidden;
+}
+
+.meter-fill {
+  height: 100%;
+  background: currentColor;
+}
+
+.muted {
+  opacity: 0.7;
+  font-size: 0.875rem;
+}

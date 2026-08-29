@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { centsFromTarget, hzToMidi, matchesTarget, midiToHz, midiToName } from './pitch';
+import { centsFromTarget, hzToMidi, matchesTarget, midiToHz, midiToName, nearestMidi } from './pitch';
 
 describe('pitch conversion', () => {
   it('round-trips A440', () => {
@@ -14,6 +14,11 @@ describe('pitch conversion', () => {
   it('measures cents against a target', () => {
     expect(centsFromTarget(midiToHz(64), 64)).toBeCloseTo(0);
     expect(centsFromTarget(midiToHz(64.25), 64)).toBeCloseTo(25);
+  });
+
+  it('snaps a detuned reading to the nearest semitone', () => {
+    expect(nearestMidi(midiToHz(64) * 1.01)).toBe(64);
+    expect(midiToName(nearestMidi(82.41))).toBe('E2');
   });
 
   it('accepts a slightly sharp string within tolerance', () => {

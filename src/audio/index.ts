@@ -1,8 +1,9 @@
 /**
- * Build order step 1-2: getUserMedia -> AudioContext -> AudioWorkletNode,
- * emitting PitchSample and OnsetEvent streams. The worklet source lives in
- * public/worklets/ so Vite serves it at a stable URL for addModule().
- *
- * Implementations plug in behind the PitchDetector interface in lib/types.
+ * Build order step 1: mic capture -> AudioWorklet -> pitch stream with
+ * confidence values. Onset detection (step 2) lands alongside this.
  */
-export {};
+export { startMicCapture, isMicCaptureSupported } from './capture';
+export type { MicCaptureOptions, MicSession } from './capture';
+export { PitchyDetector, computeRms, DEFAULT_FRAME_SIZE, DEFAULT_HOP_SIZE } from './detector';
+export type { PitchyDetectorOptions } from './detector';
+export { PITCH_PROCESSOR_NAME } from './constants';

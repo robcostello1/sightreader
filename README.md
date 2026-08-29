@@ -14,9 +14,13 @@ random notes. See `docs/spec.md` for the full design.
 
 ## Status
 
-Scaffold. The domain types, fretboard region model and difficulty tier config
-are in place; the audio pipeline, scheduler, scorer, generator and notation
-rendering are not yet implemented.
+Build order step 1 is done: mic capture through an AudioWorklet to a
+confidence-scored pitch stream. The domain types, fretboard region model and
+difficulty tier config are in place. Onset detection, the scheduler, scorer,
+generator and notation rendering are not yet implemented.
+
+`npm run dev` gives a live pitch readout (note name, Hz, cents, confidence)
+to sanity-check the pipeline against a real guitar.
 
 ## Getting started
 
@@ -52,11 +56,11 @@ dev server works without extra setup.
 | `src/generator/` | Procedural exercise generation |
 | `src/notation/` | VexFlow staff rendering |
 | `src/ui/` | Lesson flow and feedback |
-| `public/worklets/` | AudioWorklet processor sources, served at a stable URL |
+| `vite/` | Build plugins (AudioWorklet bundling) |
 
 ## Build order
 
-1. Audio pipeline — mic → AudioWorklet → pitch stream with confidence values
+1. ~~Audio pipeline — mic → AudioWorklet → pitch stream with confidence values~~ ✅
 2. Onset detection (spectral flux)
 3. Tempo/count-in scheduler producing note-window timestamps
 4. Windowed occupancy scorer consuming the pitch stream
@@ -79,3 +83,12 @@ dev server works without extra setup.
 - **Difficulty dials are independent.** Idiom complexity, rhythmic density and
   fretboard region are gated separately, so a learner struggling with
   pattern-reading can be told apart from one struggling with tempo.
+- **The worklet is bundled by a custom plugin**, not Vite's `?worker&url`.
+  `addModule()` cannot load a module with `import` statements, and Vite's dev
+  server serves workers unbundled — so `?worker&url` works in `vite build` and
+  fails in `vite dev`. `vite/audio-worklet.ts` bundles the worklet to a
+  self-contained IIFE in both modes. Import it as
+  `./pitch-processor.ts?audio-worklet`.
+- **Mic input disables `echoCancellation`, `noiseSuppression` and
+  `autoGainControl`.** All three are tuned for speech: AGC pumps the level and
+  noise suppression mangles the harmonic structure the pitch detector reads.
