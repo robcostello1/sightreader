@@ -118,6 +118,14 @@ h2 {
   min-height: 23rem;
   overflow-y: auto;
   overflow-x: hidden;
+  /* The bar sits over the staff and the view moves itself as the music wraps,
+     so it is clutter rather than an affordance. Still scrollable by wheel,
+     touch and keyboard. */
+  scrollbar-width: none;
+}
+
+.score-area::-webkit-scrollbar {
+  display: none;
 }
 
 .stage-controls {
