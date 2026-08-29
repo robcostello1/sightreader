@@ -51,6 +51,12 @@ const SYSTEM_HEIGHT = 175;
 const FALLBACK_WIDTH = 720;
 /** Horizontal room a single note needs before it starts colliding. */
 const WIDTH_PER_NOTE = 34;
+/**
+ * And the most it should get. Filling the width with a sparse bar pushes its
+ * notes so far apart that they stop reading as a phrase — a two-note bar spread
+ * over a whole line is harder to follow than a compact one.
+ */
+const MAX_WIDTH_PER_NOTE = 64;
 const BAR_PADDING = 26;
 const MARGIN = 12;
 
@@ -165,19 +171,21 @@ export function Score({ exercise, results, activeIndex, width }: ScoreProps) {
     systems.forEach((system, systemIndex) => {
       const leading = leadingModifierWidth(exercise.key.accidentals, systemIndex === 0);
       const minWidths = system.map(barMinWidth);
+      const maxWidths = system.map(
+        (bar) => BAR_PADDING + Math.max(1, bar.notes.length) * MAX_WIDTH_PER_NOTE,
+      );
       const totalMin = minWidths.reduce((sum, w) => sum + w, 0);
-      // Every bar keeps its minimum; only what is left over is shared out. A
-      // purely proportional split can starve a bar below what it needs when
-      // another bar on the line is much busier.
+      // Every bar keeps its minimum; only what is left over is shared out, and
+      // no bar grows past what its notes can use. A purely proportional split
+      // starves a busy bar and stretches an empty one.
       const spare = Math.max(0, available - leading - totalMin);
       const y = STAVE_TOP + systemIndex * SYSTEM_HEIGHT;
       let x = MARGIN;
 
       system.forEach((bar, barIndex) => {
+        const share = minWidths[barIndex] + (spare * minWidths[barIndex]) / totalMin;
         const width =
-          minWidths[barIndex] +
-          (spare * minWidths[barIndex]) / totalMin +
-          (barIndex === 0 ? leading : 0);
+          Math.min(share, maxWidths[barIndex]) + (barIndex === 0 ? leading : 0);
 
         const stave = new Stave(x, y, width);
         // Every system restates the clef and key, as a printed score does.
