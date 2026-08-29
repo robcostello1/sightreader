@@ -1,6 +1,8 @@
 :root {
   color-scheme: light dark;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Loaded with display=swap, so the fallback shows immediately and the page
+     still reads if Google Fonts is unreachable. */
+  font-family: 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
   line-height: 1.5;
 
   /*
