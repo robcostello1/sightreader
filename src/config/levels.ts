@@ -1,3 +1,4 @@
+import { keysUpTo } from '../lib/key';
 import { NOTE_VALUES, type IdiomCategory, type NoteValue, type NoteValueName } from '../lib/types';
 
 export const MAX_LEVEL = 10;
@@ -224,28 +225,38 @@ export interface Introduction {
   progress: number;
 }
 
+export interface LevelFact {
+  label: string;
+  value: string;
+}
+
 export interface LevelBrief {
-  /** What you are reading at this level, settled. A few short phrases. */
-  reading: string[];
+  /** What you are reading at this level, settled. Labelled so it parses fast. */
+  facts: LevelFact[];
   /** What is arriving right now. Empty means this level is consolidating. */
   introducing: Introduction[];
 }
 
 function noteLabel(name: NoteValueName): string {
-  return { whole: 'whole notes', half: 'half notes', quarter: 'quarter notes', eighth: 'eighths', sixteenth: 'sixteenths', breve: 'breves' }[name];
+  return {
+    whole: 'whole notes',
+    half: 'half notes',
+    quarter: 'quarter notes',
+    eighth: 'eighths',
+    sixteenth: 'sixteenths',
+    breve: 'breves',
+  }[name];
 }
 
-function keyLabel(accidentals: number): string {
-  const whole = Math.floor(accidentals);
-  if (whole === 0) return 'C major';
-  if (whole === 1) return 'up to 1 sharp or flat';
-  return `up to ${whole} sharps or flats`;
+/** Bare noun, for listing a range rather than a single value. */
+function noteNoun(name: NoteValueName): string {
+  return { whole: 'whole', half: 'half', quarter: 'quarter', eighth: 'eighth', sixteenth: 'sixteenth', breve: 'breve' }[name];
 }
 
 function leapLabel(semitones: number): string {
   if (semitones < 3) return 'steps only';
   if (semitones < 5) return 'steps and thirds';
-  if (semitones < 8) return 'leaps to a fifth';
+  if (semitones < 8) return 'leaps up to a fifth';
   return 'wide leaps';
 }
 
@@ -262,10 +273,27 @@ export function levelBrief(rawLevel: number): LevelBrief {
   const settled = config.noteValues.filter((v) => v.chance > 0.99);
   const shortest = settled[settled.length - 1] ?? config.noteValues[0];
 
-  const reading = [
-    `down to ${noteLabel(shortest.name)}`,
-    keyLabel(config.maxKeyAccidentals),
-    leapLabel(config.maxLocalInterval),
+  // Longest first, as a range — "down to half notes" invites the question
+  // "down from what?".
+  const longest = settled[0] ?? config.noteValues[0];
+  const noteRange =
+    longest.name === shortest.name
+      ? noteLabel(shortest.name)
+      : `${noteNoun(longest.name)} to ${noteNoun(shortest.name)}`;
+
+  // Keys you might actually meet, named. The whole part is always in the pool
+  // and the fraction is the chance of one more, so round up.
+  const keyNames = keysUpTo(Math.ceil(config.maxKeyAccidentals - 1e-9))
+    .map((key) => key.name)
+    .join(', ');
+
+  const signatures = config.timeSignatures.map((entry) => entry.value.join('/')).join(', ');
+
+  const facts: LevelFact[] = [
+    { label: 'Notes', value: noteRange },
+    { label: 'Keys', value: keyNames },
+    { label: 'Motion', value: leapLabel(config.maxLocalInterval) },
+    { label: 'Time', value: signatures },
   ];
 
   const introducing: Introduction[] = [];
@@ -296,7 +324,7 @@ export function levelBrief(rawLevel: number): LevelBrief {
     });
   }
 
-  return { reading, introducing };
+  return { facts, introducing };
 }
 
 /**

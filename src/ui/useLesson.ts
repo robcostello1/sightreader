@@ -271,8 +271,8 @@ export function useLesson(options: UseLessonOptions) {
       const results = resultsRef.current;
       const summary = finished ? summarise(results) : null;
       if (summary) {
-        // Rolling: only the most recent exercises count, so the window keeps
-        // sliding rather than starting over.
+        // Only the most recent exercises count towards the next step; the
+        // window is cleared outright when one is earned.
         historyRef.current = [...historyRef.current, summary.accuracy].slice(
           -DEFAULT_PROGRESSION.windowSize,
         );

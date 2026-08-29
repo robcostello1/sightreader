@@ -134,6 +134,7 @@ export function Lesson() {
   const lesson = useLesson({ level, region, bpm: effectiveBpm, autoAdvance, onAdvance: setLevel });
   const progress = progressionState(level, lesson.history);
 
+  const threshold = Math.round(DEFAULT_PROGRESSION.threshold * 100);
   const running = lesson.phase === 'count-in' || lesson.phase === 'playing';
   const listening = running || lesson.phase === 'results';
 
@@ -201,13 +202,21 @@ export function Lesson() {
 
             {running && lesson.exercise && (
               <div className="monitor">
-                <LivePitch
-                  hz={lesson.livePitch?.hz ?? null}
-                  confidence={lesson.livePitch?.confidence ?? 0}
-                  gate={config.scoring.confidenceGate}
-                  musicalKey={lesson.exercise.key}
-                />
-                {lesson.analyser && <Waveform analyser={lesson.analyser} />}
+                <div className="monitor-item">
+                  <span className="monitor-label">Heard</span>
+                  <LivePitch
+                    hz={lesson.livePitch?.hz ?? null}
+                    confidence={lesson.livePitch?.confidence ?? 0}
+                    gate={config.scoring.confidenceGate}
+                    musicalKey={lesson.exercise.key}
+                  />
+                </div>
+                {lesson.analyser && (
+                  <div className="monitor-item">
+                    <span className="monitor-label">Microphone</span>
+                    <Waveform analyser={lesson.analyser} />
+                  </div>
+                )}
               </div>
             )}
 
@@ -222,9 +231,9 @@ export function Lesson() {
         <section>
           <h2>Config</h2>
 
-          <label className="field">
+          <label className="field field-primary">
             <span className="field-label">
-              Level <strong>{level.toFixed(1)}</strong>
+              Difficulty {level.toFixed(1)} <span className="unit">of {MAX_LEVEL}</span>
             </span>
             <input
               type="range"
@@ -237,12 +246,14 @@ export function Lesson() {
               onChange={(event) => setLevel(Number(event.target.value))}
               disabled={running}
             />
+            <p className="hint">
+              Whole numbers introduce new ideas; the decimal is how far they have
+              come in.
+            </p>
           </label>
 
           <label className="field">
-            <span className="field-label">
-              Tempo <strong>{effectiveBpm}</strong> bpm
-            </span>
+            <span className="field-label">Tempo — {effectiveBpm} bpm</span>
             <input
               type="range"
               min={MIN_BPM}
@@ -261,7 +272,7 @@ export function Lesson() {
           )}
 
           <label className="field">
-            <span className="field-label">Position</span>
+            <span className="field-label">Fretboard position</span>
             <select
               value={regionId}
               onChange={(event) => setRegionId(event.target.value)}
@@ -285,13 +296,20 @@ export function Lesson() {
               checked={autoAdvance}
               onChange={(event) => setAutoAdvance(event.target.checked)}
             />
-            Keep going
+            Auto-advance to next exercise
           </label>
         </section>
 
         <section>
-          <h2>Lesson</h2>
-          <p className="reading">{brief.reading.join(' · ')}</p>
+          <h2>This level</h2>
+          <ul className="facts">
+            {brief.facts.map((fact) => (
+              <li key={fact.label}>
+                <span className="fact-label">{fact.label}</span>
+                <span className="fact-value">{fact.value}</span>
+              </li>
+            ))}
+          </ul>
 
           {brief.introducing.length > 0 && (
             <>
@@ -309,23 +327,42 @@ export function Lesson() {
             </>
           )}
 
-          <p className="muted small">
-            {progress.atCeiling
-              ? 'Top level reached.'
-              : progress.completed < progress.needed
-                ? `Levels up at ${Math.round(DEFAULT_PROGRESSION.threshold * 100)}% over ${progress.needed} exercises · ${progress.completed}/${progress.needed} played`
-                : `Last ${progress.needed}: ${Math.round(progress.accuracy! * 100)}%${
-                    progress.ready ? ' · levelling up' : ''
-                  }`}
-          </p>
+        </section>
+
+        <section>
+          <h2>Levelling up</h2>
+          {progress.atCeiling ? (
+            <p className="small">Top level reached.</p>
+          ) : (
+            <>
+              <div
+                className="window"
+                role="img"
+                aria-label={`${progress.completed} of ${progress.needed} exercises played`}
+              >
+                {Array.from({ length: progress.needed }, (_, i) => (
+                  <span
+                    key={i}
+                    className={
+                      i < progress.completed ? (progress.ready ? 'strong' : 'played') : ''
+                    }
+                  />
+                ))}
+              </div>
+              <p className="small">
+                {progress.accuracy === null
+                  ? `Reach ${threshold}% accuracy across ${progress.needed} exercises to level up.`
+                  : `${Math.round(progress.accuracy * 100)}% accuracy over ${progress.completed} of ${progress.needed} — ${threshold}% needed.`}
+              </p>
+            </>
+          )}
 
           {lesson.stats.completed > 0 && (
             <p className="muted small">
-              Session: {lesson.stats.completed} exercise
-              {lesson.stats.completed === 1 ? '' : 's'} ·{' '}
-              {lesson.stats.scorable > 0
-                ? `${Math.round((lesson.stats.passed / lesson.stats.scorable) * 100)}% correct`
-                : '—'}
+              {lesson.stats.completed} exercise{lesson.stats.completed === 1 ? '' : 's'} this
+              session
+              {lesson.stats.scorable > 0 &&
+                `, ${Math.round((lesson.stats.passed / lesson.stats.scorable) * 100)}% of notes correct`}
             </p>
           )}
         </section>

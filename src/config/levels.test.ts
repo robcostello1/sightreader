@@ -122,12 +122,24 @@ describe('adoption within a level', () => {
     expect(levelConfig(7).clickThroughChance).toBe(0);
   });
 
-  it('briefs in plain language rather than listing parameters', () => {
-    const brief = levelBrief(1);
-    expect(brief.reading).toContain('C major');
-    expect(brief.reading.join(' ')).toMatch(/half notes/);
+  it('briefs as labelled facts rather than dense shorthand', () => {
+    const facts = Object.fromEntries(levelBrief(1).facts.map((f) => [f.label, f.value]));
+    expect(facts.Keys).toBe('C');
+    expect(facts.Motion).toBe('steps only');
+    expect(facts.Time).toBe('4/4');
+    // Named as a range, so it does not read as "down to half notes" from what?
+    expect(facts.Notes).toMatch(/half/);
     // Nothing is arriving at level 1 — it is the baseline.
-    expect(brief.introducing).toEqual([]);
+    expect(levelBrief(1).introducing).toEqual([]);
+  });
+
+  it('names the keys you might meet rather than counting accidentals', () => {
+    // The whole part is always in the pool and the fraction is the chance of one
+    // more, so the list rounds up to what can actually turn up.
+    const keysAt = (level: number) =>
+      levelBrief(level).facts.find((f) => f.label === 'Keys')!.value;
+    expect(keysAt(1)).toBe('C');
+    expect(keysAt(3.5)).toContain('G');
   });
 
   it('treats a level boundary as a step, not a fresh start from nothing', () => {
@@ -142,7 +154,9 @@ describe('adoption within a level', () => {
     const arriving = levelBrief(3.5).introducing.map((i) => i.label);
     expect(arriving).toContain('quarter notes');
     expect(levelBrief(5).introducing.map((i) => i.label)).not.toContain('quarter notes');
-    expect(levelBrief(5).reading.join(' ')).toContain('quarter notes');
+    // Settled, so it belongs to the note range rather than the arriving list.
+    const notes = levelBrief(5).facts.find((f) => f.label === 'Notes')!.value;
+    expect(notes).toContain('quarter');
   });
 
   it('reports how far each arriving concept has come', () => {

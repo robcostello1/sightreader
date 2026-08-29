@@ -2,10 +2,37 @@
   color-scheme: light dark;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   line-height: 1.5;
+
+  /*
+   * Explicit colours rather than opacity on the foreground. Dimming by opacity
+   * makes contrast depend on whatever is behind, and the secondary text was
+   * landing below the 4.5:1 WCAG AA threshold for body copy. Every pair here
+   * clears it — muted text measures 6.7:1 on light and 7.8:1 on dark — and
+   * contrast.test.ts checks that against this file.
+   */
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --fg-muted: #5c5c5c;
+  --line: rgb(0 0 0 / 0.16);
+  --accent: #2f6fed;
+  --danger: #b3243a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141414;
+    --fg: #f2f2f2;
+    --fg-muted: #a9a9a9;
+    --line: rgb(255 255 255 / 0.22);
+    --accent: #6c9bff;
+    --danger: #ef7a8b;
+  }
 }
 
 body {
   margin: 0;
+  background: var(--bg);
+  color: var(--fg);
 }
 
 main {
@@ -26,7 +53,7 @@ h2 {
   font-size: 0.8125rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  opacity: 0.55;
+  color: var(--fg-muted);
   margin: 0 0 0.75rem;
 }
 
@@ -61,7 +88,7 @@ h2 {
 .sidebar section + section {
   margin-top: 1.75rem;
   padding-top: 1.5rem;
-  border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+  border-top: 1px solid var(--line);
 }
 
 button {
@@ -79,10 +106,20 @@ button.primary {
   padding: 0.6rem 1.75rem;
 }
 
+/* Full-strength text: at muted grey the dropdown read as disabled. */
 select {
   font: inherit;
+  color: var(--fg);
+  background: var(--bg);
   width: 100%;
-  padding: 0.35rem 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.375rem;
+}
+
+select:disabled {
+  color: var(--fg-muted);
+  cursor: not-allowed;
 }
 
 input[type='range'] {
@@ -107,7 +144,7 @@ input[type='range'] {
 }
 
 .muted {
-  opacity: 0.7;
+  color: var(--fg-muted);
 }
 
 .small {
@@ -136,15 +173,82 @@ input[type='range'] {
   height: 0.25rem;
   margin-top: 0.25rem;
   border-radius: 999px;
-  background: color-mix(in srgb, currentColor 15%, transparent);
+  background: var(--line);
   overflow: hidden;
 }
 
 .bar-fill {
   display: block;
   height: 100%;
-  background: currentColor;
-  opacity: 0.55;
+  background: var(--fg-muted);
+}
+
+/* The level is the one setting worth reading first, so it carries more weight
+   than the controls beside it. */
+.field-primary {
+  margin-bottom: 1.25rem;
+}
+
+.field-primary .field-label {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.field-primary .field-label .unit {
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: var(--fg-muted);
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+  margin: 0.25rem 0 0;
+}
+
+.facts {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.25rem;
+  font-size: 0.875rem;
+}
+
+.facts li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.15rem 0;
+}
+
+.facts dt,
+.facts .fact-label {
+  color: var(--fg-muted);
+}
+
+.facts .fact-value {
+  text-align: right;
+}
+
+/* One segment per exercise in the level-up window. */
+.window {
+  display: flex;
+  gap: 0.25rem;
+  margin: 0.5rem 0 0.4rem;
+}
+
+.window span {
+  flex: 1;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.window span.played {
+  background: var(--fg-muted);
+}
+
+.window span.strong {
+  background: var(--accent);
 }
 
 .score {
@@ -165,12 +269,11 @@ input[type='range'] {
   display: flex;
   align-items: baseline;
   gap: 1rem;
-  padding: 0.75rem 0;
-  opacity: 0.45;
+  color: var(--fg-muted);
 }
 
 .readout.is-confident {
-  opacity: 1;
+  color: var(--fg);
 }
 
 .readout .note {
@@ -219,18 +322,30 @@ input[type='range'] {
 }
 
 [role='alert'] {
-  color: #d1495b;
+  color: var(--danger);
+}
+
+.monitor-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.monitor-label {
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
 }
 
 .monitor {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  display: flex;
   align-items: center;
   gap: 1.5rem;
 }
 
 .waveform {
   display: block;
-  width: 100%;
-  opacity: 0.55;
+  flex: none;
+  opacity: 0.6;
 }

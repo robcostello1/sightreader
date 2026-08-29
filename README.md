@@ -127,11 +127,19 @@ The exercise and its Start button own the main area; everything else sits in a
 sidebar, split into **Config** (level, position, keep going) and **Lesson**
 (what you are reading, and what is arriving).
 
-The lesson panel is written in plain language rather than as a parameter
-listing: one line for what has settled, then only the concepts mid-adoption,
-each with how far in it is. Once something appears in every exercise it stops
-being news and folds into the baseline line. `levelSummary()` still returns the
-full parameter dump, but only the dev preview page uses it.
+The lesson panel is labelled facts rather than a parameter listing — Notes,
+Keys, Motion, Time — then only the concepts mid-adoption, each with how far in
+it is. Once something appears in every exercise it stops being news and folds
+into the facts. `levelSummary()` still returns the full parameter dump, but only
+the dev preview page uses it.
+
+Difficulty is the one setting worth reading first, so it carries visibly more
+weight than tempo or position beside it.
+
+Colours are explicit tokens rather than opacity on the foreground: dimming by
+opacity makes contrast depend on whatever is behind, and the secondary text was
+landing below WCAG AA. `contrast.test.ts` reads the stylesheet and checks every
+pair against the 4.5:1 threshold, so the palette cannot regress unnoticed.
 
 ## Session behaviour
 
