@@ -67,6 +67,12 @@ export interface ExerciseNote {
    * constraint can be checked within an instance rather than across a join.
    */
   instance: number;
+  /**
+   * Shared id for the notes of one tuplet group. Three notes carrying the same
+   * id occupy the space of two, which is what keeps the bar arithmetic exact
+   * and lets the notation layer draw the bracket.
+   */
+  tuplet?: number;
 }
 
 export interface Exercise {

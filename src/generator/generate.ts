@@ -2,10 +2,14 @@ import { OPEN_POSITION, regionPool, type FretboardRegion } from '../config/regio
 import { IDIOM_LIBRARY, idiomDuration, instantiateIdiom, placementPitches } from '../idioms';
 import type { IdiomPlacement } from '../idioms';
 import { NOTE_VALUES } from '../lib/types';
+import { decompose } from '../lib/duration';
 import { mulberry32, pick, randomInt, weightedPick, type Rng } from './rng';
 import { startPitchWeight, validPlacements } from './placement';
 import type { TierConfig } from '../config/tiers';
 import type { Exercise, ExerciseNote, Idiom, Midi, NoteValue } from '../lib/types';
+
+/** idiomId carried by rests inserted to fill out a bar; not a library idiom. */
+export const PADDING_IDIOM_ID = 'padding';
 
 export interface GenerateOptions {
   tier: TierConfig;
@@ -134,19 +138,31 @@ export function generateExercise(options: GenerateOptions): Exercise {
     const placement = choosePlacement(rng, candidate, low, high, extremeBias);
     usedIdioms.add(candidate.idiom.id);
 
-    const triplet =
-      tier.density.allowTriplets && candidate.idiom.events.length % 3 === 0 && rng() < tripletChance;
     const rendered = instantiateIdiom(placement, i);
-    if (triplet) for (const note of rendered) note.value = (note.value * 2) / 3;
+    let duration = candidate.duration;
+
+    if (tier.density.allowTriplets && rng() < tripletChance) {
+      const applied = applyTriplet(rng, rendered, candidate, i);
+      // Three single-beat notes become the space of two, so the instance loses
+      // exactly one unit. Scaling the whole idiom instead would yield durations
+      // like 8/3, which no combination of symbols can notate.
+      if (applied) duration -= candidate.unitValue;
+    }
 
     notes.push(...rendered);
-    used += triplet ? (candidate.duration * 2) / 3 : candidate.duration;
+    used += duration;
 
     // A single-idiom tier stops after one instance regardless of budget.
     if (budget === null) break;
   }
 
-  if (cadence) notes.push(...instantiateIdiom(cadence.placement, instances));
+  // Padded before the cadence, not after: leftover space becomes a breath
+  // rather than a trailing rest, and the phrase still lands on the tonic.
+  if (budget !== null && budget - used > 1e-9) {
+    padWithRests(notes, budget - used, tier.density.allowRests, instances);
+  }
+
+  if (cadence) notes.push(...instantiateIdiom(cadence.placement, instances + 1));
 
   applyDecorations(rng, notes, {
     pool,
@@ -155,8 +171,6 @@ export function generateExercise(options: GenerateOptions): Exercise {
     restChance,
     accidentalChance,
   });
-
-  padToTarget(notes, target);
 
   return { notes, keyCenter, timeSignature: tier.timeSignature, bpm };
 }
@@ -196,12 +210,52 @@ function applyDecorations(rng: Rng, notes: ExerciseNote[], options: DecorationOp
 }
 
 /**
- * Extends the final note to the bar line rather than appending a rest, which
- * would read as a deliberate rhythmic event the generator never intended.
+ * Fills leftover space with rests decomposed into drawable values. Extending the
+ * final note instead would leave it at some arbitrary length — 5/16 of a whole
+ * note, say — that no combination of symbols represents.
  */
-function padToTarget(notes: ExerciseNote[], target: NoteValue | null): void {
-  if (target === null || notes.length === 0) return;
-  const total = notes.reduce((sum, note) => sum + note.value, 0);
-  const shortfall = target - total;
-  if (shortfall > 1e-9) notes[notes.length - 1].value += shortfall;
+function padWithRests(
+  notes: ExerciseNote[],
+  shortfall: NoteValue,
+  allowRests: boolean,
+  instance: number,
+): void {
+  const parts = decompose(shortfall);
+  if (allowRests) {
+    for (const value of parts) {
+      notes.push({ midi: null, value, idiomId: PADDING_IDIOM_ID, instance });
+    }
+    return;
+  }
+  // No rests permitted: lengthen the last note, but only by amounts that stay
+  // notatable on their own.
+  if (notes.length > 0) notes[notes.length - 1].value += parts[0] ?? 0;
+}
+
+/**
+ * Turns three consecutive single-beat notes into a triplet. Returns false when
+ * the idiom has no such run, since scaling uneven beats would produce durations
+ * that cannot be drawn.
+ */
+function applyTriplet(
+  rng: Rng,
+  rendered: ExerciseNote[],
+  candidate: Candidate,
+  instance: number,
+): boolean {
+  const events = candidate.idiom.events;
+  const starts: number[] = [];
+  for (let i = 0; i + 2 < events.length; i++) {
+    if (events[i].beats === 1 && events[i + 1].beats === 1 && events[i + 2].beats === 1) {
+      starts.push(i);
+    }
+  }
+  if (starts.length === 0) return false;
+
+  const start = pick(rng, starts);
+  for (let i = start; i < start + 3; i++) {
+    rendered[i].value = (rendered[i].value * 2) / 3;
+    rendered[i].tuplet = instance;
+  }
+  return true;
 }

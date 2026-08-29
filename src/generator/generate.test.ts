@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { generateExercise } from './generate';
+import { PADDING_IDIOM_ID, generateExercise } from './generate';
 import { startPitchWeight, validPlacements } from './placement';
 import { mulberry32 } from './rng';
 import { OPEN_POSITION, regionPool } from '../config/regions';
 import { TIERS } from '../config/tiers';
 import { idiomById, isDiatonic, maxLocalInterval } from '../idioms';
 import { NOTE_VALUES } from '../lib/types';
+import { isNotatable } from '../lib/duration';
 
 const POOL_LIST = regionPool(OPEN_POSITION);
 const POOL = new Set(POOL_LIST);
@@ -101,6 +102,7 @@ describe('generateExercise', () => {
     it('only uses idioms from the tier categories', () => {
       for (const exercise of exercises) {
         for (const note of exercise.notes) {
+          if (note.idiomId === PADDING_IDIOM_ID) continue;
           expect(tier.idioms.categories).toContain(idiomById(note.idiomId)!.category);
         }
       }
@@ -138,6 +140,28 @@ describe('generateExercise', () => {
       const exercise = generateExercise({ tier: TIERS.medium, seed });
       const total = exercise.notes.reduce((sum, n) => sum + n.value, 0);
       expect(total).toBeCloseTo(2, 9); // two 4/4 bars = two whole notes
+    }
+  });
+
+  it('emits only durations that can actually be drawn', () => {
+    for (const seed of SEEDS) {
+      for (const note of generateExercise({ tier: TIERS.medium, seed }).notes) {
+        // Triplet members are drawn under a bracket, so they carry 2/3 of a
+        // standard value; everything else must stand alone as a symbol.
+        const value = note.tuplet === undefined ? note.value : (note.value * 3) / 2;
+        expect(isNotatable(value)).toBe(true);
+      }
+    }
+  });
+
+  it('groups triplets in threes so the bar arithmetic stays exact', () => {
+    for (const seed of SEEDS) {
+      const { notes } = generateExercise({ tier: TIERS.medium, seed });
+      const groups = new Map<number, number>();
+      for (const note of notes) {
+        if (note.tuplet !== undefined) groups.set(note.tuplet, (groups.get(note.tuplet) ?? 0) + 1);
+      }
+      for (const count of groups.values()) expect(count).toBe(3);
     }
   });
 

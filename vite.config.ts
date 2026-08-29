@@ -7,6 +7,7 @@ export default defineConfig({
   plugins: [react(), audioWorklet()],
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.{ts,tsx}'],
+    setupFiles: ['./src/test-setup.ts'],
   },
 })

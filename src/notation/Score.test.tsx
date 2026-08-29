@@ -1,0 +1,77 @@
+// @vitest-environment jsdom
+import { cleanup, render } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
+import { Score } from './Score';
+import { generateExercise } from '../generator';
+import { TIERS } from '../config/tiers';
+import { NOTE_VALUES } from '../lib/types';
+import type { Exercise, NoteResult } from '../lib/types';
+
+afterEach(cleanup);
+
+const simple: Exercise = {
+  notes: [
+    { midi: 60, value: NOTE_VALUES.quarter, idiomId: 'test', instance: 0 },
+    { midi: 62, value: NOTE_VALUES.quarter, idiomId: 'test', instance: 0 },
+    { midi: null, value: NOTE_VALUES.quarter, idiomId: 'test', instance: 0 },
+    { midi: 64, value: NOTE_VALUES.quarter, idiomId: 'test', instance: 0 },
+  ],
+  keyCenter: 60,
+  timeSignature: [4, 4],
+  bpm: 60,
+};
+
+function svgOf(container: HTMLElement): SVGSVGElement {
+  const svg = container.querySelector('svg');
+  if (!svg) throw new Error('no svg rendered');
+  return svg;
+}
+
+describe('Score', () => {
+  it('draws a stave with notes', () => {
+    const { container } = render(<Score exercise={simple} />);
+    const svg = svgOf(container);
+    expect(svg.querySelectorAll('path').length).toBeGreaterThan(0);
+  });
+
+  it('renders every generated exercise without throwing', () => {
+    // The real value of this test: VexFlow misuse surfaces here rather than in
+    // a browser. Covers accidentals, rests, dotted values, tuplets and ties.
+    for (let seed = 1; seed <= 40; seed++) {
+      const exercise = generateExercise({ tier: TIERS.medium, seed });
+      expect(() => render(<Score exercise={exercise} />)).not.toThrow();
+      cleanup();
+    }
+  });
+
+  it('renders the simple tier, whose notes are whole notes and breves', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const exercise = generateExercise({ tier: TIERS.simple, seed });
+      expect(() => render(<Score exercise={exercise} />)).not.toThrow();
+      cleanup();
+    }
+  });
+
+  it('colours scored notes by verdict', () => {
+    const results: NoteResult[] = [
+      { index: 0, passed: true, verdict: 'pass', occupancy: 1, sampleCount: 10 },
+      { index: 1, passed: false, verdict: 'wrong-pitch', occupancy: 0, sampleCount: 10 },
+      { index: 3, passed: false, verdict: 'unclear', occupancy: 0.3, sampleCount: 10 },
+    ];
+    const markup = render(<Score exercise={simple} results={results} />).container.innerHTML;
+    expect(markup).toContain('#2e9e5b'); // pass
+    expect(markup).toContain('#d1495b'); // fail
+    expect(markup).toContain('#c77b18'); // unclear
+  });
+
+  it('marks the active note distinctly from scored ones', () => {
+    const markup = render(<Score exercise={simple} activeIndex={2} />).container.innerHTML;
+    expect(markup).toContain('#2f6fed');
+  });
+
+  it('redraws rather than appending when the exercise changes', () => {
+    const { container, rerender } = render(<Score exercise={simple} />);
+    rerender(<Score exercise={generateExercise({ tier: TIERS.medium, seed: 5 })} />);
+    expect(container.querySelectorAll('svg')).toHaveLength(1);
+  });
+});

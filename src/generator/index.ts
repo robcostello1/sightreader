@@ -3,7 +3,7 @@
  * against a region pool under the local-interval constraint, with weighted
  * starting-pitch selection favouring the extremes of the range.
  */
-export { generateExercise } from './generate';
+export { generateExercise, PADDING_IDIOM_ID } from './generate';
 export type { GenerateOptions } from './generate';
 export { startPitchWeight, validPlacements } from './placement';
 export type { PlacementConstraints } from './placement';

@@ -14,12 +14,11 @@ random notes. See `docs/spec.md` for the full design.
 
 ## Status
 
-Build order steps 1-6 are done: mic capture through an AudioWorklet to a
-confidence-scored pitch stream, spectral-flux onset detection, the
-tempo/count-in scheduler, the windowed occupancy scorer, the idiom library, and
-the procedural exercise generator. The domain types, fretboard region model and
-difficulty tier config are in place. Notation rendering and the lesson UI are
-not yet implemented.
+Build order steps 1-7 are done: the audio pipeline (pitch + onset), the
+tempo/count-in scheduler, the windowed occupancy scorer, the idiom library, the
+procedural exercise generator, and VexFlow notation rendering. The domain types, fretboard region model and
+difficulty tier config are in place. Tier wiring and the lesson UI are not yet
+implemented.
 
 `npm run dev` gives a live pitch readout (note name, Hz, cents, confidence)
 to sanity-check the pipeline against a real guitar.
@@ -56,7 +55,7 @@ dev server works without extra setup.
 | `src/scoring/` | Windowed occupancy scorer (binary pass/fail) |
 | `src/idioms/` | Relative-pattern idiom library |
 | `src/generator/` | Procedural exercise generation |
-| `src/notation/` | VexFlow staff rendering |
+| `src/notation/` | VexFlow staff rendering (layout is ours, engraving is VexFlow's) |
 | `src/ui/` | Lesson flow and feedback |
 | `vite/` | Build plugins (AudioWorklet bundling) |
 
@@ -68,7 +67,7 @@ dev server works without extra setup.
 4. ~~Windowed occupancy scorer consuming the pitch stream~~ ✅
 5. ~~Idiom data model + a handful of hardcoded idioms~~ ✅
 6. ~~Procedural exercise generator~~ ✅
-7. Notation rendering
+7. ~~Notation rendering~~ ✅
 8. Difficulty tier wiring
 9. Lesson UI
 
