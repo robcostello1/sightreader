@@ -3,7 +3,14 @@
  * reference timestamp) and turns an Exercise into NoteWindows on the
  * AudioContext clock. Also drives the metronome click.
  */
-export { beatDurationMs, buildSchedule, isCompound, noteDurationMs, windowAt } from './schedule';
+export {
+  beatDurationMs,
+  buildSchedule,
+  countInBarsFor,
+  isCompound,
+  noteDurationMs,
+  windowAt,
+} from './schedule';
 export type { ClickEvent, Schedule, ScheduleOptions } from './schedule';
 export { scheduleClicks } from './metronome';
 export type { MetronomeOptions, ScheduledClicks } from './metronome';

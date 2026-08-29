@@ -225,7 +225,6 @@ export function useLesson(options: UseLessonOptions) {
     // windows and detections cannot drift apart.
     const schedule = buildSchedule(exercise, {
       startMs: session.context.currentTime * 1000 + lead,
-      countInBars: config.countInBars,
       clickThroughExercise: Math.random() < config.clickThroughChance,
       attackGuardMs: config.scoring.attackGuardMs,
     });

@@ -94,7 +94,6 @@ async function startAndGetSchedule(result: { current: ReturnType<typeof useLesso
   expect(result.current.phase).toBe('count-in');
   return buildSchedule(result.current.exercise!, {
     startMs: LEAD_IN,
-    countInBars: CONFIG.countInBars,
     clickThroughExercise: false, // clicks are mocked out; irrelevant to windows
     attackGuardMs: CONFIG.scoring.attackGuardMs,
   });
@@ -191,8 +190,7 @@ describe('useLesson', () => {
     expect(result.current.exercise!.bpm).toBe(120);
     const schedule = buildSchedule(result.current.exercise!, {
       startMs: LEAD_IN,
-      countInBars: CONFIG.countInBars,
-      clickThroughExercise: false,
+        clickThroughExercise: false,
       attackGuardMs: CONFIG.scoring.attackGuardMs,
     });
     // Four beats of count-in at 120bpm is two seconds, half of what 60 gives.
@@ -345,8 +343,7 @@ describe('useLesson', () => {
         await flush();
         const schedule = buildSchedule(result.current.exercise!, {
           startMs: clock.currentTime * 1000 + LEAD_IN,
-          countInBars: CONFIG.countInBars,
-          clickThroughExercise: false,
+                clickThroughExercise: false,
           attackGuardMs: CONFIG.scoring.attackGuardMs,
         });
         playCorrectly(schedule);
@@ -372,8 +369,7 @@ describe('useLesson', () => {
         await flush();
         const schedule = buildSchedule(result.current.exercise!, {
           startMs: clock.currentTime * 1000 + LEAD_IN,
-          countInBars: CONFIG.countInBars,
-          clickThroughExercise: false,
+                clickThroughExercise: false,
           attackGuardMs: CONFIG.scoring.attackGuardMs,
         });
         playCorrectly(schedule);
@@ -394,8 +390,7 @@ describe('useLesson', () => {
         await flush();
         const schedule = buildSchedule(result.current.exercise!, {
           startMs: clock.currentTime * 1000 + LEAD_IN,
-          countInBars: CONFIG.countInBars,
-          clickThroughExercise: false,
+                clickThroughExercise: false,
           attackGuardMs: CONFIG.scoring.attackGuardMs,
         });
         playCorrectly(schedule);
@@ -416,8 +411,7 @@ describe('useLesson', () => {
         await flush();
         const schedule = buildSchedule(result.current.exercise!, {
           startMs: clock.currentTime * 1000 + LEAD_IN,
-          countInBars: CONFIG.countInBars,
-          clickThroughExercise: false,
+                clickThroughExercise: false,
           attackGuardMs: CONFIG.scoring.attackGuardMs,
         });
         // Play nothing at all.
@@ -455,8 +449,7 @@ describe('useLesson', () => {
         await flush();
         const schedule = buildSchedule(result.current.exercise!, {
           startMs: clock.currentTime * 1000 + LEAD_IN,
-          countInBars: CONFIG.countInBars,
-          clickThroughExercise: false,
+                clickThroughExercise: false,
           attackGuardMs: CONFIG.scoring.attackGuardMs,
         });
         playCorrectly(schedule);
@@ -483,8 +476,7 @@ describe('useLesson', () => {
         await flush();
         const schedule = buildSchedule(result.current.exercise!, {
           startMs: clock.currentTime * 1000 + LEAD_IN,
-          countInBars: CONFIG.countInBars,
-          clickThroughExercise: false,
+                clickThroughExercise: false,
           attackGuardMs: CONFIG.scoring.attackGuardMs,
         });
         playCorrectly(schedule);
@@ -508,8 +500,7 @@ describe('useLesson', () => {
         await flush();
         const schedule = buildSchedule(result.current.exercise!, {
           startMs: clock.currentTime * 1000 + LEAD_IN,
-          countInBars: CONFIG.countInBars,
-          clickThroughExercise: false,
+                clickThroughExercise: false,
           attackGuardMs: CONFIG.scoring.attackGuardMs,
         });
         playCorrectly(schedule);
@@ -553,8 +544,7 @@ describe('useLesson', () => {
       });
       schedule = buildSchedule(result.current.exercise!, {
         startMs: clock.currentTime * 1000 + LEAD_IN,
-        countInBars: CONFIG.countInBars,
-        clickThroughExercise: false, // clicks are mocked out; irrelevant to windows
+            clickThroughExercise: false, // clicks are mocked out; irrelevant to windows
         attackGuardMs: CONFIG.scoring.attackGuardMs,
       });
       await advanceTo(schedule.endMs + 10);

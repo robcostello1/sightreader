@@ -23,7 +23,8 @@ export interface ClickEvent {
 export interface ScheduleOptions {
   /** AudioContext time the count-in should begin. */
   startMs: AudioTimeMs;
-  countInBars: number;
+  /** Defaults to what the exercise's signature needs — see countInBarsFor. */
+  countInBars?: number;
   /** Click through the exercise itself. Count-in clicks are always produced. */
   clickThroughExercise: boolean;
   /** Head of each window excluded from scoring — attack transient and detector settling. */
@@ -37,6 +38,23 @@ export interface ScheduleOptions {
  */
 export function isCompound([beatsPerBar, beatUnit]: [number, number]): boolean {
   return beatUnit === 8 && beatsPerBar % 3 === 0 && beatsPerBar > 3;
+}
+
+/** Pulses a count-in should give before the music starts. */
+const MIN_COUNT_IN_CLICKS = 4;
+
+/**
+ * Bars of count-in a signature needs.
+ *
+ * Counted in clicks rather than bars, because a bar is worth a different number
+ * of pulses in each: one bar of 4/4 is four, of 3/4 three, and of 6/8 only two
+ * once it is counted in dotted-crotchet beats. A single bar of 3/4 or 6/8 is too
+ * short to settle into before playing.
+ */
+export function countInBarsFor(timeSignature: [number, number]): number {
+  const [beatsPerBar] = timeSignature;
+  const clicksPerBar = beatsPerBar / (isCompound(timeSignature) ? 3 : 1);
+  return Math.max(1, Math.ceil(MIN_COUNT_IN_CLICKS / clicksPerBar));
 }
 
 export interface Schedule {
@@ -57,7 +75,8 @@ export interface Schedule {
 export function buildSchedule(exercise: Exercise, options: ScheduleOptions): Schedule {
   const [beatsPerBar, beatUnit] = exercise.timeSignature;
   const beatMs = beatDurationMs(exercise.bpm);
-  const { startMs, countInBars, clickThroughExercise, attackGuardMs } = options;
+  const { startMs, clickThroughExercise, attackGuardMs } = options;
+  const countInBars = options.countInBars ?? countInBarsFor(exercise.timeSignature);
 
   const countInBeats = countInBars * beatsPerBar;
   const t0 = startMs + countInBeats * beatMs;

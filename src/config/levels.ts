@@ -85,7 +85,6 @@ export interface LevelConfig {
   targetBars: number;
   /** Signatures the level may use, one drawn per exercise. */
   timeSignatures: WeightedTimeSignature[];
-  countInBars: number;
   /** Chance the click keeps going through the exercise rather than only the count-in. */
   clickThroughChance: number;
   scoring: ScoringConfig;
@@ -200,7 +199,6 @@ export function levelConfig(rawLevel: number): LevelConfig {
       // it arrives well after the simple ones.
       { value: [6, 8] as TimeSignature, weight: 0.5 * adoption(level, 7) },
     ].filter((entry) => entry.weight > 1e-6),
-    countInBars: 1,
     // Thins out once the pulse should be internalised: some exercises keep the
     // click, more of them lose it, until none has it.
     clickThroughChance: 1 - ramp(level, 5, 7),

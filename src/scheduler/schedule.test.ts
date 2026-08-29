@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { beatDurationMs, buildSchedule, noteDurationMs, windowAt } from './schedule';
+import {
+  beatDurationMs,
+  buildSchedule,
+  countInBarsFor,
+  noteDurationMs,
+  windowAt,
+} from './schedule';
 import { NOTE_VALUES } from '../lib/types';
 import type { Exercise, ExerciseNote } from '../lib/types';
 import { keyByName } from '../lib/key';
@@ -40,6 +46,16 @@ describe('tempo maths', () => {
   });
 });
 
+describe('countInBarsFor', () => {
+  it('gives four pulses whatever the signature is worth', () => {
+    // A bar is a different number of clicks in each: four in 4/4, three in 3/4,
+    // and only two in 6/8 once it is counted in dotted crotchets.
+    expect(countInBarsFor([4, 4])).toBe(1);
+    expect(countInBarsFor([3, 4])).toBe(2);
+    expect(countInBarsFor([6, 8])).toBe(2);
+  });
+});
+
 describe('buildSchedule', () => {
   it('places t0 one full bar after the start', () => {
     const schedule = buildSchedule(exercise([note(NOTE_VALUES.whole)]), OPTIONS);
@@ -50,6 +66,14 @@ describe('buildSchedule', () => {
   it('scales the count-in with the time signature', () => {
     const threeFour: Exercise = { ...exercise([note(NOTE_VALUES.whole)]), timeSignature: [3, 4] };
     expect(buildSchedule(threeFour, OPTIONS).t0).toBe(4000);
+  });
+
+  it('counts in two bars of 3/4, where one is only three pulses', () => {
+    const threeFour: Exercise = { ...exercise([note(NOTE_VALUES.whole)]), timeSignature: [3, 4] };
+    const derived = buildSchedule(threeFour, { ...OPTIONS, countInBars: undefined });
+    // Six beats at 60bpm, and six clicks to settle into.
+    expect(derived.t0 - derived.startMs).toBe(6000);
+    expect(derived.clicks.filter((c) => c.phase === 'count-in')).toHaveLength(6);
   });
 
   it('lays windows end to end from t0 with no gaps', () => {
