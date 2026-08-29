@@ -284,7 +284,6 @@ export function useLesson(options: UseLessonOptions) {
         activeIndex: windowAt(active, now)?.index ?? null,
         results,
         summary,
-        livePitch: latestRef.current,
         onsetCount: onsetsRef.current.length,
         beatsUntilStart: beatsLeft,
         history: historyRef.current,
@@ -359,6 +358,61 @@ export function useLesson(options: UseLessonOptions) {
     armAdvance(advanceRemainingRef.current || settingsRef.current.advanceDelayMs);
   }, [armAdvance]);
 
+  /**
+   * Opens the microphone without starting anything, so the readout is live
+   * before the first exercise and between them.
+   *
+   * Failure is deliberately silent: nothing has been asked for yet, and a
+   * permission prompt the user dismissed is not an error to report. Pressing
+   * Start surfaces it properly.
+   */
+  const openSession = useCallback(
+    (onReady?: (session: MicSession) => void, onFailure?: (cause: unknown) => void) => {
+      if (sessionRef.current) {
+        onReady?.(sessionRef.current);
+        return;
+      }
+      startMicCapture({
+        onSample: (sample) => {
+        // Always the newest reading, so the readout works before an exercise and
+        // between them. Showing what is heard is not scoring it.
+          latestRef.current = sample;
+
+          // Count-in audio is ignored entirely — not scored, not classified, not
+          // even retained — and nothing is collected while no exercise runs.
+          const schedule = scheduleRef.current;
+          if (!schedule || sample.timestamp < schedule.t0) return;
+          samplesRef.current.push(sample);
+        },
+        onOnset: (onset) => onsetsRef.current.push(onset),
+      }).then(
+        (session) => {
+          sessionRef.current = session;
+          setState((prev) => ({ ...prev, analyser: session.analyser }));
+
+          // Opened without a gesture, the context can come up suspended. Pick it
+          // up on the first interaction rather than leaving a dead readout.
+          if (session.context.state !== 'running') {
+            const wake = () => {
+              void session.context.resume();
+              window.removeEventListener('pointerdown', wake);
+              window.removeEventListener('keydown', wake);
+            };
+            window.addEventListener('pointerdown', wake, { once: true });
+            window.addEventListener('keydown', wake, { once: true });
+          }
+
+          onReady?.(session);
+        },
+        (cause: unknown) => onFailure?.(cause),
+      );
+    },
+    [],
+  );
+
+  /** Starts monitoring only; used on load so the readout is live immediately. */
+  const listen = useCallback(() => openSession(), [openSession]);
+
   const start = useCallback(() => {
     const existing = sessionRef.current;
     if (existing) {
@@ -368,35 +422,30 @@ export function useLesson(options: UseLessonOptions) {
       return;
     }
 
-    setState({ ...INITIAL, phase: 'arming' });
-
-    startMicCapture({
-      onSample: (sample) => {
-        // Count-in audio is ignored entirely — not scored, not classified, not
-        // even retained. Dropping it here means nothing downstream can act on it.
-        const schedule = scheduleRef.current;
-        if (schedule && sample.timestamp < schedule.t0) return;
-        samplesRef.current.push(sample);
-        latestRef.current = sample;
-      },
-      onOnset: (onset) => onsetsRef.current.push(onset),
-    }).then(
-      (session) => {
-        sessionRef.current = session;
-        setState((prev) => ({ ...prev, analyser: session.analyser }));
-        beginExercise(session);
-      },
-      (cause: unknown) => {
-        setState((prev) => ({
-          ...prev,
-          phase: 'error',
-          error: cause instanceof Error ? cause.message : String(cause),
-        }));
-      },
+    setState((prev) => ({ ...INITIAL, stats: prev.stats, phase: 'arming' }));
+    openSession(beginExercise, (cause) =>
+      setState((prev) => ({
+        ...prev,
+        phase: 'error',
+        error: cause instanceof Error ? cause.message : String(cause),
+      })),
     );
-  }, [beginExercise, haltExercise]);
+  }, [beginExercise, haltExercise, openSession]);
+
+  // The readout is published on its own frame loop rather than by the exercise
+  // tick, so it keeps running when no exercise does.
+  useEffect(() => {
+    if (state.analyser === null) return;
+    let frame = requestAnimationFrame(function publish() {
+      frame = requestAnimationFrame(publish);
+      setState((prev) =>
+        prev.livePitch === latestRef.current ? prev : { ...prev, livePitch: latestRef.current },
+      );
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [state.analyser]);
 
   useEffect(() => closeSession, [closeSession]);
 
-  return { ...state, start, stop, pause, resume, clearHistory, acknowledgeMilestone };
+  return { ...state, start, stop, listen, pause, resume, clearHistory, acknowledgeMilestone };
 }

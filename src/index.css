@@ -17,6 +17,9 @@
   --fg-muted: #5c5c5c;
   --line: rgb(0 0 0 / 0.16);
 
+  /* One spacing step, used for every gap so nothing looks arbitrary. */
+  --gap: 1rem;
+
   /*
    * Verdict colours, shared by the notation and the level-up bars so a note and
    * its score never disagree. Hues are pulled slightly off primary — the blue
@@ -49,18 +52,26 @@ body {
   color: var(--fg);
 }
 
+/* Fills the viewport so the exercise gets the room, with the status row resting
+   against the bottom rather than floating below the score. */
 main {
-  max-width: 72rem;
-  margin: 0 auto;
-  padding: 1.5rem 1.25rem 4rem;
+  box-sizing: border-box;
+  height: 100dvh;
+  min-height: 34rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding: var(--gap);
 }
 
 header {
-  margin-bottom: 1.5rem;
+  margin: 0;
 }
 
 h1 {
-  margin-bottom: 0.25rem;
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: 0.02em;
 }
 
 h2 {
@@ -73,10 +84,11 @@ h2 {
 
 /* The exercise gets the room; settings sit out of the way beside it. */
 .layout {
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 17rem;
-  gap: 2.5rem;
-  align-items: start;
+  gap: var(--gap);
 }
 
 @media (max-width: 900px) {
@@ -87,24 +99,36 @@ h2 {
 
 .stage {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
 }
 
-/* A permanent home for the notation, so nothing below it moves as exercises
-   change length. Scrolls when the music outgrows it. */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* A permanent home for the notation, taking whatever the column has spare so
+   the status row below can rest against the bottom. Scrolls when the music
+   outgrows it. */
 .score-area {
-  height: 17rem;
+  flex: 1;
+  min-height: 8rem;
   overflow-y: auto;
   overflow-x: hidden;
-  margin-bottom: 1rem;
 }
 
 .stage-controls {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: var(--gap);
   flex-wrap: wrap;
   min-height: 2.75rem;
-  margin-bottom: 1rem;
+  flex: none;
 }
 
 /* Grouped onto their own surface so the settings read as a panel beside the
@@ -113,10 +137,6 @@ h2 {
   background: var(--surface);
   border-radius: 0.625rem;
   padding: 1.25rem;
-}
-
-.card + .card {
-  margin-top: 1rem;
 }
 
 .card > :last-child {
@@ -382,28 +402,56 @@ input[type='range'] {
   margin-bottom: 0.25rem;
 }
 
+/* Native accordion: what is arriving is worth having, but not worth the space
+   it takes when you are not asking. */
+.accordion summary {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  color: var(--fg-muted);
+  padding: 0.25rem 0;
+}
+
+.accordion[open] summary {
+  margin-bottom: 0.25rem;
+}
+
 [role='alert'] {
   color: var(--fail);
 }
 
 
 /* The live readout and the level-up window sit side by side under the score.
-   Both slots are permanent, so neither moves when a session starts or ends. */
+   Both slots are permanent, so neither moves when a session starts or ends, and
+   both cards match height with their contents pushed apart rather than
+   stretched. */
 .status {
   display: flex;
   align-items: stretch;
-  gap: 1rem;
+  gap: var(--gap);
+  flex: none;
+}
+
+.status > .card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
 /* Fixed slots throughout: the note and the marker come and go constantly, and
    anything that resized with them would move everything else. */
 .monitor {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
   flex: 1 1 auto;
   min-width: 0;
   padding: 0.875rem 1.125rem;
+  /* One row of content, so it centres rather than pushing against the edges the
+     way the level-up card's title and bars do. */
+  justify-content: center;
+}
+
+.monitor-row {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
 }
 
 .progress-card {

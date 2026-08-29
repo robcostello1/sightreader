@@ -318,8 +318,9 @@ export function levelBrief(rawLevel: number): LevelBrief {
   // signature is "arriving" whenever the tier is part way to the next.
   const keyFraction = config.maxKeyAccidentals - Math.floor(config.maxKeyAccidentals);
   if (keyFraction > 0.001) {
+    const count = Math.floor(config.maxKeyAccidentals) + 1;
     introducing.push({
-      label: `keys with ${Math.floor(config.maxKeyAccidentals) + 1} sharps or flats`,
+      label: `keys with ${count} ${count === 1 ? 'sharp or flat' : 'sharps or flats'}`,
       progress: keyFraction,
     });
   }

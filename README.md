@@ -167,7 +167,9 @@ still clicks, counts down, and anchors every note window.
 The live pitch readout **spells what it hears according to the key in play** —
 B flat in a flat key, not A sharp — so the feedback matches what is on the page.
 Beside it a waveform shows the input, so it is visible that audio is arriving
-even when nothing is confident enough to name. It is read from an `AnalyserNode`
+even when nothing is confident enough to name. Both run from page load, not
+just during an exercise: the microphone session is opened independently of the
+lesson, so you can check your tuning or your input level before starting. It is read from an `AnalyserNode`
 per animation frame rather than pushed through the worklet's message port —
 a waveform only needs the current frame, and nothing about it should cost the
 detection path. The microphone session deliberately outlives any

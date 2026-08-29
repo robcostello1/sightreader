@@ -100,7 +100,12 @@ export async function startMicCapture(options: MicCaptureOptions): Promise<MicSe
   // path to the destination is not guaranteed to update.
   source.connect(analyser).connect(silence);
 
-  if (context.state === 'suspended') await context.resume();
+  // May be refused when the context was created without a user gesture, which
+  // is the case when monitoring starts on page load. The session is still
+  // usable; it resumes on the first interaction instead.
+  if (context.state === 'suspended') {
+    await context.resume().catch(() => undefined);
+  }
 
   let stopped = false;
   return {

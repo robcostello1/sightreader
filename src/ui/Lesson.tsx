@@ -117,6 +117,10 @@ export function Lesson() {
     void import('../notation');
   }, []);
 
+  // Listen from the start, so the readout works before and between exercises.
+  const { listen } = lesson;
+  useEffect(() => listen(), [listen]);
+
   return (
     <div className="layout">
       <div className="stage">
@@ -179,13 +183,15 @@ export function Lesson() {
 
             <div className="status">
               <div className="card monitor">
-                <LivePitch
-                  hz={lesson.livePitch?.hz ?? null}
-                  confidence={lesson.livePitch?.confidence ?? 0}
-                  gate={config.scoring.confidenceGate}
-                  musicalKey={lesson.exercise?.key ?? C_MAJOR}
-                />
-                <Waveform analyser={lesson.analyser} />
+                <div className="monitor-row">
+                  <LivePitch
+                    hz={lesson.livePitch?.hz ?? null}
+                    confidence={lesson.livePitch?.confidence ?? 0}
+                    gate={config.scoring.confidenceGate}
+                    musicalKey={lesson.exercise?.key ?? C_MAJOR}
+                  />
+                  <Waveform analyser={lesson.analyser} />
+                </div>
               </div>
 
               <section className="card progress-card">
@@ -307,8 +313,8 @@ export function Lesson() {
           </ul>
 
           {brief.introducing.length > 0 && (
-            <>
-              <p className="small muted">Coming in</p>
+            <details className="accordion">
+              <summary>Being introduced ({brief.introducing.length})</summary>
               <ul className="introducing">
                 {brief.introducing.map((item) => (
                   <li key={item.label}>
@@ -319,7 +325,7 @@ export function Lesson() {
                   </li>
                 ))}
               </ul>
-            </>
+            </details>
           )}
 
         </section>
