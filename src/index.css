@@ -424,9 +424,12 @@ input[type='range'] {
    Both slots are permanent, so neither moves when a session starts or ends, and
    both cards match height with their contents pushed apart rather than
    stretched. */
+/* Both cards sit at the left and size to their contents; stretched across the
+   full width they were mostly empty space. Heights still match. */
 .status {
   display: flex;
   align-items: stretch;
+  justify-content: flex-start;
   gap: var(--gap);
   flex: none;
 }
@@ -440,8 +443,7 @@ input[type='range'] {
 /* Fixed slots throughout: the note and the marker come and go constantly, and
    anything that resized with them would move everything else. */
 .monitor {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: none;
   padding: 0.875rem 1.125rem;
   /* One row of content, so it centres rather than pushing against the edges the
      way the level-up card's title and bars do. */
