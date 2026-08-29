@@ -52,6 +52,27 @@ describe('Score', () => {
     }
   });
 
+  it('draws nothing in a hardcoded colour, so both themes work', () => {
+    // VexFlow defaults to black glyphs and #444 stave lines, which disappear on
+    // a dark background. Everything must defer to the page's text colour.
+    const markup = render(<Score exercise={simple} />).container.innerHTML;
+    expect(markup).not.toMatch(/(fill|stroke)="black"/);
+    expect(markup).not.toMatch(/(fill|stroke)="#444"/);
+    expect(markup).toContain('currentColor');
+  });
+
+  it('renders guitar pitch an octave above where it sounds', () => {
+    const lowE: Exercise = {
+      ...simple,
+      notes: [{ midi: 40, value: NOTE_VALUES.whole, idiomId: 't', instance: 0 }],
+    };
+    const { container } = render(<Score exercise={lowE} />);
+    // Written E3 sits three ledger lines below the treble staff; sounding E2
+    // would be an octave lower again and effectively unreadable.
+    expect(container.querySelectorAll('svg').length).toBe(1);
+    expect(() => render(<Score exercise={lowE} />)).not.toThrow();
+  });
+
   it('colours scored notes by verdict', () => {
     const results: NoteResult[] = [
       { index: 0, passed: true, verdict: 'pass', occupancy: 1, sampleCount: 10 },

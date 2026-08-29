@@ -20,7 +20,22 @@ export interface NotatedBar {
   notes: NotatedNote[];
 }
 
-/** VexFlow key string plus the accidental it needs spelled out. */
+/**
+ * Guitar is a transposing instrument: it is written an octave above where it
+ * sounds, on a treble clef marked with an 8 below (the "treble-8" clef). The low
+ * E string sounds E2 but is written E3.
+ *
+ * Everything else in the app — pitch detection, scoring, the region pool — works
+ * in sounding pitch. This offset is applied only when spelling a note for the
+ * page, so the two never get confused.
+ */
+export const GUITAR_WRITTEN_OFFSET = 12;
+
+export function soundingToWritten(midi: Midi): Midi {
+  return midi + GUITAR_WRITTEN_OFFSET;
+}
+
+/** VexFlow key string plus the accidental it needs spelled out. Takes written pitch. */
 export function midiToVexKey(midi: Midi): { key: string; accidental: string | null } {
   const parsed = /^([A-G])(#?)(-?\d+)$/.exec(midiToName(midi));
   if (!parsed) throw new Error(`unrenderable pitch: ${midi}`);

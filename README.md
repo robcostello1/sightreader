@@ -35,7 +35,7 @@ nvm use
 
 ```sh
 npm install
-npm run dev        # dev server
+npm run dev        # dev server; /preview.html renders notation samples
 npm test           # unit tests
 npm run typecheck  # tsc, no emit
 npm run build      # production build
@@ -84,6 +84,15 @@ dev server works without extra setup.
 - **Difficulty dials are independent.** Idiom complexity, rhythmic density and
   fretboard region are gated separately, so a learner struggling with
   pattern-reading can be told apart from one struggling with tempo.
+- **Guitar is written an octave above where it sounds**, on a treble clef
+  marked with an 8 below it. The low E string sounds E2 but is written E3.
+  Everything else — detection, scoring, the region pool — works in sounding
+  pitch; `soundingToWritten` is applied only when spelling a note for the page,
+  so the two are never confused.
+- **VexFlow hardcodes black glyphs and #444 stave lines** into the SVG, which
+  are invisible on a dark background. Neither context styles nor `Stave.setStyle`
+  displaces them reliably, so `Score` rewrites those attributes to
+  `currentColor` after drawing, leaving the explicit verdict colours alone.
 - **The worklet is bundled by a custom plugin**, not Vite's `?worker&url`.
   `addModule()` cannot load a module with `import` statements, and Vite's dev
   server serves workers unbundled — so `?worker&url` works in `vite build` and

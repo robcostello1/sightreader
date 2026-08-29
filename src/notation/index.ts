@@ -4,5 +4,5 @@
  */
 export { Score } from './Score';
 export type { ScoreProps } from './Score';
-export { barDuration, layoutExercise, midiToVexKey } from './layout';
+export { GUITAR_WRITTEN_OFFSET, barDuration, layoutExercise, midiToVexKey, soundingToWritten } from './layout';
 export type { NotatedBar, NotatedNote } from './layout';
