@@ -171,17 +171,65 @@ export function Lesson() {
               </Suspense>
             )}
 
-            {running && lesson.exercise && (
-              <div className="monitor">
-                <LivePitch
-                  hz={lesson.livePitch?.hz ?? null}
-                  confidence={lesson.livePitch?.confidence ?? 0}
-                  gate={config.scoring.confidenceGate}
-                  musicalKey={lesson.exercise.key}
-                />
-                {lesson.analyser && <Waveform analyser={lesson.analyser} />}
-              </div>
-            )}
+            <div className="status">
+              {/*
+                The slot is held for the whole session, so nothing shifts as
+                notes come and go or between exercises. It is not reserved
+                before one starts, where it would only be an empty gap.
+              */}
+              {lesson.phase !== 'idle' && lesson.phase !== 'error' && (
+                <div className="monitor">
+                  {running && lesson.exercise && (
+                    <>
+                      <LivePitch
+                        hz={lesson.livePitch?.hz ?? null}
+                        confidence={lesson.livePitch?.confidence ?? 0}
+                        gate={config.scoring.confidenceGate}
+                        musicalKey={lesson.exercise.key}
+                      />
+                      {lesson.analyser && <Waveform analyser={lesson.analyser} />}
+                    </>
+                  )}
+                </div>
+              )}
+
+              <section className="card progress-card">
+                <h2>Levelling up</h2>
+                {progress.atCeiling ? (
+                  <p className="small">Top level reached.</p>
+                ) : (
+                  <>
+                    <div
+                      className="window"
+                      role="img"
+                      aria-label={`${progress.completed} of ${progress.needed} exercises played`}
+                    >
+                      {Array.from({ length: progress.needed }, (_, i) => (
+                        <span
+                          key={i}
+                          className={
+                            i < progress.completed ? (progress.ready ? 'strong' : 'played') : ''
+                          }
+                        />
+                      ))}
+                    </div>
+                    <p className="small">
+                      {progress.accuracy === null
+                        ? `Reach ${threshold}% accuracy across ${progress.needed} exercises to level up.`
+                        : `${Math.round(progress.accuracy * 100)}% accuracy over ${progress.completed} of ${progress.needed} — ${threshold}% needed.`}
+                    </p>
+                  </>
+                )}
+                {lesson.stats.completed > 0 && (
+                  <p className="muted small">
+                    {lesson.stats.completed} exercise
+                    {lesson.stats.completed === 1 ? '' : 's'} this session
+                    {lesson.stats.scorable > 0 &&
+                      `, ${Math.round((lesson.stats.passed / lesson.stats.scorable) * 100)}% of notes correct`}
+                  </p>
+                )}
+              </section>
+            </div>
 
             {lesson.phase === 'results' && lesson.summary && (
               <Results results={lesson.results} summary={lesson.summary} />
@@ -191,9 +239,7 @@ export function Lesson() {
       </div>
 
       <aside className="sidebar">
-        <section>
-          <h2>Config</h2>
-
+        <section className="card">
           <label className="field field-primary">
             <span className="field-label">
               Difficulty {level.toFixed(1)} <span className="unit">of {MAX_LEVEL}</span>
@@ -209,10 +255,6 @@ export function Lesson() {
               onChange={(event) => setLevel(Number(event.target.value))}
               disabled={running}
             />
-            <p className="hint">
-              Whole numbers introduce new ideas; the decimal is how far they have
-              come in.
-            </p>
           </label>
 
           <label className="field">
@@ -249,8 +291,9 @@ export function Lesson() {
             </select>
           </label>
           <p className="muted small">
-            {region.name} — {fretRangeLabel(region)} · {pool.length} pitches,{' '}
-            {midiToName(pool[0])}–{midiToName(pool[pool.length - 1])}
+            {/* The dropdown already names it; this is only the detail. */}
+            {fretRangeLabel(region)} · {pool.length} pitches, {midiToName(pool[0])}–
+            {midiToName(pool[pool.length - 1])}
           </p>
 
           <label className="toggle">
@@ -263,7 +306,7 @@ export function Lesson() {
           </label>
         </section>
 
-        <section>
+        <section className="card">
           <h2>This level</h2>
           <ul className="facts">
             {brief.facts.map((fact) => (
@@ -292,43 +335,6 @@ export function Lesson() {
 
         </section>
 
-        <section>
-          <h2>Levelling up</h2>
-          {progress.atCeiling ? (
-            <p className="small">Top level reached.</p>
-          ) : (
-            <>
-              <div
-                className="window"
-                role="img"
-                aria-label={`${progress.completed} of ${progress.needed} exercises played`}
-              >
-                {Array.from({ length: progress.needed }, (_, i) => (
-                  <span
-                    key={i}
-                    className={
-                      i < progress.completed ? (progress.ready ? 'strong' : 'played') : ''
-                    }
-                  />
-                ))}
-              </div>
-              <p className="small">
-                {progress.accuracy === null
-                  ? `Reach ${threshold}% accuracy across ${progress.needed} exercises to level up.`
-                  : `${Math.round(progress.accuracy * 100)}% accuracy over ${progress.completed} of ${progress.needed} — ${threshold}% needed.`}
-              </p>
-            </>
-          )}
-
-          {lesson.stats.completed > 0 && (
-            <p className="muted small">
-              {lesson.stats.completed} exercise{lesson.stats.completed === 1 ? '' : 's'} this
-              session
-              {lesson.stats.scorable > 0 &&
-                `, ${Math.round((lesson.stats.passed / lesson.stats.scorable) * 100)}% of notes correct`}
-            </p>
-          )}
-        </section>
       </aside>
     </div>
   );

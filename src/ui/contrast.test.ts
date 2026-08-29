@@ -45,6 +45,7 @@ describe('palette contrast', () => {
   it('defines the same tokens for both schemes', () => {
     expect(Object.keys(light).sort()).toEqual(Object.keys(dark).sort());
     expect(light.bg).toBeDefined();
+    expect(light.surface).toBeDefined();
     expect(light['fg-muted']).toBeDefined();
   });
 
@@ -55,14 +56,18 @@ describe('palette contrast', () => {
     const tokens = read();
     for (const name of ['fg', 'fg-muted', 'accent', 'danger']) {
       // 4.5:1 is the AA threshold for normal-sized text, which all of these are.
-      expect(contrast(tokens[name], tokens.bg)).toBeGreaterThanOrEqual(4.5);
+      // Checked on the card surface as well as the page, since most of the
+      // secondary text now sits on a card.
+      for (const background of ['bg', 'surface']) {
+        expect(contrast(tokens[name], tokens[background])).toBeGreaterThanOrEqual(4.5);
+      }
     }
   });
 
   it('keeps secondary text clearly readable, not merely passing', () => {
     // The original failure was dimming by opacity; muted text should have real
     // headroom above the threshold rather than sitting on it.
-    expect(contrast(light['fg-muted'], light.bg)).toBeGreaterThan(6);
-    expect(contrast(dark['fg-muted'], dark.bg)).toBeGreaterThan(6);
+    expect(contrast(light['fg-muted'], light.surface)).toBeGreaterThan(6);
+    expect(contrast(dark['fg-muted'], dark.surface)).toBeGreaterThan(6);
   });
 });

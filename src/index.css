@@ -7,20 +7,23 @@
    * Explicit colours rather than opacity on the foreground. Dimming by opacity
    * makes contrast depend on whatever is behind, and the secondary text was
    * landing below the 4.5:1 WCAG AA threshold for body copy. Every pair here
-   * clears it — muted text measures 6.7:1 on light and 7.8:1 on dark — and
-   * contrast.test.ts checks that against this file.
+   * clears it against both the page and the card surface — muted text measures
+   * 6.7:1 on light and 7.8:1 on dark — and contrast.test.ts checks every pair
+   * against this file.
    */
   --bg: #ffffff;
+  --surface: #f4f4f5;
   --fg: #1a1a1a;
   --fg-muted: #5c5c5c;
   --line: rgb(0 0 0 / 0.16);
-  --accent: #2f6fed;
+  --accent: #2a63d6;
   --danger: #b3243a;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #141414;
+    --surface: #1e1e1e;
     --fg: #f2f2f2;
     --fg-muted: #a9a9a9;
     --line: rgb(255 255 255 / 0.22);
@@ -85,10 +88,20 @@ h2 {
   margin-bottom: 1rem;
 }
 
-.sidebar section + section {
-  margin-top: 1.75rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--line);
+/* Grouped onto their own surface so the settings read as a panel beside the
+   exercise rather than as more of the page. */
+.card {
+  background: var(--surface);
+  border-radius: 0.625rem;
+  padding: 1.25rem;
+}
+
+.card + .card {
+  margin-top: 1rem;
+}
+
+.card > :last-child {
+  margin-bottom: 0;
 }
 
 button {
@@ -350,6 +363,15 @@ input[type='range'] {
 }
 
 
+/* The live readout and the level-up window sit side by side under the score. */
+.status {
+  display: flex;
+  align-items: flex-start;
+  gap: 2rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
 /* Fixed slots throughout: the note and the marker come and go constantly, and
    anything that resized with them would move everything else. */
 .monitor {
@@ -357,6 +379,14 @@ input[type='range'] {
   align-items: center;
   gap: 2rem;
   height: 4.5rem;
+  flex: none;
+  min-width: 15rem;
+}
+
+.progress-card {
+  flex: none;
+  min-width: 15rem;
+  padding: 0.875rem 1.125rem;
 }
 
 .waveform {
