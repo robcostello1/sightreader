@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react';
 export interface WaveformProps {
   /** Null before the microphone is open; the line rests flat until it is. */
   analyser: AnalyserNode | null;
+  /** Fixed width; when omitted the line fills whatever its slot allows. */
   width?: number;
   height?: number;
   /**
@@ -32,12 +33,7 @@ function shape(sample: number, compression: number): number {
  * frame rather than accumulating anything — the current frame is the whole
  * picture, and nothing here should cost the detection path.
  */
-export function Waveform({
-  analyser,
-  width = 100,
-  height = 36,
-  compression = 60,
-}: WaveformProps) {
+export function Waveform({ analyser, width, height = 36, compression = 60 }: WaveformProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -53,7 +49,10 @@ export function Waveform({
 
       // Match the backing store to the element, allowing for a retina display.
       const ratio = window.devicePixelRatio || 1;
-      const pixelWidth = Math.max(1, Math.floor(width * ratio));
+      // Measured each frame when no fixed width is given, so the line can share
+      // a row that has to shrink.
+      const cssWidth = width ?? canvas.clientWidth;
+      const pixelWidth = Math.max(1, Math.floor(cssWidth * ratio));
       const pixelHeight = Math.max(1, Math.floor(height * ratio));
       if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
         canvas.width = pixelWidth;
@@ -96,7 +95,7 @@ export function Waveform({
     <canvas
       ref={canvasRef}
       className="waveform"
-      style={{ width, height }}
+      style={{ width: width ?? undefined, height }}
       aria-label="Live microphone input"
     />
   );

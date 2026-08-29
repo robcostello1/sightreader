@@ -442,7 +442,8 @@ input[type='range'] {
 .monitor-row {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
+  gap: 1.25rem;
+  min-width: 0;
 }
 
 .progress-card {
@@ -470,7 +471,10 @@ input[type='range'] {
 
 .waveform {
   display: block;
-  flex: none;
+  /* Gives way first when the row has to narrow — the note beside it must not. */
+  flex: 1 1 auto;
+  min-width: 2.5rem;
+  max-width: 6.25rem;
   opacity: 0.6;
 }
 
@@ -510,7 +514,21 @@ input[type='range'] {
     flex-wrap: wrap;
   }
 
-  .status > .card {
+  /* The note and the level-up window share the first row; the last result
+     takes the next, where there is room for it to read properly. */
+  .monitor {
     flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .progress-card {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 8rem;
+  }
+
+  .result-card {
+    flex: 1 1 100%;
+    width: auto;
   }
 }
