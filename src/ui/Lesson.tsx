@@ -4,7 +4,8 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 // starts, so it loads out of band. The effect below warms it during the idle
 // screen, well before the count-in ends.
 const Score = lazy(() => import('../notation').then((m) => ({ default: m.Score })));
-import { MAX_LEVEL, levelConfig, levelSummary } from '../config/levels';
+import { MAX_LEVEL, clampLevel, levelConfig, levelSummary } from '../config/levels';
+import { loadSetting, saveSetting } from '../lib/storage';
 import { POSITIONS, fretRangeLabel, regionById, regionPool } from '../config/regions';
 import { midiToName } from '../lib/pitch';
 import { centsFromTarget, nearestMidi } from '../lib/pitch';
@@ -64,14 +65,31 @@ function Results({ results, summary }: { results: readonly NoteResult[]; summary
   );
 }
 
+/** Stored settings are validated on read — see loadSetting. */
+const readLevel = (value: unknown) => (typeof value === 'number' ? clampLevel(value) : null);
+const readRegionId = (value: unknown) =>
+  typeof value === 'string' && POSITIONS.some((p) => p.id === value) ? value : null;
+const readFlag = (value: unknown) => (typeof value === 'boolean' ? value : null);
+
 export function Lesson() {
-  const [level, setLevel] = useState(1);
-  const [regionId, setRegionId] = useState(POSITIONS[0].id);
+  const [level, setLevel] = useState(() => loadSetting('level', readLevel, 1));
+  const [regionId, setRegionId] = useState(() =>
+    loadSetting('position', readRegionId, POSITIONS[0].id),
+  );
+  const [autoAdvance, setAutoAdvance] = useState(() =>
+    loadSetting('autoAdvance', readFlag, true),
+  );
+
+  useEffect(() => saveSetting('level', level), [level]);
+  useEffect(() => saveSetting('position', regionId), [regionId]);
+  useEffect(() => saveSetting('autoAdvance', autoAdvance), [autoAdvance]);
+
   const region = regionById(regionId);
   const config = levelConfig(level);
   const pool = regionPool(region);
-  const lesson = useLesson({ level, region });
+  const lesson = useLesson({ level, region, autoAdvance });
   const running = lesson.phase === 'count-in' || lesson.phase === 'playing';
+  const listening = running || lesson.phase === 'results';
 
   useEffect(() => {
     void import('../notation');
@@ -108,10 +126,21 @@ export function Lesson() {
             </select>
           </label>
 
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={autoAdvance}
+              onChange={(event) => setAutoAdvance(event.target.checked)}
+            />
+            Keep going
+          </label>
+
           {lesson.phase === 'idle' && <button onClick={lesson.start}>Start</button>}
           {lesson.phase === 'arming' && <span className="muted">Requesting microphone…</span>}
-          {running && <button onClick={lesson.stop}>Stop</button>}
-          {lesson.phase === 'results' && <button onClick={lesson.start}>Play again</button>}
+          {listening && <button onClick={lesson.stop}>Stop</button>}
+          {lesson.phase === 'results' && !autoAdvance && (
+            <button onClick={lesson.start}>Next exercise</button>
+          )}
           {lesson.phase === 'error' && (
             <>
               <span role="alert">Could not start: {lesson.error}</span>
@@ -166,7 +195,22 @@ export function Lesson() {
       )}
 
       {lesson.phase === 'results' && lesson.summary && (
-        <Results results={lesson.results} summary={lesson.summary} />
+        <>
+          <Results results={lesson.results} summary={lesson.summary} />
+          {autoAdvance && <p className="muted">Next exercise starting…</p>}
+        </>
+      )}
+
+      {lesson.stats.completed > 0 && (
+        <section>
+          <h2>This session</h2>
+          <p className="muted">
+            {lesson.stats.completed} exercise{lesson.stats.completed === 1 ? '' : 's'} ·{' '}
+            {lesson.stats.passed}/{lesson.stats.scorable} notes correct
+            {lesson.stats.scorable > 0 &&
+              ` (${Math.round((lesson.stats.passed / lesson.stats.scorable) * 100)}%)`}
+          </p>
+        </section>
       )}
     </>
   );

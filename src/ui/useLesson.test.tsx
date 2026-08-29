@@ -30,6 +30,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'setTimeout', 'clearTimeout'] });
   clock = { currentTime: 0 };
   stopped = false;
+  startMicCapture.mockClear();
   startMicCapture.mockImplementation(async (options: MicCaptureOptions): Promise<MicSession> => {
     emit = options.onSample;
     return {
@@ -66,8 +67,24 @@ async function advanceTo(ms: number) {
 const LEVEL = 1;
 const CONFIG = levelConfig(LEVEL);
 
-function renderLesson(level = LEVEL) {
-  return renderHook(() => useLesson({ level, leadInMs: LEAD_IN }));
+const ADVANCE_MS = 200;
+
+function renderLesson(level = LEVEL, autoAdvance = false) {
+  return renderHook(() =>
+    useLesson({ level, leadInMs: LEAD_IN, autoAdvance, advanceDelayMs: ADVANCE_MS }),
+  );
+}
+
+/** Plays every window of a schedule correctly. */
+function playCorrectly(schedule: ReturnType<typeof buildSchedule>) {
+  for (const window of schedule.windows) {
+    if (window.note.midi === null) continue;
+    act(() => {
+      for (let t = window.scoreFromMs; t < window.endMs; t += HOP_MS) {
+        emit({ hz: midiToHz(window.note.midi!), confidence: 0.95, timestamp: t });
+      }
+    });
+  }
 }
 
 async function startAndGetSchedule(result: { current: ReturnType<typeof useLesson> }) {
@@ -177,13 +194,102 @@ describe('useLesson', () => {
     expect(result.current.results).toHaveLength(0);
   });
 
-  it('releases the microphone once the exercise finishes', async () => {
+  it('keeps the microphone open once an exercise finishes', async () => {
     const { result } = renderLesson();
     const schedule = await startAndGetSchedule(result);
 
     await advanceTo(schedule.endMs + 10);
     expect(result.current.phase).toBe('results');
+    // Reopening would cost another getUserMedia round trip, and a fresh
+    // AudioContext can only be resumed from a user gesture.
+    expect(stopped).toBe(false);
+  });
+
+  it('releases the microphone when the hook unmounts', async () => {
+    const { result, unmount } = renderLesson();
+    await startAndGetSchedule(result);
+    unmount();
     expect(stopped).toBe(true);
+  });
+
+  it('accumulates stats across exercises in a session', async () => {
+    const { result } = renderLesson();
+    const schedule = await startAndGetSchedule(result);
+    playCorrectly(schedule);
+    await advanceTo(schedule.endMs + 10);
+
+    const first = result.current.stats;
+    expect(first.completed).toBe(1);
+    expect(first.passed).toBe(first.scorable);
+    expect(first.scorable).toBeGreaterThan(0);
+  });
+
+  describe('auto-advance', () => {
+    it('starts another exercise after the results pause', async () => {
+      const { result } = renderLesson(LEVEL, true);
+      const schedule = await startAndGetSchedule(result);
+
+      await advanceTo(schedule.endMs + 10);
+      expect(result.current.phase).toBe('results');
+      const firstSeed = result.current.seed;
+
+      // Only after the pause, so results are readable first.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ADVANCE_MS + 50);
+      });
+      expect(result.current.phase).toBe('count-in');
+      expect(result.current.seed).not.toBe(firstSeed);
+      expect(result.current.results).toHaveLength(0);
+      // The same microphone session carries over.
+      expect(stopped).toBe(false);
+      expect(startMicCapture).toHaveBeenCalledTimes(1);
+    });
+
+    it('counts each completed exercise', async () => {
+      const { result } = renderLesson(LEVEL, true);
+      let schedule = await startAndGetSchedule(result);
+
+      playCorrectly(schedule);
+      await advanceTo(schedule.endMs + 10);
+      expect(result.current.stats.completed).toBe(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ADVANCE_MS + 50);
+      });
+      schedule = buildSchedule(result.current.exercise!, {
+        startMs: clock.currentTime * 1000 + LEAD_IN,
+        countInBars: CONFIG.countInBars,
+        clickThroughExercise: CONFIG.clickThroughExercise,
+        attackGuardMs: CONFIG.scoring.attackGuardMs,
+      });
+      await advanceTo(schedule.endMs + 10);
+      expect(result.current.stats.completed).toBe(2);
+    });
+
+    it('does not advance when switched off', async () => {
+      const { result } = renderLesson(LEVEL, false);
+      const schedule = await startAndGetSchedule(result);
+
+      await advanceTo(schedule.endMs + 10);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ADVANCE_MS * 5);
+      });
+      expect(result.current.phase).toBe('results');
+    });
+
+    it('stops advancing once the session is stopped', async () => {
+      const { result } = renderLesson(LEVEL, true);
+      const schedule = await startAndGetSchedule(result);
+
+      await advanceTo(schedule.endMs + 10);
+      act(() => result.current.stop());
+      expect(stopped).toBe(true);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ADVANCE_MS * 5);
+      });
+      expect(result.current.phase).toBe('idle');
+    });
   });
 
   it('releases the microphone when stopped early', async () => {

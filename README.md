@@ -90,6 +90,18 @@ than how hard the reading is, so it is chosen independently. Positions are named
 for the fret the index finger sits on and span four frets; open position is the
 exception, being open strings plus the first four frets.
 
+## Session behaviour
+
+Level, position and the auto-advance toggle persist in localStorage, validated
+on read — a level saved before the range changed, or a position id since
+renamed, falls back rather than breaking.
+
+With "keep going" on, finishing an exercise rolls straight into the next after a
+short pause, count-in included. The microphone session deliberately outlives any
+single exercise: reopening it would cost a fresh `getUserMedia` round trip each
+time, and a newly created `AudioContext` can only be resumed from a user
+gesture — which an automatic advance, by definition, does not have.
+
 ## Key design decisions
 
 - **Pitch detection is swappable.** v1 uses YIN/autocorrelation via `pitchy`.

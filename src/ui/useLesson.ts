@@ -4,11 +4,18 @@ import { generateExercise } from '../generator';
 import { buildSchedule, detectFalseStart, scheduleClicks, windowAt } from '../scheduler';
 import type { Schedule, ScheduledClicks } from '../scheduler';
 import { scoreWindow, summarise, type ExerciseSummary } from '../scoring';
-import type { FretboardRegion } from '../config/regions';
 import { levelConfig } from '../config/levels';
+import type { FretboardRegion } from '../config/regions';
 import type { Exercise, NoteResult, OnsetEvent, PitchSample } from '../lib/types';
 
 export type LessonPhase = 'idle' | 'arming' | 'count-in' | 'playing' | 'results' | 'error';
+
+export interface SessionStats {
+  /** Exercises played to completion since the microphone was opened. */
+  completed: number;
+  passed: number;
+  scorable: number;
+}
 
 export interface LessonState {
   phase: LessonPhase;
@@ -23,6 +30,7 @@ export interface LessonState {
   livePitch: PitchSample | null;
   onsetCount: number;
   beatsUntilStart: number | null;
+  stats: SessionStats;
   error: string | null;
 }
 
@@ -34,7 +42,13 @@ export interface UseLessonOptions {
   bpm?: number;
   /** Grace period before the count-in, so the worklet can fill its first frame. */
   leadInMs?: number;
+  /** Roll straight into another exercise once results are in. */
+  autoAdvance?: boolean;
+  /** How long results stay up before the next exercise starts. */
+  advanceDelayMs?: number;
 }
+
+const EMPTY_STATS: SessionStats = { completed: 0, passed: 0, scorable: 0 };
 
 const INITIAL: LessonState = {
   phase: 'idle',
@@ -47,20 +61,34 @@ const INITIAL: LessonState = {
   livePitch: null,
   onsetCount: 0,
   beatsUntilStart: null,
+  stats: EMPTY_STATS,
   error: null,
 };
 
 /**
- * Drives one lesson: count-in, then the exercise, then results.
+ * Drives a practice session: count-in, exercise, results, and — when
+ * auto-advance is on — straight into the next one.
+ *
+ * The microphone session deliberately outlives any single exercise. Closing and
+ * reopening the AudioContext between exercises would cost a fresh getUserMedia
+ * round trip each time, and a newly created context can only be resumed from a
+ * user gesture — which auto-advance, by definition, does not have.
  *
  * Windows are scored as they close rather than in one pass at the end. The
  * verdict cannot exist before its window is over, but waiting for the whole
- * exercise would make feedback feel laggy — so the live pitch shows immediately
- * and the pass/fail lands a note later.
+ * exercise would feel laggy, so the live pitch shows immediately and the
+ * pass/fail lands a note later.
  */
 export function useLesson(options: UseLessonOptions) {
-  const { level, region, bpm = 60, leadInMs = 300 } = options;
-  const config = levelConfig(level);
+  const {
+    level,
+    region,
+    bpm = 60,
+    leadInMs = 300,
+    autoAdvance = false,
+    advanceDelayMs = 2500,
+  } = options;
+
   const [state, setState] = useState<LessonState>(INITIAL);
 
   const sessionRef = useRef<MicSession | null>(null);
@@ -71,39 +99,57 @@ export function useLesson(options: UseLessonOptions) {
   const scoredRef = useRef<Set<number>>(new Set());
   const latestRef = useRef<PitchSample | null>(null);
   const frameRef = useRef<number | null>(null);
+  const advanceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const teardown = useCallback(() => {
+  // Read through refs inside the animation loop so it never restarts mid-exercise.
+  const settingsRef = useRef({ level, region, bpm, leadInMs, autoAdvance, advanceDelayMs });
+  useEffect(() => {
+    settingsRef.current = { level, region, bpm, leadInMs, autoAdvance, advanceDelayMs };
+  }, [level, region, bpm, leadInMs, autoAdvance, advanceDelayMs]);
+
+  // Lets the loop queue the next exercise without beginExercise capturing itself.
+  const beginExerciseRef = useRef<((session: MicSession) => void) | null>(null);
+
+  /** Stops the loop and any queued advance, leaving the microphone open. */
+  const haltExercise = useCallback(() => {
     if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
     frameRef.current = null;
+    if (advanceRef.current !== null) clearTimeout(advanceRef.current);
+    advanceRef.current = null;
     clicksRef.current?.stop();
     clicksRef.current = null;
-    void sessionRef.current?.stop();
-    sessionRef.current = null;
   }, []);
 
-  const stop = useCallback(() => {
-    teardown();
+  const closeSession = useCallback(() => {
+    haltExercise();
+    void sessionRef.current?.stop();
+    sessionRef.current = null;
     scheduleRef.current = null;
     samplesRef.current = [];
     onsetsRef.current = [];
     scoredRef.current = new Set();
     latestRef.current = null;
+  }, [haltExercise]);
+
+  const stop = useCallback(() => {
+    closeSession();
     setState(INITIAL);
-  }, [teardown]);
+  }, [closeSession]);
 
-  const start = useCallback(() => {
-    if (sessionRef.current) return;
-
+  const beginExercise = useCallback((session: MicSession) => {
+    const { level: lvl, region: reg, bpm: tempo, leadInMs: lead } = settingsRef.current;
+    const config = levelConfig(lvl);
     const seed = Math.floor(Math.random() * 1_000_000_000);
+
     let exercise: Exercise;
     try {
-      exercise = generateExercise({ level: config, region, bpm, seed });
+      exercise = generateExercise({ level: config, region: reg, bpm: tempo, seed });
     } catch (cause) {
-      setState({
-        ...INITIAL,
+      setState((prev) => ({
+        ...prev,
         phase: 'error',
         error: cause instanceof Error ? cause.message : String(cause),
-      });
+      }));
       return;
     }
 
@@ -111,7 +157,107 @@ export function useLesson(options: UseLessonOptions) {
     onsetsRef.current = [];
     scoredRef.current = new Set();
     latestRef.current = null;
-    setState({ ...INITIAL, phase: 'arming', exercise, seed });
+
+    // Anchored on the same AudioContext clock the samples are stamped with, so
+    // windows and detections cannot drift apart.
+    const schedule = buildSchedule(exercise, {
+      startMs: session.context.currentTime * 1000 + lead,
+      countInBars: config.countInBars,
+      clickThroughExercise: config.clickThroughExercise,
+      attackGuardMs: config.scoring.attackGuardMs,
+    });
+    scheduleRef.current = schedule;
+    clicksRef.current = scheduleClicks(session.context, schedule.clicks);
+
+    setState((prev) => ({
+      ...prev,
+      phase: 'count-in',
+      exercise,
+      seed,
+      activeIndex: null,
+      results: [],
+      summary: null,
+      falseStart: null,
+      onsetCount: 0,
+      beatsUntilStart: null,
+      error: null,
+    }));
+
+    const tick = () => {
+      const current = sessionRef.current;
+      if (!current || !scheduleRef.current) return;
+
+      const now = current.context.currentTime * 1000;
+      const samples = samplesRef.current;
+      const scoring = levelConfig(settingsRef.current.level).scoring;
+
+      // Score every window that has closed since the last frame.
+      const closed: NoteResult[] = [];
+      for (const window of scheduleRef.current.windows) {
+        if (now < window.endMs || scoredRef.current.has(window.index)) continue;
+        scoredRef.current.add(window.index);
+        closed.push(scoreWindow(window, samples, scoring));
+      }
+
+      const active = scheduleRef.current;
+      const finished = now >= active.endMs;
+      const beatsLeft =
+        now < active.t0 ? Math.ceil((active.t0 - now) / active.beatMs) : null;
+
+      setState((prev) => {
+        const results = closed.length > 0 ? [...prev.results, ...closed] : prev.results;
+        const summary = finished ? summarise(results) : null;
+        return {
+          ...prev,
+          phase: finished ? 'results' : now >= active.t0 ? 'playing' : 'count-in',
+          activeIndex: windowAt(active, now)?.index ?? null,
+          results,
+          summary,
+          falseStart:
+            prev.falseStart ?? detectFalseStart(samples, active, scoring.confidenceGate),
+          livePitch: latestRef.current,
+          onsetCount: onsetsRef.current.length,
+          beatsUntilStart: beatsLeft,
+          stats: summary
+            ? {
+                completed: prev.stats.completed + 1,
+                passed: prev.stats.passed + summary.passed,
+                scorable: prev.stats.scorable + (summary.total - summary.unscorable),
+              }
+            : prev.stats,
+        };
+      });
+
+      if (finished) {
+        haltExercise();
+        if (settingsRef.current.autoAdvance) {
+          advanceRef.current = setTimeout(() => {
+            const open = sessionRef.current;
+            if (open) beginExerciseRef.current?.(open);
+          }, settingsRef.current.advanceDelayMs);
+        }
+        return;
+      }
+      frameRef.current = requestAnimationFrame(tick);
+    };
+
+    frameRef.current = requestAnimationFrame(tick);
+  }, [haltExercise]);
+
+  useEffect(() => {
+    beginExerciseRef.current = beginExercise;
+  }, [beginExercise]);
+
+  const start = useCallback(() => {
+    const existing = sessionRef.current;
+    if (existing) {
+      // Already listening — just queue up another exercise.
+      haltExercise();
+      beginExercise(existing);
+      return;
+    }
+
+    setState({ ...INITIAL, phase: 'arming' });
 
     startMicCapture({
       onSample: (sample) => {
@@ -122,20 +268,7 @@ export function useLesson(options: UseLessonOptions) {
     }).then(
       (session) => {
         sessionRef.current = session;
-
-        // The schedule is anchored on the AudioContext clock the samples are
-        // stamped with, so windows and detections cannot drift apart.
-        const schedule = buildSchedule(exercise, {
-          startMs: session.context.currentTime * 1000 + leadInMs,
-          countInBars: config.countInBars,
-          clickThroughExercise: config.clickThroughExercise,
-          attackGuardMs: config.scoring.attackGuardMs,
-        });
-        scheduleRef.current = schedule;
-        clicksRef.current = scheduleClicks(session.context, schedule.clicks);
-
-        setState((prev) => ({ ...prev, phase: 'count-in' }));
-        frameRef.current = requestAnimationFrame(tick);
+        beginExercise(session);
       },
       (cause: unknown) => {
         setState((prev) => ({
@@ -145,54 +278,9 @@ export function useLesson(options: UseLessonOptions) {
         }));
       },
     );
+  }, [beginExercise, haltExercise]);
 
-    function tick() {
-      const session = sessionRef.current;
-      const schedule = scheduleRef.current;
-      if (!session || !schedule) return;
-
-      const now = session.context.currentTime * 1000;
-      const samples = samplesRef.current;
-
-      // Score every window that has closed since the last frame.
-      const closed: NoteResult[] = [];
-      for (const window of schedule.windows) {
-        if (now < window.endMs || scoredRef.current.has(window.index)) continue;
-        scoredRef.current.add(window.index);
-        closed.push(scoreWindow(window, samples, config.scoring));
-      }
-
-      const finished = now >= schedule.endMs;
-      const active = windowAt(schedule, now)?.index ?? null;
-      const beatsLeft =
-        now < schedule.t0 ? Math.ceil((schedule.t0 - now) / schedule.beatMs) : null;
-
-      setState((prev) => {
-        const results = closed.length > 0 ? [...prev.results, ...closed] : prev.results;
-        return {
-          ...prev,
-          phase: finished ? 'results' : now >= schedule.t0 ? 'playing' : 'count-in',
-          activeIndex: active,
-          results,
-          summary: finished ? summarise(results) : null,
-          falseStart:
-            prev.falseStart ??
-            detectFalseStart(samples, schedule, config.scoring.confidenceGate),
-          livePitch: latestRef.current,
-          onsetCount: onsetsRef.current.length,
-          beatsUntilStart: beatsLeft,
-        };
-      });
-
-      if (finished) {
-        teardown();
-        return;
-      }
-      frameRef.current = requestAnimationFrame(tick);
-    }
-  }, [config, region, bpm, leadInMs, teardown]);
-
-  useEffect(() => teardown, [teardown]);
+  useEffect(() => closeSession, [closeSession]);
 
   return { ...state, start, stop };
 }
