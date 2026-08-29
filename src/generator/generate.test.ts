@@ -261,7 +261,34 @@ describe('generateExercise', () => {
     expect(keysAt(MAX_LEVEL).size).toBeGreaterThan(3);
   });
 
-  it('repeats idioms transposed once sequences are unlocked', () => {
+  it('makes sequences diatonic — the shape moves, the key does not', () => {
+    // A real sequence would hold the intervals exact and leave the key; a
+    // modulating one would change key. Neither is wanted here, so a repeated
+    // idiom must land on scale degrees of the same key.
+    let sequences = 0;
+    for (const seed of SEEDS) {
+      const exercise = generateExercise({ level: MAX_LEVEL, seed });
+      const byInstance = new Map<number, typeof exercise.notes>();
+      for (const note of exercise.notes) {
+        byInstance.set(note.instance, [...(byInstance.get(note.instance) ?? []), note]);
+      }
+      const instances = [...byInstance.values()];
+      for (let i = 1; i < instances.length; i++) {
+        const [before, after] = [instances[i - 1], instances[i]];
+        if (before[0].idiomId !== after[0].idiomId) continue;
+        if (before[0].idiomId === PADDING_IDIOM_ID) continue;
+        if (before[0].midi === after[0].midi) continue;
+        sequences++;
+        // At most one note may be chromatic, and only from the accidental
+        // decoration — never from the sequence itself.
+        const outside = after.filter((n) => n.midi !== null && !isInKey(n.midi, exercise.key));
+        expect(outside.length).toBeLessThanOrEqual(1);
+      }
+    }
+    expect(sequences).toBeGreaterThan(0);
+  });
+
+  it('repeats idioms on a new degree once sequences are unlocked', () => {
     // A sequence is the same idiom at a new degree — two instances sharing an
     // idiomId but starting on different pitches.
     const sequenced = SEEDS.some((seed) => {

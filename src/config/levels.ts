@@ -65,7 +65,10 @@ export interface LevelConfig {
   tupletRatios: WeightedTuplet[];
   /** Largest permitted leap between consecutive notes within an idiom, in semitones. */
   maxLocalInterval: number;
-  /** Chance an idiom repeats transposed rather than a new idiom being chosen. */
+  /**
+   * Chance an idiom repeats on a new scale degree rather than a new idiom being
+   * chosen — a diatonic sequence. See sequenceOf in the generator.
+   */
   sequenceChance: number;
   accidentalChance: number;
   /**
@@ -310,7 +313,7 @@ export function levelBrief(rawLevel: number): LevelBrief {
   arriving('rests', 3);
   arriving('arpeggios', 3);
   arriving('triplets', 4);
-  arriving('sequences', 4);
+  arriving('diatonic sequences', 4);
   arriving('accidentals', 6);
   arriving('quintuplets', 9);
 
@@ -347,7 +350,7 @@ export function conceptsIntroducedAt(level: number): string[] {
       [3, 'new keys'],
       [4, '3/4 time'],
       [4, 'triplets'],
-      [4, 'transposed sequences'],
+      [4, 'diatonic sequences'],
       [4, 'phrases that land on the tonic'],
       [6, 'accidentals'],
       [7, '6/8 time'],
@@ -391,7 +394,9 @@ export function levelSummary(config: LevelConfig): string[] {
     const kinds = config.tupletRatios.length > 1 ? 'triplets/quintuplets' : 'triplets';
     summary.push(`${kinds} ${percent(config.tupletChance)}`);
   }
-  if (config.sequenceChance > 0.01) summary.push(`sequences ${percent(config.sequenceChance)}`);
+  if (config.sequenceChance > 0.01) {
+    summary.push(`diatonic sequences ${percent(config.sequenceChance)}`);
+  }
   if (config.accidentalChance > 0.01) {
     summary.push(`accidentals ${percent(config.accidentalChance)}`);
   }

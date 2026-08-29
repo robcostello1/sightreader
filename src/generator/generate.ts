@@ -175,9 +175,9 @@ export function generateExercise(options: GenerateOptions): Exercise {
           : [];
     if (fits.length === 0) break;
 
-    // A sequence repeats the previous shape at a new degree. It is the clearest
-    // way transposition shows up in reading, and it rewards recognising the
-    // pattern rather than re-decoding it.
+    // A sequence repeats the previous shape on a new scale degree. It rewards
+    // recognising the pattern rather than re-decoding it, which is exactly the
+    // chunking the whole design is built around.
     const sequenced: { candidate: Candidate; placement: IdiomPlacement } | null =
       previous && rng() < config.sequenceChance
         ? sequenceOf(rng, previous, fits, remaining)
@@ -235,9 +235,18 @@ export function generateExercise(options: GenerateOptions): Exercise {
 }
 
 /**
- * Finds the previous idiom placed a step or two away, if the pool allows it.
- * Returns null when no transposed placement fits, in which case the caller just
- * picks a fresh idiom.
+ * Repeats the previous idiom a step or two up or down the scale — a *diatonic*
+ * sequence, sometimes called tonal.
+ *
+ * The shape is preserved in scale degrees, not in semitones, so the intervals
+ * change to fit the key: a neighbour figure of F–G–F becomes B–C–B, a tone
+ * becoming a semitone. That is the point of it. A real sequence would keep the
+ * intervals exact and leave the key, and a modulating one would change key
+ * outright; neither happens here, and neither is what a reader at this level
+ * should be meeting.
+ *
+ * Returns null when no such placement fits the pool, in which case the caller
+ * just picks a fresh idiom.
  */
 function sequenceOf(
   rng: Rng,

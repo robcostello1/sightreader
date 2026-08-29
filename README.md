@@ -91,7 +91,7 @@ threes and clicked in two dotted-crotchet beats, since it is a different feel
 rather than just a different bar length.
 
 Each device arrives at its own level and grows from there: note values get shorter *and* more likely, rests from
-level 3, triplets from 4 (quintuplets from 9), transposed sequences from 4,
+level 3, triplets from 4 (quintuplets from 9), diatonic sequences from 4,
 accidentals from 6, keys widening from level 3, and leaps from 2 to 12
 semitones across the range.
 
@@ -178,6 +178,13 @@ time, and a newly created `AudioContext` can only be resumed from a user
 gesture — which an automatic advance, by definition, does not have.
 
 ## Key design decisions
+
+- **Sequences are diatonic, not transposed.** An idiom repeats on a new scale
+  degree with its shape preserved in degrees rather than semitones, so the
+  intervals change to fit the key — a neighbour figure of F–G–F becomes B–C–B,
+  a tone becoming a semitone. A real sequence would hold the intervals exact and
+  leave the key; a modulating one would change key outright. Neither is what a
+  reader at these levels should be meeting.
 
 - **Pitch detection is swappable.** v1 uses YIN/autocorrelation via `pitchy`.
   Heavier neural detectors (CREPE, SwiftF0) and polyphonic transcription are
