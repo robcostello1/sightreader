@@ -41,8 +41,13 @@ npm run typecheck  # tsc, no emit
 npm run build      # production build
 ```
 
-Microphone access requires a secure context. `localhost` counts, so the Vite
-dev server works without extra setup.
+Microphone access requires a secure context. `localhost` counts, so `npm run
+dev` works without extra setup.
+
+To use it from another device on your network, run `npm run dev:lan`. Plain
+HTTP is *not* a secure context off localhost, so the microphone would be
+blocked outright — that script serves over HTTPS with a self-signed
+certificate, which the browser will warn about once per device.
 
 ## Layout
 

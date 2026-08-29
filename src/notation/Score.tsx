@@ -59,9 +59,16 @@ const FALLBACK_WIDTH = 720;
 /** Horizontal room a single note needs before it starts colliding. */
 const WIDTH_PER_NOTE = 34;
 const BAR_PADDING = 26;
-/** Clef, key signature and time signature on the first bar of a line. */
-const FIRST_BAR_EXTRA = 90;
 const MARGIN = 12;
+
+/**
+ * Space the leading bar of a system spends on its clef, key signature and time
+ * signature — none of which is available to notes. A key signature grows with
+ * its accidental count, so this is measured rather than fixed.
+ */
+function leadingModifierWidth(accidentals: number, withTimeSignature: boolean): number {
+  return 46 + 11 * Math.abs(accidentals) + (withTimeSignature ? 28 : 0);
+}
 
 export interface ScoreProps {
   exercise: Exercise;
@@ -135,16 +142,18 @@ export function Score({ exercise, results, activeIndex, width }: ScoreProps) {
     const barMinWidth = (bar: (typeof bars)[number]) =>
       BAR_PADDING + Math.max(1, bar.notes.length) * WIDTH_PER_NOTE;
 
+    const available = renderWidth - MARGIN * 2;
+
     // Pack bars into systems, wrapping rather than shrinking past legibility.
     const systems: (typeof bars)[] = [];
     let current: typeof bars = [];
-    let currentWidth = FIRST_BAR_EXTRA;
+    let currentWidth = leadingModifierWidth(exercise.key.accidentals, true);
     for (const bar of bars) {
       const width = barMinWidth(bar);
-      if (current.length > 0 && currentWidth + width > renderWidth - MARGIN * 2) {
+      if (current.length > 0 && currentWidth + width > available) {
         systems.push(current);
         current = [];
-        currentWidth = FIRST_BAR_EXTRA;
+        currentWidth = leadingModifierWidth(exercise.key.accidentals, false);
       }
       current.push(bar);
       currentWidth += width;
@@ -159,16 +168,21 @@ export function Score({ exercise, results, activeIndex, width }: ScoreProps) {
     const drawn = new Map<number, { note: StaveNote; system: number }[]>();
 
     systems.forEach((system, systemIndex) => {
-      const available = renderWidth - MARGIN * 2 - FIRST_BAR_EXTRA;
+      const leading = leadingModifierWidth(exercise.key.accidentals, systemIndex === 0);
       const minWidths = system.map(barMinWidth);
       const totalMin = minWidths.reduce((sum, w) => sum + w, 0);
+      // Every bar keeps its minimum; only what is left over is shared out. A
+      // purely proportional split can starve a bar below what it needs when
+      // another bar on the line is much busier.
+      const spare = Math.max(0, available - leading - totalMin);
       const y = STAVE_TOP + systemIndex * SYSTEM_HEIGHT;
       let x = MARGIN;
 
       system.forEach((bar, barIndex) => {
-        // Distribute the line's width in proportion to each bar's content.
-        const share = (minWidths[barIndex] / totalMin) * available;
-        const width = share + (barIndex === 0 ? FIRST_BAR_EXTRA : 0);
+        const width =
+          minWidths[barIndex] +
+          (spare * minWidths[barIndex]) / totalMin +
+          (barIndex === 0 ? leading : 0);
 
         const stave = new Stave(x, y, width);
         // Every system restates the clef and key, as a printed score does.
@@ -223,7 +237,12 @@ export function Score({ exercise, results, activeIndex, width }: ScoreProps) {
               new Tuplet(group.notes, { numNotes: group.num, notesOccupied: group.inSpaceOf }),
           );
 
-        new Formatter().joinVoices([voice]).format([voice], width - BAR_PADDING - 20);
+        // Format to the stave's own note area, not its raw width. The leading
+        // bar spends real space on clef, key and time signature; formatting to
+        // the full width makes the formatter believe it has room it does not,
+        // and the last notes end up on top of the bar line.
+        const usable = stave.getNoteEndX() - stave.getNoteStartX();
+        new Formatter().joinVoices([voice]).format([voice], Math.max(20, usable - 10));
         voice.draw(context, stave);
         for (const beam of beams) beam.setContext(context).draw();
         for (const tuplet of tuplets) tuplet.setContext(context).draw();

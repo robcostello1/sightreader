@@ -11,9 +11,14 @@ import './index.css';
  * through a lesson. Served at /preview.html in dev; not part of the build.
  */
 // Whole levels plus the fade across level 3, to show new ideas arriving.
+// Whole levels, the fade across level 3, and seeds that previously laid out
+// badly — dense bars and triplets near a bar line.
 const SAMPLES = [
   ...Array.from({ length: 10 }, (_, i) => ({ level: i + 1, seed: 42 })),
   ...[3.0, 3.3, 3.6, 3.9].map((level) => ({ level, seed: 8 })),
+  { level: 5, seed: 36 },
+  { level: 5.5, seed: 11 },
+  { level: 10, seed: 7 },
 ];
 
 // eslint-disable-next-line react/only-export-components -- dev-only entry point

@@ -142,6 +142,27 @@ describe('generateExercise', () => {
       }
     });
 
+    it('keeps each tuplet group inside one bar', () => {
+      // Split across a bar line, neither bar holds the whole group, so the
+      // bracket cannot be drawn over it.
+      const barSize = config.timeSignature[0] / config.timeSignature[1];
+      for (const exercise of exercises) {
+        let position = 0;
+        const spans = new Map<number, { start: number; end: number }>();
+        for (const note of exercise.notes) {
+          if (note.tuplet) {
+            const span = spans.get(note.tuplet.group) ?? { start: position, end: position };
+            span.end = position + note.value;
+            spans.set(note.tuplet.group, span);
+          }
+          position += note.value;
+        }
+        for (const { start, end } of spans.values()) {
+          expect(Math.floor(start / barSize + 1e-9)).toBe(Math.floor((end - 1e-9) / barSize));
+        }
+      }
+    });
+
     it('groups tuplets completely', () => {
       for (const exercise of exercises) {
         const groups = new Map<number, { count: number; num: number }>();

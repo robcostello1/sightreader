@@ -178,7 +178,7 @@ export function generateExercise(options: GenerateOptions): Exercise {
       // A tuplet of `num` notes takes the space of `inSpaceOf`, so the instance
       // loses the difference. Scaling a whole idiom instead would yield
       // durations no combination of symbols can draw.
-      if (applyTuplet(rng, rendered, candidate, instance, ratio)) {
+      if (applyTuplet(rng, rendered, candidate, instance, ratio, used, barSize)) {
         duration -= (ratio.num - ratio.inSpaceOf) * candidate.unitValue;
       }
     }
@@ -344,11 +344,29 @@ function applyTuplet(
   candidate: Candidate,
   group: number,
   ratio: { num: number; inSpaceOf: number },
+  offset: NoteValue,
+  barSize: NoteValue,
 ): boolean {
   const events = candidate.idiom.events;
+  const span = ratio.inSpaceOf * candidate.unitValue;
+
+  // Running position of each event, so a group can be tested against bar lines.
+  const positions: NoteValue[] = [];
+  let at = offset;
+  for (const note of rendered) {
+    positions.push(at);
+    at += note.value;
+  }
+
   const starts: number[] = [];
   for (let i = 0; i + ratio.num - 1 < events.length; i++) {
-    if (events.slice(i, i + ratio.num).every((event) => event.beats === 1)) starts.push(i);
+    if (!events.slice(i, i + ratio.num).every((event) => event.beats === 1)) continue;
+    // The whole group must sit within one bar. Split across a bar line, neither
+    // bar holds all of it, so the bracket cannot be drawn over the group.
+    const start = positions[i];
+    const sameBar =
+      Math.floor(start / barSize + 1e-9) === Math.floor((start + span - 1e-9) / barSize);
+    if (sameBar) starts.push(i);
   }
   if (starts.length === 0) return false;
 
