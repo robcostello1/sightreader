@@ -18,20 +18,11 @@ import { keyByName } from '../lib/key';
 import { LivePitch } from './LivePitch';
 import { Waveform } from './Waveform';
 import { useLesson } from './useLesson';
-import type { NoteResult } from '../lib/types';
 
 // VexFlow is the bulk of the bundle and nothing is notated until a lesson
 // starts, so it loads out of band. The effect below warms it during the idle
 // screen, well before the count-in ends.
 const Score = lazy(() => import('../notation').then((m) => ({ default: m.Score })));
-
-const VERDICT_LABELS: Record<NoteResult['verdict'], string> = {
-  pass: 'correct',
-  silence: 'nothing played',
-  'wrong-pitch': 'wrong note',
-  unclear: 'unclear — more than one string sounding',
-  unscorable: 'too short to score at this tempo',
-};
 
 /** Stored settings are validated on read — see loadSetting. */
 const readLevel = (value: unknown) => (typeof value === 'number' ? clampLevel(value) : null);
@@ -42,36 +33,6 @@ const C_MAJOR = keyByName('C');
 
 const readFlag = (value: unknown) => (typeof value === 'boolean' ? value : null);
 const readBpm = (value: unknown) => (typeof value === 'number' ? clampBpm(value) : null);
-
-function Results({
-  results,
-  summary,
-}: {
-  results: readonly NoteResult[];
-  summary: { passed: number; total: number; accuracy: number; unscorable: number };
-}) {
-  const failures = results.filter((r) => !r.passed);
-  return (
-    <div>
-      <p className="score-line">
-        {summary.passed} of {summary.total - summary.unscorable} correct —{' '}
-        <strong>{Math.round(summary.accuracy * 100)}%</strong>
-        {summary.unscorable > 0 && (
-          <span className="muted"> ({summary.unscorable} too short to score)</span>
-        )}
-      </p>
-      {failures.length > 0 && (
-        <ul className="failures">
-          {failures.slice(0, 6).map((result) => (
-            <li key={result.index}>
-              Note {result.index + 1}: {VERDICT_LABELS[result.verdict]}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
 
 export function Lesson() {
   const [level, setLevel] = useState(() => loadSetting('level', readLevel, 1));
@@ -224,11 +185,22 @@ export function Lesson() {
                   })}
                 </div>
               </section>
+
+              <section className="card result-card">
+                <h2>Last exercise</h2>
+                <p className="result-score">
+                  {lesson.summary ? `${Math.round(lesson.summary.accuracy * 100)}%` : '—'}
+                </p>
+                <p className="muted small">
+                  {lesson.summary
+                    ? `${lesson.summary.passed} of ${
+                        lesson.summary.total - lesson.summary.unscorable
+                      } notes`
+                    : 'not played yet'}
+                </p>
+              </section>
             </div>
 
-            {lesson.phase === 'results' && lesson.summary && (
-              <Results results={lesson.results} summary={lesson.summary} />
-            )}
           </>
         )}
       </div>

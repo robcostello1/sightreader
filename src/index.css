@@ -367,19 +367,6 @@ input[type='range'] {
   transform: translate(-50%, -50%);
 }
 
-.score-line {
-  font-size: 1.125rem;
-}
-
-.failures {
-  padding-left: 1.25rem;
-  font-size: 0.9375rem;
-}
-
-.failures li {
-  margin-bottom: 0.2rem;
-}
-
 .milestone {
   padding: 2rem 0;
   max-width: 32rem;
@@ -460,6 +447,19 @@ input[type='range'] {
   flex: none;
   width: 13rem;
   padding: 0.875rem 1.125rem;
+}
+
+.result-card {
+  flex: none;
+  width: 8.5rem;
+  padding: 0.875rem 1.125rem;
+}
+
+.result-score {
+  margin: 0;
+  font-size: 1.75rem;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
 }
 
 .waveform {
