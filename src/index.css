@@ -334,8 +334,8 @@ input[type='range'] {
 
 .readout .note {
   display: block;
-  font-size: 2.25rem;
-  line-height: 1.1;
+  font-size: 1.875rem;
+  line-height: 1.15;
   font-variant-numeric: tabular-nums;
 }
 
@@ -413,25 +413,32 @@ input[type='range'] {
    stretched. */
 /* Both cards sit at the left and size to their contents; stretched across the
    full width they were mostly empty space. Heights still match. */
+/* Fixed height, so what a card happens to contain never changes the row. Each
+   card's content is sized to sit inside it. */
 .status {
   display: flex;
   align-items: stretch;
   justify-content: flex-start;
   gap: var(--gap);
   flex: none;
+  height: 5rem;
 }
 
 .status > .card {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  padding: 0.75rem 1rem;
+}
+
+.status > .card h2 {
+  margin-bottom: 0.25rem;
 }
 
 /* Fixed slots throughout: the note and the marker come and go constantly, and
    anything that resized with them would move everything else. */
 .monitor {
   flex: none;
-  padding: 0.875rem 1.125rem;
   /* One row of content, so it centres rather than pushing against the edges the
      way the level-up card's title and bars do. */
   justify-content: center;
@@ -446,19 +453,23 @@ input[type='range'] {
 .progress-card {
   flex: none;
   width: 13rem;
-  padding: 0.875rem 1.125rem;
 }
 
 .result-card {
   flex: none;
-  width: 8.5rem;
-  padding: 0.875rem 1.125rem;
+  width: 8rem;
+}
+
+.result-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin: 0;
 }
 
 .result-score {
-  margin: 0;
-  font-size: 1.75rem;
-  line-height: 1.1;
+  font-size: 1.25rem;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
 

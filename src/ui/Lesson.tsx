@@ -188,15 +188,16 @@ export function Lesson() {
 
               <section className="card result-card">
                 <h2>Last exercise</h2>
-                <p className="result-score">
-                  {lesson.summary ? `${Math.round(lesson.summary.accuracy * 100)}%` : '—'}
-                </p>
-                <p className="muted small">
-                  {lesson.summary
-                    ? `${lesson.summary.passed} of ${
+                <p className="result-line">
+                  <span className="result-score">
+                    {lesson.summary ? `${Math.round(lesson.summary.accuracy * 100)}%` : '—'}
+                  </span>
+                  <span className="muted small">
+                    {lesson.summary &&
+                      `${lesson.summary.passed}/${
                         lesson.summary.total - lesson.summary.unscorable
-                      } notes`
-                    : 'not played yet'}
+                      }`}
+                  </span>
                 </p>
               </section>
             </div>
