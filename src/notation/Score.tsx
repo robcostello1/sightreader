@@ -165,22 +165,30 @@ export function Score({ exercise, results, activeIndex, width }: ScoreProps) {
       voice.setMode(VoiceMode.SOFT);
       voice.addTickables(notes);
 
+      // Beams and tuplets must be constructed BEFORE the voice is drawn.
+      // Building a Beam is what tells its notes to suppress their own flags —
+      // do it afterwards and every beamed note renders a beam *and* a flag.
+      const beams = Beam.generateBeams(notes);
+
+      const groups = new Map<number, { notes: StaveNote[]; num: number; inSpaceOf: number }>();
+      bar.notes.forEach((notated, i) => {
+        if (!notated.tuplet) return;
+        const { group, num, inSpaceOf } = notated.tuplet;
+        const entry = groups.get(group) ?? { notes: [], num, inSpaceOf };
+        entry.notes.push(notes[i]);
+        groups.set(group, entry);
+      });
+      const tuplets = [...groups.values()]
+        .filter((group) => group.notes.length === group.num)
+        .map(
+          (group) =>
+            new Tuplet(group.notes, { numNotes: group.num, notesOccupied: group.inSpaceOf }),
+        );
+
       new Formatter().joinVoices([voice]).format([voice], currentWidth - 40);
       voice.draw(context, stave);
-
-      // Beams and tuplet brackets are grouped per bar.
-      for (const beam of Beam.generateBeams(notes)) beam.setContext(context).draw();
-
-      const groups = new Map<number, StaveNote[]>();
-      bar.notes.forEach((notated, i) => {
-        if (notated.tuplet === undefined) return;
-        const group = groups.get(notated.tuplet) ?? [];
-        group.push(notes[i]);
-        groups.set(notated.tuplet, group);
-      });
-      for (const group of groups.values()) {
-        if (group.length === 3) new Tuplet(group).setContext(context).draw();
-      }
+      for (const beam of beams) beam.setContext(context).draw();
+      for (const tuplet of tuplets) tuplet.setContext(context).draw();
     }
 
     // Ties join the fragments of any note that crossed a bar line.

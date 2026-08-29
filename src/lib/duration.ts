@@ -1,7 +1,7 @@
 import type { NoteValue } from './types';
 
 /** Undotted note values, longest first, as fractions of a whole note. */
-export const STANDARD_VALUES: NoteValue[] = [2, 1, 0.5, 0.25, 0.125, 0.0625, 0.03125];
+export const STANDARD_VALUES: NoteValue[] = [2, 1, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625];
 
 /** VexFlow duration code for each standard value. */
 const CODES = new Map<NoteValue, string>([
@@ -12,6 +12,7 @@ const CODES = new Map<NoteValue, string>([
   [0.125, '8'],
   [0.0625, '16'],
   [0.03125, '32'],
+  [0.015625, '64'],
 ]);
 
 export interface NotatedValue {

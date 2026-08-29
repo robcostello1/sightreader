@@ -255,7 +255,7 @@ function applyTriplet(
   const start = pick(rng, starts);
   for (let i = start; i < start + 3; i++) {
     rendered[i].value = (rendered[i].value * 2) / 3;
-    rendered[i].tuplet = instance;
+    rendered[i].tuplet = { group: instance, num: 3, inSpaceOf: 2 };
   }
   return true;
 }

@@ -91,10 +91,10 @@ describe('layoutExercise', () => {
 
   it('draws tuplet members at their bracketed symbol', () => {
     const triplet = Array.from({ length: 3 }, () =>
-      note((NOTE_VALUES.quarter * 2) / 3, 60, { tuplet: 0 }),
+      note((NOTE_VALUES.quarter * 2) / 3, 60, { tuplet: { group: 0, num: 3, inSpaceOf: 2 } }),
     );
     const bars = layoutExercise(exercise([...triplet, note(NOTE_VALUES.half)]));
-    const members = bars[0].notes.filter((n) => n.tuplet === 0);
+    const members = bars[0].notes.filter((n) => n.tuplet?.group === 0);
     expect(members).toHaveLength(3);
     // Three crotchet-triplets occupy two crotchets, each drawn as a crotchet.
     expect(members.every((n) => n.code === 'q')).toBe(true);

@@ -25,6 +25,7 @@ export const NOTE_VALUES = {
   half: 1 / 2,
   quarter: 1 / 4,
   eighth: 1 / 8,
+  sixteenth: 1 / 16,
 } as const;
 
 export type NoteValueName = keyof typeof NOTE_VALUES;
@@ -55,6 +56,17 @@ export interface Idiom {
 
 // --- Generated exercise -----------------------------------------------------
 
+/**
+ * Notes sharing a group id are drawn under one bracket. `num` of them occupy the
+ * space of `inSpaceOf` ordinary notes — 3:2 for a triplet, 5:4 for a quintuplet —
+ * which is what keeps the bar arithmetic exact whatever the ratio.
+ */
+export interface TupletMembership {
+  group: number;
+  num: number;
+  inSpaceOf: number;
+}
+
 /** A concrete, pitched, timed note ready to be scheduled and notated. */
 export interface ExerciseNote {
   /** Null = rest (scored per §6 as "did the prior pitch stop ringing"). */
@@ -68,11 +80,9 @@ export interface ExerciseNote {
    */
   instance: number;
   /**
-   * Shared id for the notes of one tuplet group. Three notes carrying the same
-   * id occupy the space of two, which is what keeps the bar arithmetic exact
-   * and lets the notation layer draw the bracket.
+   * Membership of a tuplet group, when this note is part of one.
    */
-  tuplet?: number;
+  tuplet?: TupletMembership;
 }
 
 export interface Exercise {

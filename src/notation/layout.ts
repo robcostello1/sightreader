@@ -1,14 +1,14 @@
 import { decompose, toNotated } from '../lib/duration';
 import { midiToName } from '../lib/pitch';
-import type { Exercise, Midi, NoteValue } from '../lib/types';
+import type { Exercise, Midi, NoteValue, TupletMembership } from '../lib/types';
 
 export interface NotatedNote {
   midi: Midi | null;
   /** VexFlow duration code. */
   code: string;
   dots: number;
-  /** Shared id for notes drawn under one tuplet bracket. */
-  tuplet?: number;
+  /** Membership of a tuplet group, when this note belongs to one. */
+  tuplet?: TupletMembership;
   /** True when this is a fragment tied to the next, from crossing a bar line. */
   tiedToNext: boolean;
   /** Index in the source exercise, so results can colour the right note. */
@@ -73,10 +73,12 @@ export function layoutExercise(exercise: Exercise): NotatedBar[] {
   };
 
   exercise.notes.forEach((note, sourceIndex) => {
-    // Tuplet members are drawn under a bracket at their undotted symbol, and are
-    // short enough that splitting them across a bar line never arises.
+    // Tuplet members are drawn under a bracket at the symbol they would have
+    // outside it, and are short enough that splitting across a bar line never
+    // arises. A 3:2 triplet quaver is drawn as a quaver; 5:4 as a semiquaver.
     if (note.tuplet !== undefined) {
-      const notated = toNotated((note.value * 3) / 2);
+      const { num, inSpaceOf } = note.tuplet;
+      const notated = toNotated((note.value * num) / inSpaceOf);
       if (notated) {
         currentBar().notes.push({
           midi: note.midi,

@@ -148,7 +148,10 @@ describe('generateExercise', () => {
       for (const note of generateExercise({ tier: TIERS.medium, seed }).notes) {
         // Triplet members are drawn under a bracket, so they carry 2/3 of a
         // standard value; everything else must stand alone as a symbol.
-        const value = note.tuplet === undefined ? note.value : (note.value * 3) / 2;
+        const value =
+          note.tuplet === undefined
+            ? note.value
+            : (note.value * note.tuplet.num) / note.tuplet.inSpaceOf;
         expect(isNotatable(value)).toBe(true);
       }
     }
@@ -159,7 +162,7 @@ describe('generateExercise', () => {
       const { notes } = generateExercise({ tier: TIERS.medium, seed });
       const groups = new Map<number, number>();
       for (const note of notes) {
-        if (note.tuplet !== undefined) groups.set(note.tuplet, (groups.get(note.tuplet) ?? 0) + 1);
+        if (note.tuplet) groups.set(note.tuplet.group, (groups.get(note.tuplet.group) ?? 0) + 1);
       }
       for (const count of groups.values()) expect(count).toBe(3);
     }
