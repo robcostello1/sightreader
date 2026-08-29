@@ -13,8 +13,8 @@ import { POSITIONS, fretRangeLabel, regionById, regionPool } from '../config/reg
 import { DEFAULT_PROGRESSION, progressionState } from '../config/progression';
 import { BPM_STEP, MAX_BPM, MIN_BPM, clampBpm } from '../config/tempo';
 import { loadSetting, saveSetting } from '../lib/storage';
-import { centsFromTarget, midiToName, nearestMidi } from '../lib/pitch';
-import { formatSpelled, spellInKey, type MusicalKey } from '../lib/key';
+import { midiToName } from '../lib/pitch';
+import { LivePitch } from './LivePitch';
 import { Waveform } from './Waveform';
 import { useLesson } from './useLesson';
 import type { NoteResult } from '../lib/types';
@@ -38,35 +38,6 @@ const readRegionId = (value: unknown) =>
   typeof value === 'string' && POSITIONS.some((p) => p.id === value) ? value : null;
 const readFlag = (value: unknown) => (typeof value === 'boolean' ? value : null);
 const readBpm = (value: unknown) => (typeof value === 'number' ? clampBpm(value) : null);
-
-function LivePitch({
-  hz,
-  confidence,
-  gate,
-  musicalKey,
-}: {
-  hz: number | null;
-  confidence: number;
-  gate: number;
-  musicalKey: MusicalKey;
-}) {
-  const confident = hz !== null && confidence >= gate;
-  const midi = hz === null ? null : nearestMidi(hz);
-  const cents = hz !== null && midi !== null ? centsFromTarget(hz, midi) : null;
-  // Spelled for the key in play — B flat in a flat key, not A sharp.
-  const name = midi === null ? null : formatSpelled(spellInKey(midi, musicalKey));
-
-  return (
-    <div className={`readout ${confident ? 'is-confident' : ''}`}>
-      <span className="note">{confident && name !== null ? name : '—'}</span>
-      <span className="detail">
-        {confident && hz !== null
-          ? `${hz.toFixed(1)} Hz · ${cents! >= 0 ? '+' : ''}${cents!.toFixed(0)} cents`
-          : ''}
-      </span>
-    </div>
-  );
-}
 
 function Results({
   results,
@@ -202,21 +173,13 @@ export function Lesson() {
 
             {running && lesson.exercise && (
               <div className="monitor">
-                <div className="monitor-item">
-                  <span className="monitor-label">Heard</span>
-                  <LivePitch
-                    hz={lesson.livePitch?.hz ?? null}
-                    confidence={lesson.livePitch?.confidence ?? 0}
-                    gate={config.scoring.confidenceGate}
-                    musicalKey={lesson.exercise.key}
-                  />
-                </div>
-                {lesson.analyser && (
-                  <div className="monitor-item">
-                    <span className="monitor-label">Microphone</span>
-                    <Waveform analyser={lesson.analyser} />
-                  </div>
-                )}
+                <LivePitch
+                  hz={lesson.livePitch?.hz ?? null}
+                  confidence={lesson.livePitch?.confidence ?? 0}
+                  gate={config.scoring.confidenceGate}
+                  musicalKey={lesson.exercise.key}
+                />
+                {lesson.analyser && <Waveform analyser={lesson.analyser} />}
               </div>
             )}
 

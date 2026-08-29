@@ -266,9 +266,8 @@ input[type='range'] {
 }
 
 .readout {
-  display: flex;
-  align-items: baseline;
-  gap: 1rem;
+  flex: none;
+  width: 5.5rem;
   color: var(--fg-muted);
 }
 
@@ -277,13 +276,38 @@ input[type='range'] {
 }
 
 .readout .note {
-  font-size: 2.5rem;
+  display: block;
+  font-size: 2.25rem;
+  line-height: 1.1;
   font-variant-numeric: tabular-nums;
-  min-width: 4ch;
 }
 
-.readout .detail {
-  font-variant-numeric: tabular-nums;
+/* Flat on the left, sharp on the right, in tune in the middle. */
+.tuning {
+  position: relative;
+  display: block;
+  height: 0.3rem;
+  margin-top: 0.35rem;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.tuning-centre {
+  position: absolute;
+  left: 50%;
+  width: 1px;
+  height: 100%;
+  background: var(--fg-muted);
+}
+
+.tuning-marker {
+  position: absolute;
+  top: 50%;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+  transform: translate(-50%, -50%);
 }
 
 .score-line {
@@ -325,23 +349,14 @@ input[type='range'] {
   color: var(--danger);
 }
 
-.monitor-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
 
-.monitor-label {
-  font-size: 0.6875rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--fg-muted);
-}
-
+/* Fixed slots throughout: the note and the marker come and go constantly, and
+   anything that resized with them would move everything else. */
 .monitor {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
+  gap: 2rem;
+  height: 4.5rem;
 }
 
 .waveform {
