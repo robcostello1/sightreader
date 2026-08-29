@@ -115,6 +115,8 @@ function buildNote(notated: NotatedNote, key: MusicalKey): StaveNote {
 export function Score({ exercise, results, activeIndex, width }: ScoreProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [measured, setMeasured] = useState<number | null>(null);
+  /** Last system scrolled to, so the view moves on wrapping and not every frame. */
+  const scrolledSystemRef = useRef<number | null>(null);
 
   // Fill the container so bars are not cramped on a wide screen. jsdom has no
   // ResizeObserver, so tests fall back to the fixed width.
@@ -269,18 +271,23 @@ export function Score({ exercise, results, activeIndex, width }: ScoreProps) {
 
     followPageColour(host);
 
-    // The notation area is a fixed height, so a long exercise scrolls. Keep the
-    // note being played in view rather than leaving the reader behind it.
-    if (activeIndex !== undefined) {
+    // A long exercise scrolls inside its area. The line being played is put at
+    // the top rather than centred, so the line after it is visible — a reader
+    // needs to see what is coming, not just where they are.
+    const scroller = host.parentElement;
+    if (activeIndex === undefined) {
+      scrolledSystemRef.current = null;
+    } else if (scroller && scroller.scrollHeight > scroller.clientHeight) {
       const activeSystem = systems.findIndex((system) =>
         system.some((bar) => bar.notes.some((n) => n.sourceIndex === activeIndex)),
       );
-      const scroller = host.parentElement;
-      if (activeSystem >= 0 && scroller && scroller.scrollHeight > scroller.clientHeight) {
-        scroller.scrollTo({
-          top: Math.max(0, activeSystem * SYSTEM_HEIGHT - SYSTEM_HEIGHT / 2),
-          behavior: 'smooth',
-        });
+      // Only when the music wraps to a new line; scrolling every frame would
+      // restart the animation before it finished.
+      if (activeSystem >= 0 && activeSystem !== scrolledSystemRef.current) {
+        scrolledSystemRef.current = activeSystem;
+        // Leaves the system's own STAVE_TOP as headroom, so ledger lines above
+        // the staff are not clipped against the top edge.
+        scroller.scrollTo({ top: activeSystem * SYSTEM_HEIGHT, behavior: 'smooth' });
       }
     }
   }, [exercise, results, activeIndex, renderWidth]);
