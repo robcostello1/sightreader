@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Accidental,
-  Beam,
   Dot,
   Formatter,
   Renderer,
@@ -13,6 +12,7 @@ import {
   VoiceMode,
   // Only the Bravura font, not every music font the default entry bundles.
 } from 'vexflow/bravura';
+import { beamBar } from './beaming';
 import { layoutExercise, midiToVexKey, soundingToWritten, type NotatedNote } from './layout';
 import type { Exercise, NoteResult } from '../lib/types';
 import type { MusicalKey } from '../lib/key';
@@ -220,7 +220,10 @@ export function Score({ exercise, results, activeIndex, width }: ScoreProps) {
         // Beams and tuplets must be constructed BEFORE the voice is drawn.
         // Building a Beam is what tells its notes to suppress their own flags —
         // do it afterwards and every beamed note renders a beam *and* a flag.
-        const beams = Beam.generateBeams(notes);
+        const beams = beamBar(
+          notes,
+          bar.notes.map((notated) => notated.tuplet?.group),
+        );
 
         const groups = new Map<number, { notes: StaveNote[]; num: number; inSpaceOf: number }>();
         bar.notes.forEach((notated, i) => {

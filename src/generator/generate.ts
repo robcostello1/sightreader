@@ -267,7 +267,11 @@ function applyDecorations(
 
   if (config.restChance > 0 && rng() < config.restChance) {
     const index = 1 + Math.floor(rng() * interior);
-    notes[index] = { ...notes[index], midi: null };
+    // Never inside a tuplet: it breaks the group's beam and reads as a puzzle
+    // rather than as the rhythm the tuplet is there to teach.
+    if (notes[index].tuplet === undefined) {
+      notes[index] = { ...notes[index], midi: null };
+    }
   }
 }
 

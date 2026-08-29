@@ -3,6 +3,7 @@
  * plus the per-note pass/fail overlay.
  */
 export { Score } from './Score';
+export { beamBar } from './beaming';
 export type { ScoreProps } from './Score';
 export { GUITAR_WRITTEN_OFFSET, barDuration, layoutExercise, midiToVexKey, soundingToWritten } from './layout';
 export type { NotatedBar, NotatedNote } from './layout';
