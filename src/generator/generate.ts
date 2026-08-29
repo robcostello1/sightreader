@@ -175,14 +175,14 @@ export function generateExercise(options: GenerateOptions): Exercise {
 
   }
 
-  // Round up to a bar line, honouring targetBars as a minimum. Padding extends
-  // the last phrase note rather than appending a rest, so the exercise ends on a
-  // held note; the notation layer ties it across bar lines if it has to.
+  // Round up to the next bar line — and no further. Forcing the total up to
+  // targetBars would inflate the final note to fill the gap, which is dead time:
+  // a bar spent holding one note asks nothing of the reader. targetBars governs
+  // how many idioms are packed in, not how long the result is padded to.
   if (notes.length > 0) {
     const sounded = used + (cadence?.duration ?? 0);
-    const bars = Math.max(config.targetBars, Math.ceil(sounded / barSize - 1e-9));
-    const shortfall = bars * barSize - sounded;
-    if (shortfall > 1e-9) padTo(notes, shortfall, instance);
+    const shortfall = Math.ceil(sounded / barSize - 1e-9) * barSize - sounded;
+    if (shortfall > 1e-9) padTo(notes, shortfall, instance, barSize, cadence !== null);
   }
 
   if (cadence) notes.push(...instantiateIdiom(cadence.placement, instance + 1));
@@ -266,13 +266,26 @@ function shortestOf(candidates: readonly Candidate[]): Candidate[] {
 /**
  * Takes up leftover space to the bar line.
  *
- * Extends the last note where it can, so the exercise ends on something held.
- * A tuplet member is left alone: lengthening one would break its ratio against
- * the rest of the group and yield a duration no decomposition represents.
+ * Extends the last note where that keeps it inside a bar, so the phrase ends on
+ * something held. Beyond a bar it becomes dead time — six seconds of holding one
+ * note at 60bpm asks nothing of the reader — so the space becomes a rest
+ * instead, which reads as a breath before the cadence.
+ *
+ * Two cases block extension outright: a tuplet member, where lengthening one
+ * note breaks its ratio against the rest of the group; and having no cadence to
+ * follow, where a trailing rest would end the exercise on silence.
  */
-function padTo(notes: ExerciseNote[], shortfall: NoteValue, instance: number): void {
+function padTo(
+  notes: ExerciseNote[],
+  shortfall: NoteValue,
+  instance: number,
+  barSize: NoteValue,
+  cadenceFollows: boolean,
+): void {
   const last = notes[notes.length - 1];
-  if (last && !last.tuplet) {
+  const extendable = last && !last.tuplet;
+
+  if (extendable && (last.value + shortfall <= barSize + 1e-9 || !cadenceFollows)) {
     last.value += shortfall;
     return;
   }

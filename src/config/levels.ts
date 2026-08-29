@@ -53,9 +53,12 @@ export interface LevelConfig {
   maxKeyAccidentals: number;
   categories: IdiomCategory[];
   /**
-   * Bars to fill: two early, four from the middle up. Kept short deliberately —
-   * what should grow with level is how many notes fit in a bar, not how long you
-   * wait to find out whether you read it correctly.
+   * How many bars of idioms to pack in: two early, four from the middle up. A
+   * budget, not a quota — the result rounds up to the next bar line and stops
+   * there, rather than being padded out to hit this number.
+   *
+   * Kept short deliberately: what should grow with level is how many notes fit
+   * in a bar, not how long you wait to find out whether you read it correctly.
    */
   targetBars: number;
   timeSignature: [number, number];

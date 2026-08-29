@@ -104,13 +104,25 @@ describe('generateExercise', () => {
       }
     });
 
-    it('ends on a bar line, at least as long as the level asks for', () => {
-      if (config.targetBars === null) return;
+    it('ends on a bar line without padding out dead time', () => {
       for (const exercise of exercises) {
         const total = exercise.notes.reduce((sum, n) => sum + n.value, 0);
-        // A whole number of 4/4 bars, and never shorter than the target.
+        // A whole number of 4/4 bars.
         expect(Math.abs(total - Math.round(total))).toBeLessThan(1e-9);
-        expect(total).toBeGreaterThanOrEqual(config.targetBars - 1e-9);
+        // Rounding up to a bar line can never add a whole bar of its own.
+        expect(total).toBeLessThanOrEqual(config.targetBars + 1);
+        expect(total).toBeGreaterThan(0);
+      }
+    });
+
+    it('never holds a note for more than a bar', () => {
+      // A note tied across two whole bars is dead time — the reader is just
+      // waiting. Padding rounds to the bar line and turns to rests rather than
+      // inflating a note past one bar.
+      for (const exercise of exercises) {
+        for (const note of exercise.notes) {
+          expect(note.value).toBeLessThanOrEqual(1 + 1e-9);
+        }
       }
     });
 
@@ -145,6 +157,8 @@ describe('generateExercise', () => {
       expect(exercise.notes.every((n) => n.midi !== null && isInKey(n.midi, exercise.key))).toBe(true);
       // Two bars, so a mistake is found out quickly.
       expect(exercise.notes.reduce((sum, n) => sum + n.value, 0)).toBeCloseTo(2, 9);
+      // And no single note swallows a whole bar on its own.
+      expect(exercise.notes.every((n) => n.value <= 1 + 1e-9)).toBe(true);
     }
   });
 
