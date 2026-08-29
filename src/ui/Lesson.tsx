@@ -1,0 +1,149 @@
+import { Suspense, lazy, useEffect, useState } from 'react';
+
+// VexFlow is the bulk of the bundle and nothing is notated until a lesson
+// starts, so it loads out of band. The effect below warms it during the idle
+// screen, well before the count-in ends.
+const Score = lazy(() => import('../notation').then((m) => ({ default: m.Score })));
+import { TIERS, type TierId } from '../config/tiers';
+import { centsFromTarget, midiToName, nearestMidi } from '../lib/pitch';
+import { useLesson } from './useLesson';
+import type { NoteResult } from '../lib/types';
+
+const VERDICT_LABELS: Record<NoteResult['verdict'], string> = {
+  pass: 'correct',
+  silence: 'nothing played',
+  'wrong-pitch': 'wrong note',
+  unclear: 'unclear — more than one string sounding',
+  unscorable: 'too short to score at this tempo',
+};
+
+function LivePitch({ hz, confidence, gate }: { hz: number | null; confidence: number; gate: number }) {
+  const confident = hz !== null && confidence >= gate;
+  const midi = hz === null ? null : nearestMidi(hz);
+  const cents = hz !== null && midi !== null ? centsFromTarget(hz, midi) : null;
+
+  return (
+    <div className={`readout ${confident ? 'is-confident' : ''}`}>
+      <span className="note">{confident && midi !== null ? midiToName(midi) : '—'}</span>
+      <span className="detail">
+        {confident && hz !== null
+          ? `${hz.toFixed(1)} Hz · ${cents! >= 0 ? '+' : ''}${cents!.toFixed(0)} cents`
+          : 'listening…'}
+      </span>
+    </div>
+  );
+}
+
+function Results({ results, summary }: { results: readonly NoteResult[]; summary: { passed: number; total: number; accuracy: number; unscorable: number } }) {
+  const failures = results.filter((r) => !r.passed);
+  return (
+    <section>
+      <h2>Results</h2>
+      <p className="score-line">
+        {summary.passed} of {summary.total - summary.unscorable} scorable notes correct —{' '}
+        <strong>{Math.round(summary.accuracy * 100)}%</strong>
+        {summary.unscorable > 0 && (
+          <span className="muted"> ({summary.unscorable} too short to score)</span>
+        )}
+      </p>
+      {failures.length > 0 && (
+        <ul className="failures">
+          {failures.map((result) => (
+            <li key={result.index}>
+              Note {result.index + 1}: {VERDICT_LABELS[result.verdict]}
+              {result.verdict !== 'silence' && result.verdict !== 'unscorable' && (
+                <span className="muted"> ({Math.round(result.occupancy * 100)}% on target)</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+export function Lesson() {
+  const [tierId, setTierId] = useState<TierId>('simple');
+  const tier = TIERS[tierId];
+  const lesson = useLesson({ tier });
+  const running = lesson.phase === 'count-in' || lesson.phase === 'playing';
+
+  useEffect(() => {
+    void import('../notation');
+  }, []);
+
+  return (
+    <>
+      <section>
+        <div className="controls">
+          <label>
+            Difficulty{' '}
+            <select
+              value={tierId}
+              onChange={(event) => setTierId(event.target.value as TierId)}
+              disabled={running}
+            >
+              {Object.values(TIERS).map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {lesson.phase === 'idle' && <button onClick={lesson.start}>Start</button>}
+          {lesson.phase === 'arming' && <span className="muted">Requesting microphone…</span>}
+          {running && <button onClick={lesson.stop}>Stop</button>}
+          {lesson.phase === 'results' && <button onClick={lesson.start}>Play again</button>}
+          {lesson.phase === 'error' && (
+            <>
+              <span role="alert">Could not start: {lesson.error}</span>
+              <button onClick={lesson.start}>Retry</button>
+            </>
+          )}
+        </div>
+
+        {lesson.phase === 'count-in' && (
+          <p className="count-in">
+            Count-in… <strong>{lesson.beatsUntilStart}</strong>
+          </p>
+        )}
+      </section>
+
+      {lesson.exercise && (
+        <section>
+          <Suspense fallback={<p className="muted">Loading notation…</p>}>
+            <Score
+              exercise={lesson.exercise}
+              results={lesson.results}
+              activeIndex={lesson.activeIndex ?? undefined}
+            />
+          </Suspense>
+          <p className="muted">
+            {tier.name} · {lesson.exercise.bpm} bpm · seed {lesson.seed}
+          </p>
+        </section>
+      )}
+
+      {running && (
+        <section>
+          <LivePitch
+            hz={lesson.livePitch?.hz ?? null}
+            confidence={lesson.livePitch?.confidence ?? 0}
+            gate={tier.scoring.confidenceGate}
+          />
+          <p className="muted">Attacks detected: {lesson.onsetCount}</p>
+          {lesson.falseStart && (
+            <p role="alert" className="muted">
+              False start — you played during the count-in. That note was not scored.
+            </p>
+          )}
+        </section>
+      )}
+
+      {lesson.phase === 'results' && lesson.summary && (
+        <Results results={lesson.results} summary={lesson.summary} />
+      )}
+    </>
+  );
+}

@@ -68,8 +68,8 @@ dev server works without extra setup.
 5. ~~Idiom data model + a handful of hardcoded idioms~~ ✅
 6. ~~Procedural exercise generator~~ ✅
 7. ~~Notation rendering~~ ✅
-8. Difficulty tier wiring
-9. Lesson UI
+8. ~~Difficulty tier wiring~~ ✅
+9. ~~Lesson UI~~ ✅
 
 ## Key design decisions
 
@@ -97,3 +97,25 @@ dev server works without extra setup.
 - **Mic input disables `echoCancellation`, `noiseSuppression` and
   `autoGainControl`.** All three are tuned for speech: AGC pumps the level and
   noise suppression mangles the harmonic structure the pitch detector reads.
+- **Windows are scored as they close**, not in one pass at the end. A verdict
+  cannot exist before its window is over, but waiting for the whole exercise
+  would feel laggy, so the live pitch shows immediately and pass/fail lands a
+  note later.
+- **Notation is code-split.** VexFlow is most of the bundle and nothing is
+  notated until a lesson starts, so it loads out of band (213 kB initial vs
+  722 kB for notation). We import `vexflow/bravura` rather than `vexflow`,
+  which would bundle every music font.
+
+## What is untested
+
+Everything below the microphone. 136 unit tests cover the detector, worklet,
+scheduler, scorer, generator, layout and lesson state machine — including
+running the real bundled worklet in a Node VM and rendering every generated
+exercise through VexFlow in jsdom. But no part of this has been run against a
+real guitar, so the following are calibrated on synthetic signals only and
+should be expected to need tuning:
+
+- `PitchyDetectorOptions.rmsFloor` (default 0.005) — the most likely thing to
+  need adjusting for your input level
+- `ONSET_PRESETS` thresholds, per instrument
+- `DEFAULT_SCORING.passThreshold` and `confidenceGate`

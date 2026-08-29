@@ -70,3 +70,50 @@ button {
   opacity: 0.7;
   font-size: 0.875rem;
 }
+
+header {
+  margin-bottom: 2rem;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+select {
+  font: inherit;
+  padding: 0.35rem 0.5rem;
+}
+
+.score {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.count-in {
+  font-size: 1.25rem;
+  margin-top: 1rem;
+}
+
+.count-in strong {
+  font-size: 2rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.score-line {
+  font-size: 1.125rem;
+}
+
+.failures {
+  padding-left: 1.25rem;
+}
+
+.failures li {
+  margin-bottom: 0.25rem;
+}
+
+[role='alert'] {
+  color: #d1495b;
+}

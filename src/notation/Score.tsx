@@ -11,7 +11,8 @@ import {
   Tuplet,
   Voice,
   VoiceMode,
-} from 'vexflow';
+  // Only the Bravura font, not every music font the default entry bundles.
+} from 'vexflow/bravura';
 import { layoutExercise, midiToVexKey, type NotatedNote } from './layout';
 import type { Exercise, NoteResult } from '../lib/types';
 
