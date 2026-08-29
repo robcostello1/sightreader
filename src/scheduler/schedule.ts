@@ -1,4 +1,4 @@
-import type { AudioTimeMs, Exercise, NoteValue, NoteWindow, PitchSample } from '../lib/types';
+import type { AudioTimeMs, Exercise, NoteValue, NoteWindow } from '../lib/types';
 
 /** Duration of one beat, where "beat" is the time signature's lower number. */
 export function beatDurationMs(bpm: number): number {
@@ -87,27 +87,6 @@ export function buildSchedule(exercise: Exercise, options: ScheduleOptions): Sch
   }
 
   return { startMs, t0, endMs, beatMs, clicks, windows };
-}
-
-/**
- * Anything confidently played before the count-in ends is a false start — it is
- * reported rather than scored, so an eager player is told what happened instead
- * of silently failing the first note.
- */
-export function detectFalseStart(
-  samples: readonly PitchSample[],
-  schedule: Schedule,
-  confidenceGate: number,
-): PitchSample | null {
-  return (
-    samples.find(
-      (sample) =>
-        sample.timestamp >= schedule.startMs &&
-        sample.timestamp < schedule.t0 &&
-        sample.hz !== null &&
-        sample.confidence >= confidenceGate,
-    ) ?? null
-  );
 }
 
 /** The window containing `timestamp`, or null between/outside windows. */

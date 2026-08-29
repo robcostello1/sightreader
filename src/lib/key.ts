@@ -117,6 +117,12 @@ function octaveFor(midi: Midi, letter: string, alter: number): number {
   return Math.round((midi - alter - natural) / 12) - 1;
 }
 
+/** Renders a spelled note as it should read on screen, e.g. "Bb3". */
+export function formatSpelled({ letter, alter, octave }: SpelledNote): string {
+  const accidental = alter === 0 ? '' : alter > 0 ? '#'.repeat(alter) : 'b'.repeat(-alter);
+  return `${letter}${accidental}${octave}`;
+}
+
 export function isInKey(midi: Midi, key: MusicalKey): boolean {
   return spellingFor(key).has(((midi % 12) + 12) % 12);
 }

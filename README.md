@@ -136,7 +136,17 @@ on read — a level saved before the range changed, or a position id since
 renamed, falls back rather than breaking.
 
 With "keep going" on, finishing an exercise rolls straight into the next after a
-short pause, count-in included. The microphone session deliberately outlives any
+short pause, count-in included. That gap can be held with **Pause** — and only
+that gap: an exercise is a continuous reading against a fixed tempo, so there
+is no coherent place to stop partway and pick it up again.
+
+**Audio during the count-in is ignored entirely** — not scored, not classified,
+not even retained. Samples timestamped before `t0` are dropped as they arrive,
+so nothing downstream can act on them. The count-in itself is unchanged: it
+still clicks, counts down, and anchors every note window.
+
+The live pitch readout **spells what it hears according to the key in play** —
+B flat in a flat key, not A sharp — so the feedback matches what is on the page. The microphone session deliberately outlives any
 single exercise: reopening it would cost a fresh `getUserMedia` round trip each
 time, and a newly created `AudioContext` can only be resumed from a user
 gesture — which an automatic advance, by definition, does not have.

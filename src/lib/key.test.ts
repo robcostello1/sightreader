@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { KEYS, isInKey, keyByName, keysUpTo, spellInKey } from './key';
+import { KEYS, formatSpelled, isInKey, keyByName, keysUpTo, spellInKey } from './key';
 
 const spell = (midi: number, key: string) => {
   const s = spellInKey(midi, keyByName(key));
@@ -69,6 +69,22 @@ describe('spellInKey', () => {
         expect((octave + 1) * 12 + natural[letter] + alter).toBe(midi);
       }
     }
+  });
+});
+
+describe('formatSpelled', () => {
+  const named = (midi: number, key: string) => formatSpelled(spellInKey(midi, keyByName(key)));
+
+  it('renders a detected pitch as the key would spell it', () => {
+    // What the player sees as feedback must match what is on the page.
+    expect(named(70, 'F')).toBe('Bb4');
+    expect(named(70, 'G')).toBe('A#4');
+    expect(named(60, 'C')).toBe('C4');
+  });
+
+  it('renders naturals without an accidental', () => {
+    expect(named(64, 'C')).toBe('E4');
+    expect(named(40, 'C')).toBe('E2');
   });
 });
 

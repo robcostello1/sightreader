@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { startMicCapture, type MicSession } from '../audio';
 import { generateExercise } from '../generator';
-import { buildSchedule, detectFalseStart, scheduleClicks, windowAt } from '../scheduler';
+import { buildSchedule, scheduleClicks, windowAt } from '../scheduler';
 import type { Schedule, ScheduledClicks } from '../scheduler';
 import { scoreWindow, summarise, type ExerciseSummary } from '../scoring';
 import { levelConfig } from '../config/levels';
@@ -34,7 +34,7 @@ export interface LessonState {
   /** Filled in as each window closes, not all at the end. */
   results: NoteResult[];
   summary: ExerciseSummary | null;
-  falseStart: PitchSample | null;
+  paused: boolean;
   livePitch: PitchSample | null;
   onsetCount: number;
   beatsUntilStart: number | null;
@@ -73,7 +73,7 @@ const INITIAL: LessonState = {
   activeIndex: null,
   results: [],
   summary: null,
-  falseStart: null,
+  paused: false,
   livePitch: null,
   onsetCount: 0,
   beatsUntilStart: null,
@@ -117,6 +117,9 @@ export function useLesson(options: UseLessonOptions) {
   const latestRef = useRef<PitchSample | null>(null);
   const frameRef = useRef<number | null>(null);
   const advanceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Wall-clock bookkeeping for the gap between exercises, so it can be paused. */
+  const advanceArmedAtRef = useRef(0);
+  const advanceRemainingRef = useRef(0);
   // Mirrored outside React state so completion can act on them immediately.
   const resultsRef = useRef<NoteResult[]>([]);
   const historyRef = useRef<number[]>([]);
@@ -146,12 +149,24 @@ export function useLesson(options: UseLessonOptions) {
   // Lets the loop queue the next exercise without beginExercise capturing itself.
   const beginExerciseRef = useRef<((session: MicSession) => void) | null>(null);
 
+  /** Arms the gap before the next exercise, tracking it so pause can bank it. */
+  const armAdvance = useCallback((delayMs: number) => {
+    advanceArmedAtRef.current = Date.now();
+    advanceRemainingRef.current = delayMs;
+    advanceRef.current = setTimeout(() => {
+      advanceRemainingRef.current = 0;
+      const open = sessionRef.current;
+      if (open) beginExerciseRef.current?.(open);
+    }, delayMs);
+  }, []);
+
   /** Stops the loop and any queued advance, leaving the microphone open. */
   const haltExercise = useCallback(() => {
     if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
     frameRef.current = null;
     if (advanceRef.current !== null) clearTimeout(advanceRef.current);
     advanceRef.current = null;
+    advanceRemainingRef.current = 0;
     clicksRef.current?.stop();
     clicksRef.current = null;
   }, []);
@@ -222,7 +237,7 @@ export function useLesson(options: UseLessonOptions) {
       activeIndex: null,
       results: [],
       summary: null,
-      falseStart: null,
+      paused: false,
       onsetCount: 0,
       beatsUntilStart: null,
       error: null,
@@ -266,7 +281,6 @@ export function useLesson(options: UseLessonOptions) {
         activeIndex: windowAt(active, now)?.index ?? null,
         results,
         summary,
-        falseStart: prev.falseStart ?? detectFalseStart(samples, active, scoring.confidenceGate),
         livePitch: latestRef.current,
         onsetCount: onsetsRef.current.length,
         beatsUntilStart: beatsLeft,
@@ -297,19 +311,31 @@ export function useLesson(options: UseLessonOptions) {
             return;
           }
         }
-        if (settingsRef.current.autoAdvance) {
-          advanceRef.current = setTimeout(() => {
-            const open = sessionRef.current;
-            if (open) beginExerciseRef.current?.(open);
-          }, settingsRef.current.advanceDelayMs);
-        }
+        if (settingsRef.current.autoAdvance) armAdvance(settingsRef.current.advanceDelayMs);
         return;
       }
       frameRef.current = requestAnimationFrame(tick);
     };
 
     frameRef.current = requestAnimationFrame(tick);
-  }, [haltExercise]);
+  }, [armAdvance, haltExercise]);
+
+  /**
+   * Holds the session between exercises. Only the gap is pausable: an exercise
+   * is a continuous reading against a fixed tempo, so there is no coherent way
+   * to stop partway and pick it up again. Nothing is scheduled during the gap,
+   * so this is only the wall-clock timer — the audio graph is left alone.
+   */
+  const pause = useCallback(() => {
+    if (advanceRef.current === null) return;
+    clearTimeout(advanceRef.current);
+    advanceRef.current = null;
+    advanceRemainingRef.current = Math.max(
+      0,
+      advanceRemainingRef.current - (Date.now() - advanceArmedAtRef.current),
+    );
+    setState((prev) => ({ ...prev, paused: true }));
+  }, []);
 
   useEffect(() => {
     beginExerciseRef.current = beginExercise;
@@ -321,6 +347,12 @@ export function useLesson(options: UseLessonOptions) {
     const open = sessionRef.current;
     if (open) beginExercise(open);
   }, [beginExercise]);
+
+  const resume = useCallback(() => {
+    if (!sessionRef.current) return;
+    setState((prev) => ({ ...prev, paused: false }));
+    armAdvance(advanceRemainingRef.current || settingsRef.current.advanceDelayMs);
+  }, [armAdvance]);
 
   const start = useCallback(() => {
     const existing = sessionRef.current;
@@ -335,6 +367,10 @@ export function useLesson(options: UseLessonOptions) {
 
     startMicCapture({
       onSample: (sample) => {
+        // Count-in audio is ignored entirely — not scored, not classified, not
+        // even retained. Dropping it here means nothing downstream can act on it.
+        const schedule = scheduleRef.current;
+        if (schedule && sample.timestamp < schedule.t0) return;
         samplesRef.current.push(sample);
         latestRef.current = sample;
       },
@@ -356,5 +392,5 @@ export function useLesson(options: UseLessonOptions) {
 
   useEffect(() => closeSession, [closeSession]);
 
-  return { ...state, start, stop, clearHistory, acknowledgeMilestone };
+  return { ...state, start, stop, pause, resume, clearHistory, acknowledgeMilestone };
 }

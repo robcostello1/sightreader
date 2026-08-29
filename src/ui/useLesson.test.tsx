@@ -182,16 +182,69 @@ describe('useLesson', () => {
     expect(result.current.summary!.accuracy).toBe(0);
   });
 
-  it('flags a note played during the count-in as a false start', async () => {
+  it('ignores anything played during the count-in', async () => {
     const { result } = renderLesson();
     const schedule = await startAndGetSchedule(result);
 
-    act(() => emit({ hz: midiToHz(60), confidence: 0.95, timestamp: schedule.t0 - 1000 }));
-    await advanceTo(schedule.t0 + 10);
+    // Loudly playing the wrong note throughout the count-in.
+    act(() => {
+      for (let t = schedule.startMs; t < schedule.t0; t += HOP_MS) {
+        emit({ hz: midiToHz(60), confidence: 0.99, timestamp: t });
+      }
+    });
+    // Then the exercise itself, played correctly.
+    playCorrectly(schedule);
+    await advanceTo(schedule.endMs + 10);
 
-    expect(result.current.falseStart).not.toBeNull();
-    // Flagged, not scored: the first window is still judged on its own samples.
-    expect(result.current.results).toHaveLength(0);
+    // Not scored, not classified, not held against the reading.
+    expect(result.current.summary!.accuracy).toBe(1);
+    expect(result.current.history).toEqual([1]);
+  });
+
+  describe('pause', () => {
+    it('holds the gap before the next exercise', async () => {
+      const { result } = renderLesson(LEVEL, true);
+      const schedule = await startAndGetSchedule(result);
+      await advanceTo(schedule.endMs + 10);
+      expect(result.current.phase).toBe('results');
+
+      act(() => result.current.pause());
+      expect(result.current.paused).toBe(true);
+
+      // The next exercise does not arrive while held.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ADVANCE_MS * 5);
+      });
+      expect(result.current.phase).toBe('results');
+    });
+
+    it('picks up again on resume', async () => {
+      const { result } = renderLesson(LEVEL, true);
+      const schedule = await startAndGetSchedule(result);
+      await advanceTo(schedule.endMs + 10);
+
+      act(() => result.current.pause());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ADVANCE_MS * 3);
+      });
+
+      act(() => result.current.resume());
+      expect(result.current.paused).toBe(false);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ADVANCE_MS + 50);
+      });
+      expect(result.current.phase).toBe('count-in');
+    });
+
+    it('does nothing mid-exercise, where there is no coherent place to stop', async () => {
+      const { result } = renderLesson(LEVEL, true);
+      const schedule = await startAndGetSchedule(result);
+      await advanceTo(schedule.t0 + 10);
+      expect(result.current.phase).toBe('playing');
+
+      act(() => result.current.pause());
+      expect(result.current.paused).toBe(false);
+    });
   });
 
   it('keeps the microphone open once an exercise finishes', async () => {

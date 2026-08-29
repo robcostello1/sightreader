@@ -1,13 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import {
-  beatDurationMs,
-  buildSchedule,
-  detectFalseStart,
-  noteDurationMs,
-  windowAt,
-} from './schedule';
+import { beatDurationMs, buildSchedule, noteDurationMs, windowAt } from './schedule';
 import { NOTE_VALUES } from '../lib/types';
-import type { Exercise, ExerciseNote, PitchSample } from '../lib/types';
+import type { Exercise, ExerciseNote } from '../lib/types';
 import { keyByName } from '../lib/key';
 
 const note = (value: number, midi: number | null = 60): ExerciseNote => ({
@@ -110,28 +104,6 @@ describe('buildSchedule', () => {
     // 8 beats of exercise, and no click lands on the final boundary.
     expect(on.clicks.filter((c) => c.phase === 'exercise')).toHaveLength(8);
     expect(on.clicks.every((c) => c.timeMs < on.endMs)).toBe(true);
-  });
-});
-
-describe('false starts', () => {
-  const schedule = buildSchedule(exercise([note(NOTE_VALUES.whole)]), OPTIONS);
-  const sample = (timestamp: number, confidence: number, hz: number | null = 440): PitchSample => ({
-    hz,
-    confidence,
-    timestamp,
-  });
-
-  it('flags a confident note played during the count-in', () => {
-    expect(detectFalseStart([sample(3000, 0.95)], schedule, 0.8)).not.toBeNull();
-  });
-
-  it('ignores low-confidence noise during the count-in', () => {
-    expect(detectFalseStart([sample(3000, 0.2)], schedule, 0.8)).toBeNull();
-    expect(detectFalseStart([sample(3000, 0.95, null)], schedule, 0.8)).toBeNull();
-  });
-
-  it('does not flag playing once the exercise has begun', () => {
-    expect(detectFalseStart([sample(5500, 0.95)], schedule, 0.8)).toBeNull();
   });
 });
 

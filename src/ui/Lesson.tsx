@@ -10,6 +10,7 @@ import { POSITIONS, fretRangeLabel, regionById, regionPool } from '../config/reg
 import { DEFAULT_PROGRESSION, progressionState } from '../config/progression';
 import { loadSetting, saveSetting } from '../lib/storage';
 import { centsFromTarget, midiToName, nearestMidi } from '../lib/pitch';
+import { formatSpelled, spellInKey, type MusicalKey } from '../lib/key';
 import { useLesson } from './useLesson';
 import type { NoteResult } from '../lib/types';
 
@@ -32,14 +33,26 @@ const readRegionId = (value: unknown) =>
   typeof value === 'string' && POSITIONS.some((p) => p.id === value) ? value : null;
 const readFlag = (value: unknown) => (typeof value === 'boolean' ? value : null);
 
-function LivePitch({ hz, confidence, gate }: { hz: number | null; confidence: number; gate: number }) {
+function LivePitch({
+  hz,
+  confidence,
+  gate,
+  musicalKey,
+}: {
+  hz: number | null;
+  confidence: number;
+  gate: number;
+  musicalKey: MusicalKey;
+}) {
   const confident = hz !== null && confidence >= gate;
   const midi = hz === null ? null : nearestMidi(hz);
   const cents = hz !== null && midi !== null ? centsFromTarget(hz, midi) : null;
+  // Spelled for the key in play — B flat in a flat key, not A sharp.
+  const name = midi === null ? null : formatSpelled(spellInKey(midi, musicalKey));
 
   return (
     <div className={`readout ${confident ? 'is-confident' : ''}`}>
-      <span className="note">{confident && midi !== null ? midiToName(midi) : '—'}</span>
+      <span className="note">{confident && name !== null ? name : '—'}</span>
       <span className="detail">
         {confident && hz !== null
           ? `${hz.toFixed(1)} Hz · ${cents! >= 0 ? '+' : ''}${cents!.toFixed(0)} cents`
@@ -137,6 +150,11 @@ export function Lesson() {
                   Next
                 </button>
               )}
+              {lesson.phase === 'results' && autoAdvance && (
+                <button onClick={lesson.paused ? lesson.resume : lesson.pause}>
+                  {lesson.paused ? 'Resume' : 'Pause'}
+                </button>
+              )}
               {lesson.phase === 'error' && (
                 <>
                   <span role="alert">Could not start: {lesson.error}</span>
@@ -160,19 +178,13 @@ export function Lesson() {
               </Suspense>
             )}
 
-            {running && (
-              <>
-                <LivePitch
-                  hz={lesson.livePitch?.hz ?? null}
-                  confidence={lesson.livePitch?.confidence ?? 0}
-                  gate={config.scoring.confidenceGate}
-                />
-                {lesson.falseStart && (
-                  <p role="alert" className="muted">
-                    False start — you played during the count-in.
-                  </p>
-                )}
-              </>
+            {running && lesson.exercise && (
+              <LivePitch
+                hz={lesson.livePitch?.hz ?? null}
+                confidence={lesson.livePitch?.confidence ?? 0}
+                gate={config.scoring.confidenceGate}
+                musicalKey={lesson.exercise.key}
+              />
             )}
 
             {lesson.phase === 'results' && lesson.summary && (
