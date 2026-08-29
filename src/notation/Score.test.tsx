@@ -3,8 +3,8 @@ import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Score } from './Score';
 import { generateExercise } from '../generator';
-import { TIERS } from '../config/tiers';
 import { NOTE_VALUES } from '../lib/types';
+import { keyByName } from '../lib/key';
 import type { Exercise, NoteResult } from '../lib/types';
 
 afterEach(cleanup);
@@ -17,6 +17,7 @@ const simple: Exercise = {
     { midi: 64, value: NOTE_VALUES.quarter, idiomId: 'test', instance: 0 },
   ],
   keyCenter: 60,
+  key: keyByName('C'),
   timeSignature: [4, 4],
   bpm: 60,
 };
@@ -34,19 +35,23 @@ describe('Score', () => {
     expect(svg.querySelectorAll('path').length).toBeGreaterThan(0);
   });
 
-  it('renders every generated exercise without throwing', () => {
+  it('renders every level without throwing', () => {
     // The real value of this test: VexFlow misuse surfaces here rather than in
     // a browser. Covers accidentals, rests, dotted values, tuplets and ties.
-    for (let seed = 1; seed <= 40; seed++) {
-      const exercise = generateExercise({ tier: TIERS.medium, seed });
-      expect(() => render(<Score exercise={exercise} />)).not.toThrow();
-      cleanup();
+    // Across all ten levels: accidentals, rests, dotted values, tuplets, ties,
+    // and every key signature the ramp admits.
+    for (let level = 1; level <= 10; level++) {
+      for (let seed = 1; seed <= 12; seed++) {
+        const exercise = generateExercise({ level, seed });
+        expect(() => render(<Score exercise={exercise} />)).not.toThrow();
+        cleanup();
+      }
     }
   });
 
-  it('renders the simple tier, whose notes are whole notes and breves', () => {
+  it('renders level 1, whose notes are whole notes and breves', () => {
     for (let seed = 1; seed <= 20; seed++) {
-      const exercise = generateExercise({ tier: TIERS.simple, seed });
+      const exercise = generateExercise({ level: 1, seed });
       expect(() => render(<Score exercise={exercise} />)).not.toThrow();
       cleanup();
     }
@@ -92,7 +97,7 @@ describe('Score', () => {
 
   it('redraws rather than appending when the exercise changes', () => {
     const { container, rerender } = render(<Score exercise={simple} />);
-    rerender(<Score exercise={generateExercise({ tier: TIERS.medium, seed: 5 })} />);
+    rerender(<Score exercise={generateExercise({ level: 6, seed: 5 })} />);
     expect(container.querySelectorAll('svg')).toHaveLength(1);
   });
 });

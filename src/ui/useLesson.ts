@@ -5,7 +5,7 @@ import { buildSchedule, detectFalseStart, scheduleClicks, windowAt } from '../sc
 import type { Schedule, ScheduledClicks } from '../scheduler';
 import { scoreWindow, summarise, type ExerciseSummary } from '../scoring';
 import type { FretboardRegion } from '../config/regions';
-import type { TierConfig } from '../config/tiers';
+import { levelConfig } from '../config/levels';
 import type { Exercise, NoteResult, OnsetEvent, PitchSample } from '../lib/types';
 
 export type LessonPhase = 'idle' | 'arming' | 'count-in' | 'playing' | 'results' | 'error';
@@ -27,7 +27,9 @@ export interface LessonState {
 }
 
 export interface UseLessonOptions {
-  tier: TierConfig;
+  /** 1–10. */
+  level: number;
+  /** Fretboard position, chosen independently of level. */
   region?: FretboardRegion;
   bpm?: number;
   /** Grace period before the count-in, so the worklet can fill its first frame. */
@@ -57,7 +59,8 @@ const INITIAL: LessonState = {
  * and the pass/fail lands a note later.
  */
 export function useLesson(options: UseLessonOptions) {
-  const { tier, region, bpm = 60, leadInMs = 300 } = options;
+  const { level, region, bpm = 60, leadInMs = 300 } = options;
+  const config = levelConfig(level);
   const [state, setState] = useState<LessonState>(INITIAL);
 
   const sessionRef = useRef<MicSession | null>(null);
@@ -92,7 +95,17 @@ export function useLesson(options: UseLessonOptions) {
     if (sessionRef.current) return;
 
     const seed = Math.floor(Math.random() * 1_000_000_000);
-    const exercise = generateExercise({ tier, region, bpm, seed });
+    let exercise: Exercise;
+    try {
+      exercise = generateExercise({ level: config, region, bpm, seed });
+    } catch (cause) {
+      setState({
+        ...INITIAL,
+        phase: 'error',
+        error: cause instanceof Error ? cause.message : String(cause),
+      });
+      return;
+    }
 
     samplesRef.current = [];
     onsetsRef.current = [];
@@ -114,9 +127,9 @@ export function useLesson(options: UseLessonOptions) {
         // stamped with, so windows and detections cannot drift apart.
         const schedule = buildSchedule(exercise, {
           startMs: session.context.currentTime * 1000 + leadInMs,
-          countInBars: tier.countInBars,
-          clickThroughExercise: tier.clickThroughExercise,
-          attackGuardMs: tier.scoring.attackGuardMs,
+          countInBars: config.countInBars,
+          clickThroughExercise: config.clickThroughExercise,
+          attackGuardMs: config.scoring.attackGuardMs,
         });
         scheduleRef.current = schedule;
         clicksRef.current = scheduleClicks(session.context, schedule.clicks);
@@ -146,7 +159,7 @@ export function useLesson(options: UseLessonOptions) {
       for (const window of schedule.windows) {
         if (now < window.endMs || scoredRef.current.has(window.index)) continue;
         scoredRef.current.add(window.index);
-        closed.push(scoreWindow(window, samples, tier.scoring));
+        closed.push(scoreWindow(window, samples, config.scoring));
       }
 
       const finished = now >= schedule.endMs;
@@ -164,7 +177,7 @@ export function useLesson(options: UseLessonOptions) {
           summary: finished ? summarise(results) : null,
           falseStart:
             prev.falseStart ??
-            detectFalseStart(samples, schedule, tier.scoring.confidenceGate),
+            detectFalseStart(samples, schedule, config.scoring.confidenceGate),
           livePitch: latestRef.current,
           onsetCount: onsetsRef.current.length,
           beatsUntilStart: beatsLeft,
@@ -177,7 +190,7 @@ export function useLesson(options: UseLessonOptions) {
       }
       frameRef.current = requestAnimationFrame(tick);
     }
-  }, [tier, region, bpm, leadInMs, teardown]);
+  }, [config, region, bpm, leadInMs, teardown]);
 
   useEffect(() => teardown, [teardown]);
 

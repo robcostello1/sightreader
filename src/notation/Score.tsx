@@ -15,6 +15,7 @@ import {
 } from 'vexflow/bravura';
 import { layoutExercise, midiToVexKey, soundingToWritten, type NotatedNote } from './layout';
 import type { Exercise, NoteResult } from '../lib/types';
+import type { MusicalKey } from '../lib/key';
 
 /** Rest position on the staff, by convention around the middle line. */
 const REST_KEY = 'b/4';
@@ -52,8 +53,15 @@ const COLOURS = {
  * headroom above and considerably more below, or the low strings get clipped.
  */
 const STAVE_TOP = 40;
-const HEIGHT = 210;
+/** Vertical pitch between systems when the music wraps onto several lines. */
+const SYSTEM_HEIGHT = 175;
 const FALLBACK_WIDTH = 720;
+/** Horizontal room a single note needs before it starts colliding. */
+const WIDTH_PER_NOTE = 34;
+const BAR_PADDING = 26;
+/** Clef, key signature and time signature on the first bar of a line. */
+const FIRST_BAR_EXTRA = 90;
+const MARGIN = 12;
 
 export interface ScoreProps {
   exercise: Exercise;
@@ -77,17 +85,16 @@ function colourFor(
   return result.verdict === 'unclear' ? COLOURS.unclear : COLOURS.fail;
 }
 
-function buildNote(notated: NotatedNote): StaveNote {
+function buildNote(notated: NotatedNote, key: MusicalKey): StaveNote {
   const isRest = notated.midi === null;
   // Sounding pitch in, written pitch on the page — see GUITAR_WRITTEN_OFFSET.
-  const spelled = isRest ? null : midiToVexKey(soundingToWritten(notated.midi!));
+  const spelled = isRest ? REST_KEY : midiToVexKey(soundingToWritten(notated.midi!), key);
 
   const note = new StaveNote({
-    keys: [spelled?.key ?? REST_KEY],
+    keys: [spelled],
     duration: isRest ? `${notated.code}r` : notated.code,
   });
 
-  if (spelled?.accidental) note.addModifier(new Accidental(spelled.accidental), 0);
   for (let i = 0; i < notated.dots; i++) Dot.buildAndAttach([note], { all: true });
 
   return note;
@@ -122,79 +129,113 @@ export function Score({ exercise, results, activeIndex, width }: ScoreProps) {
     host.replaceChildren();
 
     const bars = layoutExercise(exercise);
+
+    // Width is driven by how many notes a bar holds. Giving every bar an equal
+    // share crams the busy ones until their notes overlap the bar line.
+    const barMinWidth = (bar: (typeof bars)[number]) =>
+      BAR_PADDING + Math.max(1, bar.notes.length) * WIDTH_PER_NOTE;
+
+    // Pack bars into systems, wrapping rather than shrinking past legibility.
+    const systems: (typeof bars)[] = [];
+    let current: typeof bars = [];
+    let currentWidth = FIRST_BAR_EXTRA;
+    for (const bar of bars) {
+      const width = barMinWidth(bar);
+      if (current.length > 0 && currentWidth + width > renderWidth - MARGIN * 2) {
+        systems.push(current);
+        current = [];
+        currentWidth = FIRST_BAR_EXTRA;
+      }
+      current.push(bar);
+      currentWidth += width;
+    }
+    if (current.length > 0) systems.push(current);
+
     const renderer = new Renderer(host, Renderer.Backends.SVG);
-    renderer.resize(renderWidth, HEIGHT);
+    renderer.resize(renderWidth, STAVE_TOP + systems.length * SYSTEM_HEIGHT);
     const context = renderer.getContext();
 
-    // The first bar carries the clef and time signature, so it needs more room.
-    const firstExtra = 60;
-    const barWidth = (renderWidth - 20 - firstExtra) / bars.length;
+    /** Fragments of each source note, per system, so ties stay within a line. */
+    const drawn = new Map<number, { note: StaveNote; system: number }[]>();
 
-    const drawn = new Map<number, StaveNote[]>();
-    let x = 10;
+    systems.forEach((system, systemIndex) => {
+      const available = renderWidth - MARGIN * 2 - FIRST_BAR_EXTRA;
+      const minWidths = system.map(barMinWidth);
+      const totalMin = minWidths.reduce((sum, w) => sum + w, 0);
+      const y = STAVE_TOP + systemIndex * SYSTEM_HEIGHT;
+      let x = MARGIN;
 
-    for (const [barIndex, bar] of bars.entries()) {
-      const currentWidth = barWidth + (barIndex === 0 ? firstExtra : 0);
-      const stave = new Stave(x, STAVE_TOP, currentWidth);
-      // '8vb' is what makes the treble clef mean guitar pitch rather than
-      // concert pitch an octave higher.
-      if (barIndex === 0) {
-        stave
-          .addClef('treble', undefined, '8vb')
-          .addTimeSignature(exercise.timeSignature.join('/'));
-      }
-      stave.setContext(context).draw();
-      x += currentWidth;
+      system.forEach((bar, barIndex) => {
+        // Distribute the line's width in proportion to each bar's content.
+        const share = (minWidths[barIndex] / totalMin) * available;
+        const width = share + (barIndex === 0 ? FIRST_BAR_EXTRA : 0);
 
-      const notes = bar.notes.map((notated) => {
-        const note = buildNote(notated);
-        const colour = colourFor(notated.sourceIndex, results, activeIndex);
-        note.setStyle({ fillStyle: colour, strokeStyle: colour });
-        const existing = drawn.get(notated.sourceIndex) ?? [];
-        existing.push(note);
-        drawn.set(notated.sourceIndex, existing);
-        return note;
+        const stave = new Stave(x, y, width);
+        // Every system restates the clef and key, as a printed score does.
+        if (barIndex === 0) {
+          stave.addClef('treble', undefined, '8vb').addKeySignature(exercise.key.name);
+          if (systemIndex === 0) stave.addTimeSignature(exercise.timeSignature.join('/'));
+        }
+        stave.setContext(context).draw();
+        x += width;
+
+        const notes = bar.notes.map((notated) => {
+          const note = buildNote(notated, exercise.key);
+          const colour = colourFor(notated.sourceIndex, results, activeIndex);
+          note.setStyle({ fillStyle: colour, strokeStyle: colour });
+          const existing = drawn.get(notated.sourceIndex) ?? [];
+          existing.push({ note, system: systemIndex });
+          drawn.set(notated.sourceIndex, existing);
+          return note;
+        });
+        if (notes.length === 0) return;
+
+        const voice = new Voice({
+          numBeats: exercise.timeSignature[0],
+          beatValue: exercise.timeSignature[1],
+        });
+        // Soft mode: the final bar may be short while an exercise is built up.
+        voice.setMode(VoiceMode.SOFT);
+        voice.addTickables(notes);
+
+        // VexFlow decides which accidentals are actually needed, given the key
+        // signature and what has already been altered earlier in the bar. Adding
+        // them by hand would restate what the signature already says.
+        Accidental.applyAccidentals([voice], exercise.key.name);
+
+        // Beams and tuplets must be constructed BEFORE the voice is drawn.
+        // Building a Beam is what tells its notes to suppress their own flags —
+        // do it afterwards and every beamed note renders a beam *and* a flag.
+        const beams = Beam.generateBeams(notes);
+
+        const groups = new Map<number, { notes: StaveNote[]; num: number; inSpaceOf: number }>();
+        bar.notes.forEach((notated, i) => {
+          if (!notated.tuplet) return;
+          const { group, num, inSpaceOf } = notated.tuplet;
+          const entry = groups.get(group) ?? { notes: [], num, inSpaceOf };
+          entry.notes.push(notes[i]);
+          groups.set(group, entry);
+        });
+        const tuplets = [...groups.values()]
+          .filter((group) => group.notes.length === group.num)
+          .map(
+            (group) =>
+              new Tuplet(group.notes, { numNotes: group.num, notesOccupied: group.inSpaceOf }),
+          );
+
+        new Formatter().joinVoices([voice]).format([voice], width - BAR_PADDING - 20);
+        voice.draw(context, stave);
+        for (const beam of beams) beam.setContext(context).draw();
+        for (const tuplet of tuplets) tuplet.setContext(context).draw();
       });
-      if (notes.length === 0) continue;
+    });
 
-      const voice = new Voice({
-        numBeats: exercise.timeSignature[0],
-        beatValue: exercise.timeSignature[1],
-      });
-      // Soft mode: a bar can be short while an exercise is still being built up.
-      voice.setMode(VoiceMode.SOFT);
-      voice.addTickables(notes);
-
-      // Beams and tuplets must be constructed BEFORE the voice is drawn.
-      // Building a Beam is what tells its notes to suppress their own flags —
-      // do it afterwards and every beamed note renders a beam *and* a flag.
-      const beams = Beam.generateBeams(notes);
-
-      const groups = new Map<number, { notes: StaveNote[]; num: number; inSpaceOf: number }>();
-      bar.notes.forEach((notated, i) => {
-        if (!notated.tuplet) return;
-        const { group, num, inSpaceOf } = notated.tuplet;
-        const entry = groups.get(group) ?? { notes: [], num, inSpaceOf };
-        entry.notes.push(notes[i]);
-        groups.set(group, entry);
-      });
-      const tuplets = [...groups.values()]
-        .filter((group) => group.notes.length === group.num)
-        .map(
-          (group) =>
-            new Tuplet(group.notes, { numNotes: group.num, notesOccupied: group.inSpaceOf }),
-        );
-
-      new Formatter().joinVoices([voice]).format([voice], currentWidth - 40);
-      voice.draw(context, stave);
-      for (const beam of beams) beam.setContext(context).draw();
-      for (const tuplet of tuplets) tuplet.setContext(context).draw();
-    }
-
-    // Ties join the fragments of any note that crossed a bar line.
+    // Ties join the fragments of a note split across a bar line. A fragment that
+    // lands on the next system is left untied — VexFlow's tie assumes one stave.
     for (const fragments of drawn.values()) {
       for (let i = 0; i < fragments.length - 1; i++) {
-        new StaveTie({ firstNote: fragments[i], lastNote: fragments[i + 1] })
+        if (fragments[i].system !== fragments[i + 1].system) continue;
+        new StaveTie({ firstNote: fragments[i].note, lastNote: fragments[i + 1].note })
           .setContext(context)
           .draw();
       }

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TIERS } from '../config/tiers';
+import { levelConfig } from '../config/levels';
 import { midiToHz } from '../lib/pitch';
 import type { MicCaptureOptions, MicSession } from '../audio/capture';
 import type { PitchSample } from '../lib/types';
@@ -63,8 +63,11 @@ async function advanceTo(ms: number) {
   });
 }
 
-function renderLesson(tierId: 'simple' | 'medium' = 'simple') {
-  return renderHook(() => useLesson({ tier: TIERS[tierId], leadInMs: LEAD_IN }));
+const LEVEL = 1;
+const CONFIG = levelConfig(LEVEL);
+
+function renderLesson(level = LEVEL) {
+  return renderHook(() => useLesson({ level, leadInMs: LEAD_IN }));
 }
 
 async function startAndGetSchedule(result: { current: ReturnType<typeof useLesson> }) {
@@ -73,9 +76,9 @@ async function startAndGetSchedule(result: { current: ReturnType<typeof useLesso
   expect(result.current.phase).toBe('count-in');
   return buildSchedule(result.current.exercise!, {
     startMs: LEAD_IN,
-    countInBars: TIERS.simple.countInBars,
-    clickThroughExercise: TIERS.simple.clickThroughExercise,
-    attackGuardMs: TIERS.simple.scoring.attackGuardMs,
+    countInBars: CONFIG.countInBars,
+    clickThroughExercise: CONFIG.clickThroughExercise,
+    attackGuardMs: CONFIG.scoring.attackGuardMs,
   });
 }
 

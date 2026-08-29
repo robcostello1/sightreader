@@ -1,5 +1,5 @@
 import { matchesTarget, nearestMidi } from '../lib/pitch';
-import type { ScoringConfig } from '../config/tiers';
+import type { ScoringConfig } from '../config/levels';
 import type { Midi, NoteResult, NoteWindow, PitchSample } from '../lib/types';
 import type { Schedule } from '../scheduler/schedule';
 

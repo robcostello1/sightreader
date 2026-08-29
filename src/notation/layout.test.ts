@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GUITAR_WRITTEN_OFFSET, barDuration, layoutExercise, midiToVexKey, soundingToWritten } from './layout';
 import { generateExercise } from '../generator';
-import { TIERS } from '../config/tiers';
+import { keyByName } from '../lib/key';
 import { NOTE_VALUES } from '../lib/types';
 import type { Exercise, ExerciseNote } from '../lib/types';
 
@@ -13,18 +13,26 @@ const note = (value: number, midi: number | null = 60, extra: Partial<ExerciseNo
   ...extra,
 });
 
+const C_MAJOR = keyByName('C');
+
 const exercise = (notes: ExerciseNote[]): Exercise => ({
   notes,
   keyCenter: 60,
+  key: C_MAJOR,
   timeSignature: [4, 4],
   bpm: 60,
 });
 
 describe('midiToVexKey', () => {
-  it('formats naturals and sharps for VexFlow', () => {
-    expect(midiToVexKey(60)).toEqual({ key: 'c/4', accidental: null });
-    expect(midiToVexKey(61)).toEqual({ key: 'c#/4', accidental: '#' });
-    expect(midiToVexKey(40)).toEqual({ key: 'e/2', accidental: null });
+  it('formats pitches for VexFlow', () => {
+    expect(midiToVexKey(60, C_MAJOR)).toBe('c/4');
+    expect(midiToVexKey(61, C_MAJOR)).toBe('c#/4');
+    expect(midiToVexKey(40, C_MAJOR)).toBe('e/2');
+  });
+
+  it('spells according to the key, not the MIDI number', () => {
+    expect(midiToVexKey(70, keyByName('F'))).toBe('bb/4');
+    expect(midiToVexKey(70, keyByName('G'))).toBe('a#/4');
   });
 });
 
@@ -36,7 +44,7 @@ describe('guitar octave transposition', () => {
   });
 
   it('puts the open strings where a guitarist expects to read them', () => {
-    const written = [40, 45, 50, 55, 59, 64].map((m) => midiToVexKey(soundingToWritten(m)).key);
+    const written = [40, 45, 50, 55, 59, 64].map((m) => midiToVexKey(soundingToWritten(m), C_MAJOR));
     expect(written).toEqual(['e/3', 'a/3', 'd/4', 'g/4', 'b/4', 'e/5']);
   });
 });
@@ -107,7 +115,7 @@ describe('layoutExercise', () => {
 
   it('lays out every generated exercise without dropping duration', () => {
     for (let seed = 1; seed <= 60; seed++) {
-      const generated = generateExercise({ tier: TIERS.medium, seed });
+      const generated = generateExercise({ level: 6, seed });
       const bars = layoutExercise(generated);
       expect(bars.length).toBeGreaterThan(0);
       // Every source note reaches the page.
@@ -117,9 +125,16 @@ describe('layoutExercise', () => {
     }
   });
 
-  it('fills exactly two bars for a medium exercise', () => {
-    for (let seed = 1; seed <= 60; seed++) {
-      expect(layoutExercise(generateExercise({ tier: TIERS.medium, seed }))).toHaveLength(2);
+  it('lays every level out into whole bars', () => {
+    for (let level = 1; level <= 10; level++) {
+      for (let seed = 1; seed <= 20; seed++) {
+        const bars = layoutExercise(generateExercise({ level, seed }));
+        expect(bars.length).toBeGreaterThan(0);
+        // Bar indices are contiguous from the first — no gaps in the page.
+        expect(bars.map((b) => b.index)).toEqual(
+          bars.map((_, i) => bars[0].index + i),
+        );
+      }
     }
   });
 });

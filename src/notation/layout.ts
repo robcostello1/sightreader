@@ -1,5 +1,5 @@
 import { decompose, toNotated } from '../lib/duration';
-import { midiToName } from '../lib/pitch';
+import { spellInKey, type MusicalKey } from '../lib/key';
 import type { Exercise, Midi, NoteValue, TupletMembership } from '../lib/types';
 
 export interface NotatedNote {
@@ -35,16 +35,15 @@ export function soundingToWritten(midi: Midi): Midi {
   return midi + GUITAR_WRITTEN_OFFSET;
 }
 
-/** VexFlow key string plus the accidental it needs spelled out. Takes written pitch. */
-export function midiToVexKey(midi: Midi): { key: string; accidental: string | null } {
-  const parsed = /^([A-G])(#?)(-?\d+)$/.exec(midiToName(midi));
-  if (!parsed) throw new Error(`unrenderable pitch: ${midi}`);
-  const [, letter, sharp, octave] = parsed;
-  return {
-    key: `${letter.toLowerCase()}${sharp}/${octave}`,
-    // Everything is generated in C major, so any sharp is an accidental.
-    accidental: sharp ? '#' : null,
-  };
+/**
+ * VexFlow key string for a written pitch, spelled according to the key — B flat
+ * in F major, A sharp in G. VexFlow places the accidentals itself from the key
+ * signature, so none are named here.
+ */
+export function midiToVexKey(midi: Midi, key: MusicalKey): string {
+  const { letter, alter, octave } = spellInKey(midi, key);
+  const accidental = alter === 0 ? '' : alter > 0 ? '#'.repeat(alter) : 'b'.repeat(-alter);
+  return `${letter.toLowerCase()}${accidental}/${octave}`;
 }
 
 /** Whole-note units in one bar. */
@@ -101,6 +100,14 @@ export function layoutExercise(exercise: Exercise): NotatedBar[] {
       // A dotted value is one symbol, so only fall back to splitting when the
       // whole span cannot be drawn on its own.
       const parts = toNotated(take) ? [take] : decompose(take);
+      if (parts.length === 0) {
+        // Silently skipping would drop this note and every one after it, since
+        // the cursor would stop advancing. Fail where the cause is visible.
+        throw new Error(
+          `cannot notate duration ${take} at bar offset ${cursor % barSize} ` +
+            `(note ${sourceIndex}, value ${note.value})`,
+        );
+      }
       for (const part of parts) {
         const notated = toNotated(part);
         if (!notated) continue;

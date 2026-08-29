@@ -4,8 +4,10 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 // starts, so it loads out of band. The effect below warms it during the idle
 // screen, well before the count-in ends.
 const Score = lazy(() => import('../notation').then((m) => ({ default: m.Score })));
-import { TIERS, type TierId } from '../config/tiers';
-import { centsFromTarget, midiToName, nearestMidi } from '../lib/pitch';
+import { MAX_LEVEL, levelConfig, levelSummary } from '../config/levels';
+import { POSITIONS, fretRangeLabel, regionById, regionPool } from '../config/regions';
+import { midiToName } from '../lib/pitch';
+import { centsFromTarget, nearestMidi } from '../lib/pitch';
 import { useLesson } from './useLesson';
 import type { NoteResult } from '../lib/types';
 
@@ -63,9 +65,12 @@ function Results({ results, summary }: { results: readonly NoteResult[]; summary
 }
 
 export function Lesson() {
-  const [tierId, setTierId] = useState<TierId>('simple');
-  const tier = TIERS[tierId];
-  const lesson = useLesson({ tier });
+  const [level, setLevel] = useState(1);
+  const [regionId, setRegionId] = useState(POSITIONS[0].id);
+  const region = regionById(regionId);
+  const config = levelConfig(level);
+  const pool = regionPool(region);
+  const lesson = useLesson({ level, region });
   const running = lesson.phase === 'count-in' || lesson.phase === 'playing';
 
   useEffect(() => {
@@ -76,16 +81,28 @@ export function Lesson() {
     <>
       <section>
         <div className="controls">
+          <label className="level-control">
+            Level <strong>{level}</strong>
+            <input
+              type="range"
+              min={1}
+              max={MAX_LEVEL}
+              value={level}
+              onChange={(event) => setLevel(Number(event.target.value))}
+              disabled={running}
+            />
+          </label>
+
           <label>
-            Difficulty{' '}
+            Position{' '}
             <select
-              value={tierId}
-              onChange={(event) => setTierId(event.target.value as TierId)}
+              value={regionId}
+              onChange={(event) => setRegionId(event.target.value)}
               disabled={running}
             >
-              {Object.values(TIERS).map((option) => (
+              {POSITIONS.map((option) => (
                 <option key={option.id} value={option.id}>
-                  {option.name}
+                  {option.name} ({fretRangeLabel(option)})
                 </option>
               ))}
             </select>
@@ -102,6 +119,12 @@ export function Lesson() {
             </>
           )}
         </div>
+
+        <p className="muted level-summary">{levelSummary(config).join(' · ')}</p>
+        <p className="muted">
+          {region.name} — {fretRangeLabel(region)} · {pool.length} pitches,{' '}
+          {midiToName(pool[0])}–{midiToName(pool[pool.length - 1])}
+        </p>
 
         {lesson.phase === 'count-in' && (
           <p className="count-in">
@@ -120,7 +143,8 @@ export function Lesson() {
             />
           </Suspense>
           <p className="muted">
-            {tier.name} · {lesson.exercise.bpm} bpm · seed {lesson.seed}
+            Level {config.level} · {region.name} ({fretRangeLabel(region)}) ·{' '}
+            {lesson.exercise.key.name} major · {lesson.exercise.bpm} bpm · seed {lesson.seed}
           </p>
         </section>
       )}
@@ -130,7 +154,7 @@ export function Lesson() {
           <LivePitch
             hz={lesson.livePitch?.hz ?? null}
             confidence={lesson.livePitch?.confidence ?? 0}
-            gate={tier.scoring.confidenceGate}
+            gate={config.scoring.confidenceGate}
           />
           <p className="muted">Attacks detected: {lesson.onsetCount}</p>
           {lesson.falseStart && (

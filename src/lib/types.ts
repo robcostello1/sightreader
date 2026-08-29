@@ -1,3 +1,5 @@
+import type { MusicalKey } from './key';
+
 /**
  * Shared domain types. These define the seams between the modules described in
  * the design spec: audio -> scheduler -> scorer, and idioms -> generator ->
@@ -87,7 +89,10 @@ export interface ExerciseNote {
 
 export interface Exercise {
   notes: ExerciseNote[];
+  /** MIDI of the tonic, the anchor all scale-degree maths is relative to. */
   keyCenter: Midi;
+  /** The key itself, which drives both note spelling and the signature drawn. */
+  key: MusicalKey;
   timeSignature: [number, number];
   bpm: number;
 }

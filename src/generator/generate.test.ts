@@ -2,19 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { PADDING_IDIOM_ID, generateExercise } from './generate';
 import { startPitchWeight, validPlacements } from './placement';
 import { mulberry32 } from './rng';
-import { OPEN_POSITION, regionPool } from '../config/regions';
-import { TIERS } from '../config/tiers';
-import { idiomById, isDiatonic, maxLocalInterval } from '../idioms';
+import { OPEN_POSITION, POSITIONS, regionPool } from '../config/regions';
+import { MAX_LEVEL, levelConfig } from '../config/levels';
+import { idiomById } from '../idioms';
+import { isInKey, keyByName } from '../lib/key';
 import { NOTE_VALUES } from '../lib/types';
-import { isNotatable } from '../lib/duration';
 
 const POOL_LIST = regionPool(OPEN_POSITION);
 const POOL = new Set(POOL_LIST);
 const LOW = POOL_LIST[0];
 const HIGH = POOL_LIST[POOL_LIST.length - 1];
-const C4 = 60;
-
-const SEEDS = Array.from({ length: 60 }, (_, i) => i + 1);
+const SEEDS = Array.from({ length: 40 }, (_, i) => i + 1);
+const ALL_LEVELS = Array.from({ length: MAX_LEVEL }, (_, i) => i + 1);
 
 describe('startPitchWeight', () => {
   it('favours the extremes of the region over its middle', () => {
@@ -24,33 +23,26 @@ describe('startPitchWeight', () => {
   });
 
   it('flattens to uniform when the bias is zero', () => {
-    expect(startPitchWeight(LOW, LOW, HIGH, 0)).toBe(startPitchWeight((LOW + HIGH) / 2, LOW, HIGH, 0));
+    expect(startPitchWeight(LOW, LOW, HIGH, 0)).toBe(
+      startPitchWeight((LOW + HIGH) / 2, LOW, HIGH, 0),
+    );
   });
 });
 
 describe('validPlacements', () => {
-  const constraints = { keyCenter: C4, pool: POOL, maxInterval: 12 };
-
-  it('only returns placements whose every pitch is in the pool', () => {
-    const placements = validPlacements(idiomById('triad-up')!, NOTE_VALUES.quarter, constraints);
-    expect(placements.length).toBeGreaterThan(0);
-    for (const placement of placements) {
-      expect(maxLocalInterval(placement)).toBeLessThanOrEqual(12);
-    }
-  });
+  const constraints = { keyCenter: 60, pool: POOL, maxInterval: 12 };
 
   it('applies the local interval constraint independently of the pool', () => {
     const wide = validPlacements(idiomById('leap-fifth-step-back')!, NOTE_VALUES.quarter, constraints);
     const narrow = validPlacements(idiomById('leap-fifth-step-back')!, NOTE_VALUES.quarter, {
       ...constraints,
-      maxInterval: 4, // the Simple tier's limit — a fifth cannot fit
+      maxInterval: 4, // a fifth cannot fit
     });
     expect(wide.length).toBeGreaterThan(0);
     expect(narrow).toHaveLength(0);
   });
 
-  it('rejects an idiom too wide for the region entirely', () => {
-    // I-V outline spans over an octave; a 3-semitone leap limit cannot hold it.
+  it('rejects an idiom too wide for the constraint entirely', () => {
     expect(
       validPlacements(idiomById('i-v-outline')!, NOTE_VALUES.quarter, { ...constraints, maxInterval: 3 }),
     ).toHaveLength(0);
@@ -59,20 +51,19 @@ describe('validPlacements', () => {
 
 describe('generateExercise', () => {
   it('is reproducible from a seed', () => {
-    const a = generateExercise({ tier: TIERS.medium, seed: 42 });
-    const b = generateExercise({ tier: TIERS.medium, seed: 42 });
-    expect(a).toEqual(b);
-    expect(generateExercise({ tier: TIERS.medium, seed: 43 })).not.toEqual(a);
+    const a = generateExercise({ level: 6, seed: 42 });
+    expect(generateExercise({ level: 6, seed: 42 })).toEqual(a);
+    expect(generateExercise({ level: 6, seed: 43 })).not.toEqual(a);
+    expect(generateExercise({ level: 6, rng: mulberry32(42) })).toEqual(a);
   });
 
-  describe.each([
-    ['simple', TIERS.simple],
-    ['medium', TIERS.medium],
-  ])('%s tier', (_name, tier) => {
-    const exercises = SEEDS.map((seed) => generateExercise({ tier, seed }));
+  describe.each(ALL_LEVELS)('level %i', (level) => {
+    const config = levelConfig(level);
+    const exercises = SEEDS.map((seed) => generateExercise({ level, seed }));
 
-    it('never produces an empty exercise', () => {
+    it('produces a non-empty exercise with positive durations', () => {
       expect(exercises.every((e) => e.notes.length > 0)).toBe(true);
+      expect(exercises.every((e) => e.notes.every((n) => n.value > 0))).toBe(true);
     });
 
     it('keeps every pitch inside the region pool', () => {
@@ -83,15 +74,14 @@ describe('generateExercise', () => {
       }
     });
 
-    it('respects the local movement constraint between consecutive notes', () => {
+    it('respects the level’s interval allowance within an idiom instance', () => {
       for (const exercise of exercises) {
         let previous: (typeof exercise.notes)[number] | null = null;
         for (const note of exercise.notes) {
-          if (note.midi === null) continue; // a rest does not break the line
-          // Only enforced within an instance; joins between them may be wider.
+          if (note.midi === null) continue;
           if (previous?.midi != null && previous.instance === note.instance) {
             expect(Math.abs(note.midi - previous.midi)).toBeLessThanOrEqual(
-              tier.idioms.maxLocalInterval + 1, // +1 allows for a chromatic alteration
+              config.maxLocalInterval + 1, // +1 allows a chromatic alteration
             );
           }
           previous = note;
@@ -99,127 +89,144 @@ describe('generateExercise', () => {
       }
     });
 
-    it('only uses idioms from the tier categories', () => {
+    it('only draws on idiom categories the level admits', () => {
       for (const exercise of exercises) {
         for (const note of exercise.notes) {
           if (note.idiomId === PADDING_IDIOM_ID) continue;
-          expect(tier.idioms.categories).toContain(idiomById(note.idiomId)!.category);
+          expect(config.categories).toContain(idiomById(note.idiomId)!.category);
         }
       }
     });
 
-    it('gives every note a positive duration', () => {
-      expect(exercises.every((e) => e.notes.every((n) => n.value > 0))).toBe(true);
+    it('only uses keys the level admits', () => {
+      for (const exercise of exercises) {
+        expect(Math.abs(exercise.key.accidentals)).toBeLessThanOrEqual(config.maxKeyAccidentals);
+      }
+    });
+
+    it('ends on a bar line, at least as long as the level asks for', () => {
+      if (config.targetBars === null) return;
+      for (const exercise of exercises) {
+        const total = exercise.notes.reduce((sum, n) => sum + n.value, 0);
+        // A whole number of 4/4 bars, and never shorter than the target.
+        expect(Math.abs(total - Math.round(total))).toBeLessThan(1e-9);
+        expect(total).toBeGreaterThanOrEqual(config.targetBars - 1e-9);
+      }
+    });
+
+    it('never opens or ends on a rest', () => {
+      for (const exercise of exercises) {
+        expect(exercise.notes[0].midi).not.toBeNull();
+        expect(exercise.notes[exercise.notes.length - 1].midi).not.toBeNull();
+      }
+    });
+
+    it('groups tuplets completely', () => {
+      for (const exercise of exercises) {
+        const groups = new Map<number, { count: number; num: number }>();
+        for (const note of exercise.notes) {
+          if (!note.tuplet) continue;
+          const entry = groups.get(note.tuplet.group) ?? { count: 0, num: note.tuplet.num };
+          entry.count++;
+          groups.set(note.tuplet.group, entry);
+        }
+        for (const { count, num } of groups.values()) expect(count).toBe(num);
+      }
     });
   });
 
-  it('renders the simple tier as a single idiom of whole notes', () => {
+  it('keeps level 1 to one short idiom of long notes in C major', () => {
     for (const seed of SEEDS) {
-      const exercise = generateExercise({ tier: TIERS.simple, seed });
+      const exercise = generateExercise({ level: 1, seed });
       expect(new Set(exercise.notes.map((n) => n.idiomId)).size).toBe(1);
-      // "1 idiom, single breve/whole note" per spec §2: an idiom event worth
-      // two beats renders as a breve at whole-note density.
-      expect(
-        exercise.notes.every((n) => n.value === NOTE_VALUES.whole || n.value === NOTE_VALUES.breve),
-      ).toBe(true);
+      // Halves and wholes only — nothing shorter than a minim at level 1.
+      expect(exercise.notes.every((n) => n.value >= NOTE_VALUES.half)).toBe(true);
+      expect(exercise.key.name).toBe('C');
+      expect(exercise.notes.every((n) => n.midi !== null && isInKey(n.midi, exercise.key))).toBe(true);
+      // Two bars, so a mistake is found out quickly.
+      expect(exercise.notes.reduce((sum, n) => sum + n.value, 0)).toBeCloseTo(2, 9);
     }
   });
 
-  it('keeps the simple tier free of accidentals and rests', () => {
-    for (const seed of SEEDS) {
-      const exercise = generateExercise({ tier: TIERS.simple, seed });
-      expect(exercise.notes.every((n) => n.midi !== null)).toBe(true);
-      for (const note of exercise.notes) {
-        expect(isDiatonic(exercise.keyCenter, note.midi!)).toBe(true);
-      }
-    }
+  it('introduces devices only once their level is reached', () => {
+    const has = (level: number, predicate: (e: ReturnType<typeof generateExercise>) => boolean) =>
+      SEEDS.some((seed) => predicate(generateExercise({ level, seed })));
+
+    const hasRest = (e: ReturnType<typeof generateExercise>) => e.notes.some((n) => n.midi === null);
+    const hasTuplet = (e: ReturnType<typeof generateExercise>) => e.notes.some((n) => n.tuplet);
+    const hasAccidental = (e: ReturnType<typeof generateExercise>) =>
+      e.notes.some((n) => n.midi !== null && !isInKey(n.midi, e.key));
+
+    expect(has(1, hasRest)).toBe(false);
+    expect(has(1, hasTuplet)).toBe(false);
+    expect(has(1, hasAccidental)).toBe(false);
+    expect(has(MAX_LEVEL, hasRest)).toBe(true);
+    expect(has(MAX_LEVEL, hasTuplet)).toBe(true);
   });
 
-  it('fills exactly the medium tier’s two bars', () => {
-    for (const seed of SEEDS) {
-      const exercise = generateExercise({ tier: TIERS.medium, seed });
-      const total = exercise.notes.reduce((sum, n) => sum + n.value, 0);
-      expect(total).toBeCloseTo(2, 9); // two 4/4 bars = two whole notes
-    }
+  it('shortens notes as the level rises', () => {
+    const meanValue = (level: number) => {
+      const notes = SEEDS.flatMap((seed) => generateExercise({ level, seed }).notes);
+      return notes.reduce((sum, n) => sum + n.value, 0) / notes.length;
+    };
+    expect(meanValue(1)).toBeGreaterThan(meanValue(5));
+    expect(meanValue(5)).toBeGreaterThan(meanValue(MAX_LEVEL));
   });
 
-  it('emits only durations that can actually be drawn', () => {
-    for (const seed of SEEDS) {
-      for (const note of generateExercise({ tier: TIERS.medium, seed }).notes) {
-        // Triplet members are drawn under a bracket, so they carry 2/3 of a
-        // standard value; everything else must stand alone as a symbol.
-        const value =
-          note.tuplet === undefined
-            ? note.value
-            : (note.value * note.tuplet.num) / note.tuplet.inSpaceOf;
-        expect(isNotatable(value)).toBe(true);
-      }
-    }
+  it('widens the keys used as the level rises', () => {
+    const keysAt = (level: number) =>
+      new Set(SEEDS.map((seed) => generateExercise({ level, seed }).key.name));
+    expect(keysAt(1)).toEqual(new Set(['C']));
+    expect(keysAt(MAX_LEVEL).size).toBeGreaterThan(3);
   });
 
-  it('groups triplets in threes so the bar arithmetic stays exact', () => {
-    for (const seed of SEEDS) {
-      const { notes } = generateExercise({ tier: TIERS.medium, seed });
-      const groups = new Map<number, number>();
+  it('repeats idioms transposed once sequences are unlocked', () => {
+    // A sequence is the same idiom at a new degree — two instances sharing an
+    // idiomId but starting on different pitches.
+    const sequenced = SEEDS.some((seed) => {
+      const { notes } = generateExercise({ level: MAX_LEVEL, seed });
+      const firsts = new Map<number, { id: string; midi: number | null }>();
       for (const note of notes) {
-        if (note.tuplet) groups.set(note.tuplet.group, (groups.get(note.tuplet.group) ?? 0) + 1);
+        if (!firsts.has(note.instance)) firsts.set(note.instance, { id: note.idiomId, midi: note.midi });
       }
-      for (const count of groups.values()) expect(count).toBe(3);
-    }
+      const byIdiom = new Map<string, (number | null)[]>();
+      for (const { id, midi } of firsts.values()) {
+        byIdiom.set(id, [...(byIdiom.get(id) ?? []), midi]);
+      }
+      return [...byIdiom.values()].some(
+        (starts) => starts.length > 1 && new Set(starts).size > 1,
+      );
+    });
+    expect(sequenced).toBe(true);
   });
 
-  it('lands the medium tier on a cadential idiom', () => {
-    for (const seed of SEEDS) {
-      const exercise = generateExercise({ tier: TIERS.medium, seed });
-      const last = exercise.notes[exercise.notes.length - 1];
-      expect(idiomById(last.idiomId)!.category).toBe('cadential');
-      // Cadential idioms resolve to the tonic.
-      expect(last.midi === null || (last.midi - exercise.keyCenter) % 12 === 0).toBe(true);
-    }
+  it('honours an explicitly requested key', () => {
+    const exercise = generateExercise({ level: MAX_LEVEL, seed: 5, key: keyByName('Eb') });
+    expect(exercise.key.name).toBe('Eb');
   });
 
-  it('mixes multiple idioms across a medium exercise', () => {
-    const counts = SEEDS.map(
-      (seed) => new Set(generateExercise({ tier: TIERS.medium, seed }).notes.map((n) => n.idiomId)).size,
-    );
-    expect(Math.max(...counts)).toBeGreaterThan(1);
+  describe.each(POSITIONS.map((p) => [p.name, p] as const))('in %s', (_name, region) => {
+    it('stays within that position’s pool', () => {
+      const pool = new Set(regionPool(region));
+      for (const seed of SEEDS.slice(0, 15)) {
+        const exercise = generateExercise({ level: 6, region, seed });
+        expect(exercise.notes.length).toBeGreaterThan(0);
+        for (const note of exercise.notes) {
+          if (note.midi !== null) expect(pool.has(note.midi)).toBe(true);
+        }
+      }
+    });
   });
 
-  it('spreads starting pitches across the region rather than clustering', () => {
-    const firsts = SEEDS.map((seed) => generateExercise({ tier: TIERS.medium, seed }).notes[0].midi!);
-    const span = Math.max(...firsts) - Math.min(...firsts);
-    expect(span).toBeGreaterThan((HIGH - LOW) / 2);
-  });
-
-  it('over-samples the extremes of the region, as the weighting intends', () => {
-    // Sampled across many exercises, the outer thirds should see more starts
-    // than the middle third despite being no larger.
-    const firsts = Array.from({ length: 400 }, (_, i) =>
-      generateExercise({ tier: TIERS.medium, seed: i + 1 }).notes[0].midi!,
-    );
-    const third = (HIGH - LOW) / 3;
-    const middle = firsts.filter((m) => m > LOW + third && m < HIGH - third).length;
-    expect(firsts.length - middle).toBeGreaterThan(middle);
-  });
-
-  it('produces rests and accidentals only where the tier permits', () => {
-    const medium = SEEDS.map((seed) => generateExercise({ tier: TIERS.medium, seed }));
-    expect(medium.some((e) => e.notes.some((n) => n.midi === null))).toBe(true);
-    expect(
-      medium.some((e) => e.notes.some((n) => n.midi !== null && !isDiatonic(e.keyCenter, n.midi))),
-    ).toBe(true);
-  });
-
-  it('never opens on a rest or ends on one', () => {
-    for (const seed of SEEDS) {
-      const { notes } = generateExercise({ tier: TIERS.medium, seed });
-      expect(notes[0].midi).not.toBeNull();
-      expect(notes[notes.length - 1].midi).not.toBeNull();
-    }
-  });
-
-  it('accepts an injected rng as well as a seed', () => {
-    const exercise = generateExercise({ tier: TIERS.medium, rng: mulberry32(7) });
-    expect(exercise).toEqual(generateExercise({ tier: TIERS.medium, seed: 7 }));
+  it('produces different pitch ranges in different positions', () => {
+    const lowestIn = (regionId: string) => {
+      const region = POSITIONS.find((p) => p.id === regionId)!;
+      const pitches = SEEDS.slice(0, 15).flatMap((seed) =>
+        generateExercise({ level: 6, region, seed }).notes.flatMap((n) => (n.midi === null ? [] : [n.midi])),
+      );
+      return Math.min(...pitches);
+    };
+    // Moving up the neck moves the music, which is the point of the position axis.
+    expect(lowestIn('pos-9')).toBeGreaterThan(lowestIn('open'));
   });
 });

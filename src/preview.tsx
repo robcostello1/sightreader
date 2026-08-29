@@ -2,33 +2,31 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Score } from './notation';
 import { generateExercise } from './generator';
-import { TIERS, type TierId } from './config/tiers';
+import { levelConfig, levelSummary } from './config/levels';
+import { POSITIONS } from './config/regions';
 import './index.css';
 
 /**
  * Dev-only page for eyeballing notation across tiers and seeds without playing
  * through a lesson. Served at /preview.html in dev; not part of the build.
  */
-const SAMPLES: { tier: TierId; seed: number }[] = [
-  { tier: 'simple', seed: 222685567 },
-  { tier: 'simple', seed: 7 },
-  { tier: 'medium', seed: 42 },
-  { tier: 'medium', seed: 3 },
-  { tier: 'medium', seed: 11 },
-];
+const SAMPLES = Array.from({ length: 10 }, (_, i) => ({ level: i + 1, seed: 42 }));
 
 // eslint-disable-next-line react/only-export-components -- dev-only entry point
 function Preview() {
   return (
     <main>
       <h1>Notation preview</h1>
-      {SAMPLES.map(({ tier, seed }) => {
-        const exercise = generateExercise({ tier: TIERS[tier], seed });
+      {SAMPLES.map(({ level, seed }) => {
+        const config = levelConfig(level);
+        const exercise = generateExercise({ level: config, region: POSITIONS[0], seed });
         return (
-          <section key={`${tier}-${seed}`}>
+          <section key={level}>
             <p className="muted">
-              {TIERS[tier].name} · seed {seed} · {exercise.notes.length} notes
+              <strong>Level {level}</strong> · {exercise.key.name} major ·{' '}
+              {exercise.notes.length} notes
             </p>
+            <p className="muted">{levelSummary(config).join(' · ')}</p>
             <Score exercise={exercise} />
           </section>
         );

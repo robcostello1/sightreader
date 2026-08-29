@@ -8,6 +8,7 @@ import {
 } from './schedule';
 import { NOTE_VALUES } from '../lib/types';
 import type { Exercise, ExerciseNote, PitchSample } from '../lib/types';
+import { keyByName } from '../lib/key';
 
 const note = (value: number, midi: number | null = 60): ExerciseNote => ({
   midi,
@@ -17,7 +18,7 @@ const note = (value: number, midi: number | null = 60): ExerciseNote => ({
 });
 
 function exercise(notes: ExerciseNote[], bpm = 60): Exercise {
-  return { notes, keyCenter: 60, timeSignature: [4, 4], bpm };
+  return { notes, keyCenter: 60, key: keyByName('C'), timeSignature: [4, 4], bpm };
 }
 
 const OPTIONS = {

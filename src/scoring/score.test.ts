@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { expectedSampleCount, scoreExercise, scoreWindow, summarise } from './score';
 import { buildSchedule } from '../scheduler/schedule';
-import { DEFAULT_SCORING } from '../config/tiers';
+import { DEFAULT_SCORING } from '../config/levels';
 import { midiToHz } from '../lib/pitch';
 import { NOTE_VALUES } from '../lib/types';
+import { keyByName } from '../lib/key';
 import type { Exercise, ExerciseNote, NoteWindow, PitchSample } from '../lib/types';
 
 const HOP_MS = 512 / 44.1;
@@ -16,7 +17,7 @@ const note = (value: number, midi: number | null = 60): ExerciseNote => ({
 });
 
 function exercise(notes: ExerciseNote[], bpm = 60): Exercise {
-  return { notes, keyCenter: 60, timeSignature: [4, 4], bpm };
+  return { notes, keyCenter: 60, key: keyByName('C'), timeSignature: [4, 4], bpm };
 }
 
 const SCHEDULE_OPTIONS = {

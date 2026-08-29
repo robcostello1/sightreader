@@ -117,3 +117,17 @@ select {
 [role='alert'] {
   color: #d1495b;
 }
+
+.level-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.level-control input[type='range'] {
+  width: 12rem;
+}
+
+.level-summary {
+  margin-top: 0.75rem;
+}

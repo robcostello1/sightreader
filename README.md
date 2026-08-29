@@ -71,6 +71,25 @@ dev server works without extra setup.
 8. ~~Difficulty tier wiring~~ ✅
 9. ~~Lesson UI~~ ✅
 
+## Difficulty
+
+Ten levels, with every continuous parameter **interpolated** rather than
+stepped, so no single level is a cliff. Each device ramps in at its own level
+and grows from there: note values get shorter *and* more likely, rests from
+level 3, triplets from 4 (quintuplets from 9), transposed sequences from 4,
+accidentals from 6, keys widening from level 3, and leaps from 2 to 12
+semitones across the range.
+
+Exercises stay short on purpose — two bars at level 1, four from the middle up.
+What grows with level is how many notes fit in a bar, not how long you wait to
+find out whether you read it right.
+
+**Fretboard position is a separate axis, not part of the level.** Moving up the
+neck changes *what* you are practising — the same notes in a new place — rather
+than how hard the reading is, so it is chosen independently. Positions are named
+for the fret the index finger sits on and span four frets; open position is the
+exception, being open strings plus the first four frets.
+
 ## Key design decisions
 
 - **Pitch detection is swappable.** v1 uses YIN/autocorrelation via `pitchy`.
@@ -84,6 +103,9 @@ dev server works without extra setup.
 - **Difficulty dials are independent.** Idiom complexity, rhythmic density and
   fretboard region are gated separately, so a learner struggling with
   pattern-reading can be told apart from one struggling with tempo.
+- **Notes are spelled by key, not by MIDI number** — B flat in F major, A sharp
+  in G. VexFlow places the accidentals itself from the key signature, so we
+  never restate what the signature already says.
 - **Guitar is written an octave above where it sounds**, on a treble clef
   marked with an 8 below it. The low E string sounds E2 but is written E3.
   Everything else — detection, scoring, the region pool — works in sounding
