@@ -1,6 +1,6 @@
 import { matchesTarget, nearestMidi } from '../lib/pitch';
 import type { ScoringConfig } from '../config/levels';
-import type { Midi, NoteResult, NoteWindow, PitchSample } from '../lib/types';
+import type { Midi, NoteResult, NoteValue, NoteWindow, PitchSample } from '../lib/types';
 import type { Schedule } from '../scheduler/schedule';
 
 /**
@@ -10,6 +10,25 @@ import type { Schedule } from '../scheduler/schedule';
  */
 export function expectedSampleCount(window: NoteWindow, hopMs: number): number {
   return Math.floor((window.endMs - window.scoreFromMs) / hopMs);
+}
+
+/**
+ * Whether a note of this value can be scored at all at this tempo.
+ *
+ * The attack guard eats the head of every window and the detector only reports
+ * once per hop, so past a certain tempo a short note leaves too few samples to
+ * judge. That is a real ceiling on the tempo/note-value combination, not a
+ * failure by the player — surfacing it beats quietly returning 'unscorable'.
+ */
+export function isScorableAtTempo(
+  value: NoteValue,
+  beatUnit: number,
+  bpm: number,
+  config: ScoringConfig,
+  hopMs: number,
+): boolean {
+  const durationMs = value * beatUnit * (60_000 / bpm);
+  return Math.floor((durationMs - config.attackGuardMs) / hopMs) >= config.minSamples;
 }
 
 /** Share of confident samples sitting on each detected semitone. */

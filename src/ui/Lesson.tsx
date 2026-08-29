@@ -5,7 +5,10 @@ import {
   conceptsIntroducedAt,
   levelBrief,
   levelConfig,
+  shortestNoteValue,
 } from '../config/levels';
+import { isScorableAtTempo } from '../scoring';
+import { NOMINAL_HOP_MS } from '../audio';
 import { POSITIONS, fretRangeLabel, regionById, regionPool } from '../config/regions';
 import { DEFAULT_PROGRESSION, progressionState } from '../config/progression';
 import { loadSetting, saveSetting } from '../lib/storage';
@@ -32,6 +35,15 @@ const readLevel = (value: unknown) => (typeof value === 'number' ? clampLevel(va
 const readRegionId = (value: unknown) =>
   typeof value === 'string' && POSITIONS.some((p) => p.id === value) ? value : null;
 const readFlag = (value: unknown) => (typeof value === 'boolean' ? value : null);
+
+export const MIN_BPM = 60;
+export const MAX_BPM = 240;
+
+export function clampBpm(bpm: number): number {
+  return Math.min(MAX_BPM, Math.max(MIN_BPM, Math.round(bpm / 5) * 5));
+}
+
+const readBpm = (value: unknown) => (typeof value === 'number' ? clampBpm(value) : null);
 
 function LivePitch({
   hz,
@@ -98,19 +110,30 @@ export function Lesson() {
     loadSetting('position', readRegionId, POSITIONS[0].id),
   );
   const [autoAdvance, setAutoAdvance] = useState(() => loadSetting('autoAdvance', readFlag, true));
+  const [bpm, setBpm] = useState(() => loadSetting('bpm', readBpm, MIN_BPM));
 
   useEffect(() => saveSetting('level', level), [level]);
   useEffect(() => saveSetting('position', regionId), [regionId]);
   useEffect(() => saveSetting('autoAdvance', autoAdvance), [autoAdvance]);
+  useEffect(() => saveSetting('bpm', bpm), [bpm]);
 
   const region = regionById(regionId);
   const config = levelConfig(level);
   const brief = levelBrief(level);
   const pool = regionPool(region);
+  // The detector only reports once per hop, so past a certain tempo the level's
+  // shortest note leaves too few samples to judge.
+  const tempoTooFast = !isScorableAtTempo(
+    shortestNoteValue(config),
+    config.timeSignature[1],
+    bpm,
+    config.scoring,
+    NOMINAL_HOP_MS,
+  );
 
   // Advancement is gated on the same pass/fail scores used for feedback — no
   // separate mastery signal (spec §7).
-  const lesson = useLesson({ level, region, autoAdvance, onAdvance: setLevel });
+  const lesson = useLesson({ level, region, bpm, autoAdvance, onAdvance: setLevel });
   const progress = progressionState(level, lesson.history);
 
   const running = lesson.phase === 'count-in' || lesson.phase === 'playing';
@@ -214,6 +237,27 @@ export function Lesson() {
               disabled={running}
             />
           </label>
+
+          <label className="field">
+            <span className="field-label">
+              Tempo <strong>{bpm}</strong> bpm
+            </span>
+            <input
+              type="range"
+              min={MIN_BPM}
+              max={MAX_BPM}
+              step={5}
+              value={bpm}
+              onChange={(event) => setBpm(Number(event.target.value))}
+              disabled={running}
+            />
+          </label>
+          {tempoTooFast && (
+            <p className="muted small" role="alert">
+              Too fast to score this level’s shortest notes — they will come back
+              as “too short to score”.
+            </p>
+          )}
 
           <label className="field">
             <span className="field-label">Position</span>

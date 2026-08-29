@@ -181,6 +181,20 @@ export function levelConfig(rawLevel: number): LevelConfig {
   };
 }
 
+/**
+ * Shortest note the level can produce, tuplets included — a triplet quaver is
+ * two thirds of a quaver. This is what a tempo has to be fast enough to still
+ * leave scorable.
+ */
+export function shortestNoteValue(config: LevelConfig): NoteValue {
+  const plain = Math.min(...config.noteValues.map((entry) => entry.value));
+  const tightest = config.tupletRatios.reduce(
+    (ratio, tuplet) => Math.min(ratio, tuplet.inSpaceOf / tuplet.num),
+    1,
+  );
+  return plain * tightest;
+}
+
 export interface Introduction {
   label: string;
   /** How far in, 0–1. Shown so a learner can see something arriving. */

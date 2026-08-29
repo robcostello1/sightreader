@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { expectedSampleCount, scoreExercise, scoreWindow, summarise } from './score';
+import {
+  expectedSampleCount,
+  isScorableAtTempo,
+  scoreExercise,
+  scoreWindow,
+  summarise,
+} from './score';
 import { buildSchedule } from '../scheduler/schedule';
 import { DEFAULT_SCORING } from '../config/levels';
 import { midiToHz } from '../lib/pitch';
@@ -149,6 +155,38 @@ describe('rests', () => {
     const strict = { ...DEFAULT_SCORING, penaliseSustainThroughRest: true };
     expect(scoreWindow(window, fillZone(window, played(60)), strict).passed).toBe(false);
     expect(scoreWindow(window, fillZone(window, () => ({})), strict).passed).toBe(true);
+  });
+});
+
+describe('isScorableAtTempo', () => {
+  const scorable = (value: number, bpm: number) =>
+    isScorableAtTempo(value, 4, bpm, DEFAULT_SCORING, HOP_MS);
+
+  it('accepts ordinary note values at ordinary tempos', () => {
+    expect(scorable(NOTE_VALUES.quarter, 60)).toBe(true);
+    expect(scorable(NOTE_VALUES.eighth, 120)).toBe(true);
+  });
+
+  it('rejects notes too brief for the hop rate', () => {
+    // The attack guard eats the head of the window and the detector reports
+    // once per hop, so a semiquaver at 240 has almost nothing left to judge.
+    expect(scorable(NOTE_VALUES.sixteenth, 240)).toBe(false);
+  });
+
+  it('is a tempo ceiling, not a cliff at one value', () => {
+    expect(scorable(NOTE_VALUES.sixteenth, 120)).toBe(true);
+    expect(scorable(NOTE_VALUES.sixteenth, 200)).toBe(false);
+  });
+
+  it('agrees with what the scorer actually does', () => {
+    // A window the helper calls unscorable must really come back unscorable.
+    const fast = exercise([note(NOTE_VALUES.sixteenth)], 240);
+    const window = buildSchedule(fast, SCHEDULE_OPTIONS).windows[0];
+    expect(scorable(NOTE_VALUES.sixteenth, 240)).toBe(false);
+    expect(expectedSampleCount(window, HOP_MS)).toBeLessThan(DEFAULT_SCORING.minSamples);
+    expect(scoreWindow(window, fillZone(window, played(60)), DEFAULT_SCORING).verdict).toBe(
+      'unscorable',
+    );
   });
 });
 

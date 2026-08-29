@@ -12,6 +12,13 @@ export interface StopMessage {
   type: 'stop';
 }
 
+/**
+ * Hop length at 44.1kHz, for reasoning about scorability before a microphone is
+ * open and the real rate is known. Hardware may differ; this is only used for
+ * advice, never for scoring.
+ */
+export const NOMINAL_HOP_MS = 512 / 44.1;
+
 /** Everything the worklet posts back, tagged so the two streams stay distinct. */
 export type WorkletMessage =
   | { type: 'pitch'; sample: PitchSample }

@@ -7,6 +7,7 @@ import {
   levelBrief,
   levelConfig,
   levelSummary,
+  shortestNoteValue,
 } from './levels';
 
 describe('level ramp', () => {
@@ -38,6 +39,20 @@ describe('level ramp', () => {
     expect(bars).toEqual([...bars].sort((a, b) => a - b));
     expect(bars[0]).toBe(2);
     expect(bars[MAX_LEVEL - 1]).toBe(4);
+  });
+});
+
+describe('shortestNoteValue', () => {
+  it('is the shortest plain value when no tuplets are in play', () => {
+    expect(shortestNoteValue(levelConfig(1))).toBe(0.5); // half notes
+  });
+
+  it('accounts for tuplets, which are shorter than they look', () => {
+    // A triplet quaver is two thirds of a quaver, so the tempo ceiling is lower
+    // than the plain note values suggest.
+    const config = levelConfig(MAX_LEVEL);
+    const plain = Math.min(...config.noteValues.map((v) => v.value));
+    expect(shortestNoteValue(config)).toBeLessThan(plain);
   });
 });
 

@@ -8,5 +8,6 @@ export { PitchyDetector, computeRms, DEFAULT_FRAME_SIZE, DEFAULT_HOP_SIZE } from
 export type { PitchyDetectorOptions } from './detector';
 export { SpectralFluxOnsetDetector, ONSET_PRESETS, DEFAULT_ONSET_WINDOW } from './onset';
 export type { OnsetDetectorOptions, InstrumentPreset } from './onset';
+export { NOMINAL_HOP_MS } from './constants';
 export { PITCH_PROCESSOR_NAME } from './constants';
 export type { WorkletMessage } from './constants';

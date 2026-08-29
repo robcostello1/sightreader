@@ -182,6 +182,23 @@ describe('useLesson', () => {
     expect(result.current.summary!.accuracy).toBe(0);
   });
 
+  it('uses the requested tempo for the exercise and its count-in', async () => {
+    const { result } = renderHook(() => useLesson({ level: 1, bpm: 120, leadInMs: LEAD_IN }));
+    act(() => result.current.start());
+    await flush();
+
+    expect(result.current.exercise!.bpm).toBe(120);
+    const schedule = buildSchedule(result.current.exercise!, {
+      startMs: LEAD_IN,
+      countInBars: CONFIG.countInBars,
+      clickThroughExercise: false,
+      attackGuardMs: CONFIG.scoring.attackGuardMs,
+    });
+    // Four beats of count-in at 120bpm is two seconds, half of what 60 gives.
+    expect(schedule.t0 - schedule.startMs).toBeCloseTo(2000, 6);
+    expect(schedule.beatMs).toBe(500);
+  });
+
   it('ignores anything played during the count-in', async () => {
     const { result } = renderLesson();
     const schedule = await startAndGetSchedule(result);
