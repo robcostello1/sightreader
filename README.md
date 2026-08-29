@@ -14,10 +14,11 @@ random notes. See `docs/spec.md` for the full design.
 
 ## Status
 
-Build order steps 1-2 are done: mic capture through an AudioWorklet to a
-confidence-scored pitch stream, plus spectral-flux onset detection. The domain types, fretboard region model and
-difficulty tier config are in place. The scheduler, scorer, generator and
-notation rendering are not yet implemented.
+Build order steps 1-3 are done: mic capture through an AudioWorklet to a
+confidence-scored pitch stream, spectral-flux onset detection, and the
+tempo/count-in scheduler. The domain types, fretboard region model and
+difficulty tier config are in place. The scorer, generator and notation
+rendering are not yet implemented.
 
 `npm run dev` gives a live pitch readout (note name, Hz, cents, confidence)
 to sanity-check the pipeline against a real guitar.
@@ -62,7 +63,7 @@ dev server works without extra setup.
 
 1. ~~Audio pipeline — mic → AudioWorklet → pitch stream with confidence values~~ ✅
 2. ~~Onset detection (spectral flux)~~ ✅
-3. Tempo/count-in scheduler producing note-window timestamps
+3. ~~Tempo/count-in scheduler producing note-window timestamps~~ ✅
 4. Windowed occupancy scorer consuming the pitch stream
 5. Idiom data model + a handful of hardcoded idioms
 6. Procedural exercise generator
