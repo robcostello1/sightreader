@@ -1,17 +1,22 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
+import {
+  MAX_LEVEL,
+  clampLevel,
+  conceptsIntroducedAt,
+  levelBrief,
+  levelConfig,
+} from '../config/levels';
+import { POSITIONS, fretRangeLabel, regionById, regionPool } from '../config/regions';
+import { DEFAULT_PROGRESSION, progressionState } from '../config/progression';
+import { loadSetting, saveSetting } from '../lib/storage';
+import { centsFromTarget, midiToName, nearestMidi } from '../lib/pitch';
+import { useLesson } from './useLesson';
+import type { NoteResult } from '../lib/types';
 
 // VexFlow is the bulk of the bundle and nothing is notated until a lesson
 // starts, so it loads out of band. The effect below warms it during the idle
 // screen, well before the count-in ends.
 const Score = lazy(() => import('../notation').then((m) => ({ default: m.Score })));
-import { MAX_LEVEL, clampLevel, levelConfig, levelSummary } from '../config/levels';
-import { loadSetting, saveSetting } from '../lib/storage';
-import { DEFAULT_PROGRESSION, progressionState } from '../config/progression';
-import { POSITIONS, fretRangeLabel, regionById, regionPool } from '../config/regions';
-import { midiToName } from '../lib/pitch';
-import { centsFromTarget, nearestMidi } from '../lib/pitch';
-import { useLesson } from './useLesson';
-import type { NoteResult } from '../lib/types';
 
 const VERDICT_LABELS: Record<NoteResult['verdict'], string> = {
   pass: 'correct',
@@ -20,6 +25,12 @@ const VERDICT_LABELS: Record<NoteResult['verdict'], string> = {
   unclear: 'unclear — more than one string sounding',
   unscorable: 'too short to score at this tempo',
 };
+
+/** Stored settings are validated on read — see loadSetting. */
+const readLevel = (value: unknown) => (typeof value === 'number' ? clampLevel(value) : null);
+const readRegionId = (value: unknown) =>
+  typeof value === 'string' && POSITIONS.some((p) => p.id === value) ? value : null;
+const readFlag = (value: unknown) => (typeof value === 'boolean' ? value : null);
 
 function LivePitch({ hz, confidence, gate }: { hz: number | null; confidence: number; gate: number }) {
   const confident = hz !== null && confidence >= gate;
@@ -38,13 +49,18 @@ function LivePitch({ hz, confidence, gate }: { hz: number | null; confidence: nu
   );
 }
 
-function Results({ results, summary }: { results: readonly NoteResult[]; summary: { passed: number; total: number; accuracy: number; unscorable: number } }) {
+function Results({
+  results,
+  summary,
+}: {
+  results: readonly NoteResult[];
+  summary: { passed: number; total: number; accuracy: number; unscorable: number };
+}) {
   const failures = results.filter((r) => !r.passed);
   return (
-    <section>
-      <h2>Results</h2>
+    <div>
       <p className="score-line">
-        {summary.passed} of {summary.total - summary.unscorable} scorable notes correct —{' '}
+        {summary.passed} of {summary.total - summary.unscorable} correct —{' '}
         <strong>{Math.round(summary.accuracy * 100)}%</strong>
         {summary.unscorable > 0 && (
           <span className="muted"> ({summary.unscorable} too short to score)</span>
@@ -52,34 +68,23 @@ function Results({ results, summary }: { results: readonly NoteResult[]; summary
       </p>
       {failures.length > 0 && (
         <ul className="failures">
-          {failures.map((result) => (
+          {failures.slice(0, 6).map((result) => (
             <li key={result.index}>
               Note {result.index + 1}: {VERDICT_LABELS[result.verdict]}
-              {result.verdict !== 'silence' && result.verdict !== 'unscorable' && (
-                <span className="muted"> ({Math.round(result.occupancy * 100)}% on target)</span>
-              )}
             </li>
           ))}
         </ul>
       )}
-    </section>
+    </div>
   );
 }
-
-/** Stored settings are validated on read — see loadSetting. */
-const readLevel = (value: unknown) => (typeof value === 'number' ? clampLevel(value) : null);
-const readRegionId = (value: unknown) =>
-  typeof value === 'string' && POSITIONS.some((p) => p.id === value) ? value : null;
-const readFlag = (value: unknown) => (typeof value === 'boolean' ? value : null);
 
 export function Lesson() {
   const [level, setLevel] = useState(() => loadSetting('level', readLevel, 1));
   const [regionId, setRegionId] = useState(() =>
     loadSetting('position', readRegionId, POSITIONS[0].id),
   );
-  const [autoAdvance, setAutoAdvance] = useState(() =>
-    loadSetting('autoAdvance', readFlag, true),
-  );
+  const [autoAdvance, setAutoAdvance] = useState(() => loadSetting('autoAdvance', readFlag, true));
 
   useEffect(() => saveSetting('level', level), [level]);
   useEffect(() => saveSetting('position', regionId), [regionId]);
@@ -87,11 +92,14 @@ export function Lesson() {
 
   const region = regionById(regionId);
   const config = levelConfig(level);
+  const brief = levelBrief(level);
   const pool = regionPool(region);
+
   // Advancement is gated on the same pass/fail scores used for feedback — no
   // separate mastery signal (spec §7).
   const lesson = useLesson({ level, region, autoAdvance, onAdvance: setLevel });
   const progress = progressionState(level, lesson.history);
+
   const running = lesson.phase === 'count-in' || lesson.phase === 'playing';
   const listening = running || lesson.phase === 'results';
 
@@ -100,11 +108,88 @@ export function Lesson() {
   }, []);
 
   return (
-    <>
-      <section>
-        <div className="controls">
-          <label className="level-control">
-            Level <strong>{level.toFixed(1)}</strong>
+    <div className="layout">
+      <div className="stage">
+        {lesson.milestone !== null ? (
+          <section className="milestone">
+            <h2>Level {lesson.milestone}</h2>
+            <p>Now introducing:</p>
+            <ul>
+              {conceptsIntroducedAt(lesson.milestone).map((concept) => (
+                <li key={concept}>{concept}</li>
+              ))}
+            </ul>
+            <p className="muted">These start appearing gradually, not all at once.</p>
+            <button onClick={lesson.acknowledgeMilestone}>Continue</button>
+          </section>
+        ) : (
+          <>
+            <div className="stage-controls">
+              {lesson.phase === 'idle' && (
+                <button className="primary" onClick={lesson.start}>
+                  Start
+                </button>
+              )}
+              {lesson.phase === 'arming' && <span className="muted">Requesting microphone…</span>}
+              {listening && <button onClick={lesson.stop}>Stop</button>}
+              {lesson.phase === 'results' && !autoAdvance && (
+                <button className="primary" onClick={lesson.start}>
+                  Next
+                </button>
+              )}
+              {lesson.phase === 'error' && (
+                <>
+                  <span role="alert">Could not start: {lesson.error}</span>
+                  <button onClick={lesson.start}>Retry</button>
+                </>
+              )}
+              {lesson.phase === 'count-in' && (
+                <span className="count-in">
+                  Count-in <strong>{lesson.beatsUntilStart}</strong>
+                </span>
+              )}
+            </div>
+
+            {lesson.exercise && (
+              <Suspense fallback={<p className="muted">Loading notation…</p>}>
+                <Score
+                  exercise={lesson.exercise}
+                  results={lesson.results}
+                  activeIndex={lesson.activeIndex ?? undefined}
+                />
+              </Suspense>
+            )}
+
+            {running && (
+              <>
+                <LivePitch
+                  hz={lesson.livePitch?.hz ?? null}
+                  confidence={lesson.livePitch?.confidence ?? 0}
+                  gate={config.scoring.confidenceGate}
+                />
+                {lesson.falseStart && (
+                  <p role="alert" className="muted">
+                    False start — you played during the count-in.
+                  </p>
+                )}
+              </>
+            )}
+
+            {lesson.phase === 'results' && lesson.summary && (
+              <Results results={lesson.results} summary={lesson.summary} />
+            )}
+          </>
+        )}
+      </div>
+
+      <aside className="sidebar">
+        <section>
+          <h2>Config</h2>
+
+          <label className="field">
+            <span className="field-label">
+              Level <strong>{level.toFixed(1)}</strong>
+            </span>
             <input
               type="range"
               min={1}
@@ -118,8 +203,8 @@ export function Lesson() {
             />
           </label>
 
-          <label>
-            Position{' '}
+          <label className="field">
+            <span className="field-label">Position</span>
             <select
               value={regionId}
               onChange={(event) => setRegionId(event.target.value)}
@@ -127,11 +212,15 @@ export function Lesson() {
             >
               {POSITIONS.map((option) => (
                 <option key={option.id} value={option.id}>
-                  {option.name} ({fretRangeLabel(option)})
+                  {option.name}
                 </option>
               ))}
             </select>
           </label>
+          <p className="muted small">
+            {region.name} — {fretRangeLabel(region)} · {pool.length} pitches,{' '}
+            {midiToName(pool[0])}–{midiToName(pool[pool.length - 1])}
+          </p>
 
           <label className="toggle">
             <input
@@ -141,103 +230,49 @@ export function Lesson() {
             />
             Keep going
           </label>
-
-          {lesson.phase === 'idle' && <button onClick={lesson.start}>Start</button>}
-          {lesson.phase === 'arming' && <span className="muted">Requesting microphone…</span>}
-          {listening && <button onClick={lesson.stop}>Stop</button>}
-          {lesson.phase === 'results' && !autoAdvance && (
-            <button onClick={lesson.start}>Next exercise</button>
-          )}
-          {lesson.phase === 'error' && (
-            <>
-              <span role="alert">Could not start: {lesson.error}</span>
-              <button onClick={lesson.start}>Retry</button>
-            </>
-          )}
-        </div>
-
-        <p className="muted level-summary">{levelSummary(config).join(' · ')}</p>
-        <p className="muted">
-          {progress.atCeiling ? (
-            <>Top level reached.</>
-          ) : progress.completed < progress.needed ? (
-            <>
-              Levels up at {Math.round(DEFAULT_PROGRESSION.threshold * 100)}% across{' '}
-              {progress.needed} exercises — {progress.completed}/{progress.needed} played
-              {progress.accuracy !== null &&
-                `, averaging ${Math.round(progress.accuracy * 100)}%`}
-            </>
-          ) : (
-            <>
-              Last {progress.needed} exercises: {Math.round(progress.accuracy! * 100)}%
-              {progress.ready
-                ? ' — levelling up'
-                : ` (${Math.round(DEFAULT_PROGRESSION.threshold * 100)}% to level up)`}
-            </>
-          )}
-        </p>
-        <p className="muted">
-          {region.name} — {fretRangeLabel(region)} · {pool.length} pitches,{' '}
-          {midiToName(pool[0])}–{midiToName(pool[pool.length - 1])}
-        </p>
-
-        {lesson.phase === 'count-in' && (
-          <p className="count-in">
-            Count-in… <strong>{lesson.beatsUntilStart}</strong>
-          </p>
-        )}
-      </section>
-
-      {lesson.exercise && (
-        <section>
-          <Suspense fallback={<p className="muted">Loading notation…</p>}>
-            <Score
-              exercise={lesson.exercise}
-              results={lesson.results}
-              activeIndex={lesson.activeIndex ?? undefined}
-            />
-          </Suspense>
-          <p className="muted">
-            Level {config.level.toFixed(1)} · {region.name} ({fretRangeLabel(region)}) ·{' '}
-            {lesson.exercise.key.name} major · {lesson.exercise.bpm} bpm · seed {lesson.seed}
-          </p>
         </section>
-      )}
 
-      {running && (
         <section>
-          <LivePitch
-            hz={lesson.livePitch?.hz ?? null}
-            confidence={lesson.livePitch?.confidence ?? 0}
-            gate={config.scoring.confidenceGate}
-          />
-          <p className="muted">Attacks detected: {lesson.onsetCount}</p>
-          {lesson.falseStart && (
-            <p role="alert" className="muted">
-              False start — you played during the count-in. That note was not scored.
+          <h2>Lesson</h2>
+          <p className="reading">{brief.reading.join(' · ')}</p>
+
+          {brief.introducing.length > 0 && (
+            <>
+              <p className="small muted">Coming in</p>
+              <ul className="introducing">
+                {brief.introducing.map((item) => (
+                  <li key={item.label}>
+                    {item.label}
+                    <span className="bar" aria-hidden>
+                      <span className="bar-fill" style={{ width: `${item.progress * 100}%` }} />
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          <p className="muted small">
+            {progress.atCeiling
+              ? 'Top level reached.'
+              : progress.completed < progress.needed
+                ? `Levels up at ${Math.round(DEFAULT_PROGRESSION.threshold * 100)}% over ${progress.needed} exercises · ${progress.completed}/${progress.needed} played`
+                : `Last ${progress.needed}: ${Math.round(progress.accuracy! * 100)}%${
+                    progress.ready ? ' · levelling up' : ''
+                  }`}
+          </p>
+
+          {lesson.stats.completed > 0 && (
+            <p className="muted small">
+              Session: {lesson.stats.completed} exercise
+              {lesson.stats.completed === 1 ? '' : 's'} ·{' '}
+              {lesson.stats.scorable > 0
+                ? `${Math.round((lesson.stats.passed / lesson.stats.scorable) * 100)}% correct`
+                : '—'}
             </p>
           )}
         </section>
-      )}
-
-      {lesson.phase === 'results' && lesson.summary && (
-        <>
-          <Results results={lesson.results} summary={lesson.summary} />
-          {autoAdvance && <p className="muted">Next exercise starting…</p>}
-        </>
-      )}
-
-      {lesson.stats.completed > 0 && (
-        <section>
-          <h2>This session</h2>
-          <p className="muted">
-            {lesson.stats.completed} exercise{lesson.stats.completed === 1 ? '' : 's'} ·{' '}
-            {lesson.stats.passed}/{lesson.stats.scorable} notes correct
-            {lesson.stats.scorable > 0 &&
-              ` (${Math.round((lesson.stats.passed / lesson.stats.scorable) * 100)}%)`}
-          </p>
-        </section>
-      )}
-    </>
+      </aside>
+    </div>
   );
 }

@@ -181,11 +181,122 @@ export function levelConfig(rawLevel: number): LevelConfig {
   };
 }
 
+export interface Introduction {
+  label: string;
+  /** How far in, 0–1. Shown so a learner can see something arriving. */
+  progress: number;
+}
+
+export interface LevelBrief {
+  /** What you are reading at this level, settled. A few short phrases. */
+  reading: string[];
+  /** What is arriving right now. Empty means this level is consolidating. */
+  introducing: Introduction[];
+}
+
+function noteLabel(name: NoteValueName): string {
+  return { whole: 'whole notes', half: 'half notes', quarter: 'quarter notes', eighth: 'eighths', sixteenth: 'sixteenths', breve: 'breves' }[name];
+}
+
+function keyLabel(accidentals: number): string {
+  const whole = Math.floor(accidentals);
+  if (whole === 0) return 'C major';
+  if (whole === 1) return 'up to 1 sharp or flat';
+  return `up to ${whole} sharps or flats`;
+}
+
+function leapLabel(semitones: number): string {
+  if (semitones < 3) return 'steps only';
+  if (semitones < 5) return 'steps and thirds';
+  if (semitones < 8) return 'leaps to a fifth';
+  return 'wide leaps';
+}
+
+/**
+ * A plain-language brief: what you are reading, and what is arriving.
+ *
+ * Only concepts mid-adoption are listed as arriving — once something is in every
+ * exercise it stops being news and folds into the baseline.
+ */
+export function levelBrief(rawLevel: number): LevelBrief {
+  const level = clampLevel(rawLevel);
+  const config = levelConfig(level);
+
+  const settled = config.noteValues.filter((v) => v.chance > 0.99);
+  const shortest = settled[settled.length - 1] ?? config.noteValues[0];
+
+  const reading = [
+    `down to ${noteLabel(shortest.name)}`,
+    keyLabel(config.maxKeyAccidentals),
+    leapLabel(config.maxLocalInterval),
+  ];
+
+  const introducing: Introduction[] = [];
+  const arriving = (label: string, from: number) => {
+    const progress = adoption(level, from);
+    if (progress > 0.001 && progress < 0.999) introducing.push({ label, progress });
+  };
+
+  for (const { name, from } of VALUE_RAMPS) {
+    if (from > 1) arriving(noteLabel(name), from);
+  }
+  arriving('rests', 3);
+  arriving('arpeggios', 3);
+  arriving('triplets', 4);
+  arriving('sequences', 4);
+  arriving('accidentals', 6);
+  arriving('quintuplets', 9);
+
+  // Keys widen over the whole range rather than within one level, so a new
+  // signature is "arriving" whenever the tier is part way to the next.
+  const keyFraction = config.maxKeyAccidentals - Math.floor(config.maxKeyAccidentals);
+  if (keyFraction > 0.001) {
+    introducing.push({
+      label: `keys with ${Math.floor(config.maxKeyAccidentals) + 1} sharps or flats`,
+      progress: keyFraction,
+    });
+  }
+
+  return { reading, introducing };
+}
+
+/**
+ * What a whole level brings in, named rather than measured.
+ *
+ * At exactly N.0 those concepts have adoption 0 — they arrive across level N —
+ * so a milestone cannot describe itself from the live config. This says what is
+ * about to start appearing.
+ */
+export function conceptsIntroducedAt(level: number): string[] {
+  const whole = Math.round(level);
+  const values = VALUE_RAMPS.filter((v) => v.from === whole && v.from > 1).map((v) =>
+    noteLabel(v.name),
+  );
+  const others = (
+    [
+      [3, 'rests'],
+      [3, 'arpeggios'],
+      [3, 'new keys'],
+      [4, 'triplets'],
+      [4, 'transposed sequences'],
+      [4, 'phrases that land on the tonic'],
+      [6, 'accidentals'],
+      [9, 'quintuplets'],
+    ] as [number, string][]
+  )
+    .filter(([from]) => from === whole)
+    .map(([, label]) => label);
+
+  const introduced = [...values, ...others];
+  // Some levels only widen what is already there.
+  return introduced.length > 0 ? introduced : ['longer phrases and wider leaps'];
+}
+
 function percent(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
-/** Short human-readable notes on what a level involves, for the UI. */
+/** Full parameter listing. Kept for the dev preview page, not the lesson UI. */
 export function levelSummary(config: LevelConfig): string[] {
   const shortest = config.noteValues[config.noteValues.length - 1];
   const summary: string[] = [];

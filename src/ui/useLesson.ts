@@ -21,6 +21,11 @@ export interface SessionStats {
 export interface LessonState {
   /** Accuracy of each completed exercise, newest last. Drives progression. */
   history: number[];
+  /**
+   * Whole level just reached, if any. Holds the session so the new ideas can be
+   * read before they start turning up; cleared by acknowledgeMilestone.
+   */
+  milestone: number | null;
   phase: LessonPhase;
   exercise: Exercise | null;
   /** Seed that produced the current exercise, so a bad one can be reproduced. */
@@ -61,6 +66,7 @@ const EMPTY_STATS: SessionStats = { completed: 0, passed: 0, scorable: 0 };
 
 const INITIAL: LessonState = {
   history: [],
+  milestone: null,
   phase: 'idle',
   exercise: null,
   seed: null,
@@ -282,7 +288,15 @@ export function useLesson(options: UseLessonOptions) {
         // the level up rather than stalling for another full window each time.
         const { level: playedAt, onAdvance: notify } = settingsRef.current;
         const next = advanceLevel(playedAt, historyRef.current);
-        if (next !== playedAt) notify?.(next);
+        if (next !== playedAt) {
+          notify?.(next);
+          // Crossing into a new whole level pauses here, so what is arriving can
+          // be read before it starts turning up mid-exercise.
+          if (Math.floor(next) > Math.floor(playedAt)) {
+            setState((prev) => ({ ...prev, milestone: Math.floor(next) }));
+            return;
+          }
+        }
         if (settingsRef.current.autoAdvance) {
           advanceRef.current = setTimeout(() => {
             const open = sessionRef.current;
@@ -299,6 +313,13 @@ export function useLesson(options: UseLessonOptions) {
 
   useEffect(() => {
     beginExerciseRef.current = beginExercise;
+  }, [beginExercise]);
+
+  /** Dismisses the milestone panel and picks the session back up. */
+  const acknowledgeMilestone = useCallback(() => {
+    setState((prev) => ({ ...prev, milestone: null }));
+    const open = sessionRef.current;
+    if (open) beginExercise(open);
   }, [beginExercise]);
 
   const start = useCallback(() => {
@@ -335,5 +356,5 @@ export function useLesson(options: UseLessonOptions) {
 
   useEffect(() => closeSession, [closeSession]);
 
-  return { ...state, start, stop, clearHistory };
+  return { ...state, start, stop, clearHistory, acknowledgeMilestone };
 }
