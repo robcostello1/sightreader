@@ -19,10 +19,10 @@ export interface ProgressionConfig {
  * sight-reading is meant to be attempted at the edge of fluency, and demanding
  * a clean run would stall anyone on their first misread note.
  *
- * The window rolls rather than resetting after an advance. Clearing it would
- * mean five more exercises before the next nudge however well you were reading;
- * rolling lets the level track your accuracy continuously and settle wherever
- * you stop clearing the bar.
+ * The window is cleared on every advance, so each step has to be earned at the
+ * difficulty it was set from — a full window of exercises at the new level
+ * before the next nudge. Letting it roll instead meant one good run could carry
+ * you up a step per exercise, outrunning the reading.
  */
 export const DEFAULT_PROGRESSION: ProgressionConfig = {
   windowSize: 5,

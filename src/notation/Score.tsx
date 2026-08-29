@@ -223,6 +223,7 @@ export function Score({ exercise, results, activeIndex, width }: ScoreProps) {
         const beams = beamBar(
           notes,
           bar.notes.map((notated) => notated.tuplet?.group),
+          exercise.timeSignature,
         );
 
         const groups = new Map<number, { notes: StaveNote[]; num: number; inSpaceOf: number }>();

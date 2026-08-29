@@ -31,6 +31,22 @@ export function isScorableAtTempo(
   return Math.floor((durationMs - config.attackGuardMs) / hopMs) >= config.minSamples;
 }
 
+/**
+ * Fastest tempo at which a note of this value still yields enough samples to
+ * score. Inverts isScorableAtTempo, so the tempo control can stop at a limit
+ * the detector can actually honour instead of offering settings that produce
+ * nothing but 'unscorable'.
+ */
+export function maxScorableBpm(
+  value: NoteValue,
+  beatUnit: number,
+  config: ScoringConfig,
+  hopMs: number,
+): number {
+  const shortestWindowMs = config.attackGuardMs + config.minSamples * hopMs;
+  return (value * beatUnit * 60_000) / shortestWindowMs;
+}
+
 /** Share of confident samples sitting on each detected semitone. */
 function pitchHistogram(samples: readonly PitchSample[]): Map<Midi, number> {
   const counts = new Map<Midi, number>();

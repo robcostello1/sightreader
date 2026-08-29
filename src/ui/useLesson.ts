@@ -262,7 +262,7 @@ export function useLesson(options: UseLessonOptions) {
       const active = scheduleRef.current;
       const finished = now >= active.endMs;
       const beatsLeft =
-        now < active.t0 ? Math.ceil((active.t0 - now) / active.beatMs) : null;
+        now < active.t0 ? Math.ceil((active.t0 - now) / active.clickMs) : null;
 
       if (closed.length > 0) resultsRef.current = [...resultsRef.current, ...closed];
       const results = resultsRef.current;
@@ -297,12 +297,14 @@ export function useLesson(options: UseLessonOptions) {
       if (finished) {
         haltExercise();
 
-        // Decide progression here, at the completion that caused it. The window
-        // is not cleared: it keeps rolling, so sustained accuracy keeps nudging
-        // the level up rather than stalling for another full window each time.
+        // Decide progression here, at the completion that caused it.
         const { level: playedAt, onAdvance: notify } = settingsRef.current;
         const next = advanceLevel(playedAt, historyRef.current);
         if (next !== playedAt) {
+          // Start the count again, so the next step is earned at the new level
+          // rather than on results from the old one.
+          historyRef.current = [];
+          setState((prev) => ({ ...prev, history: [] }));
           notify?.(next);
           // Crossing into a new whole level pauses here, so what is arriving can
           // be read before it starts turning up mid-exercise.

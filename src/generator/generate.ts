@@ -50,10 +50,16 @@ function buildCandidates(
   idioms: readonly Idiom[],
   noteValues: readonly { value: NoteValue; weight: number }[],
   constraints: Parameters<typeof validPlacements>[2],
+  barSize: NoteValue,
 ): Candidate[] {
   const candidates: Candidate[] = [];
   for (const idiom of idioms) {
+    const longestEvent = Math.max(...idiom.events.map((event) => event.beats));
     for (const { value, weight } of noteValues) {
+      // No single note may outlast a bar. In 3/4 and 6/8 a bar is three
+      // quarters of a whole note, so a two-beat event at minim density would
+      // tie across the bar line — dead time, and the reason this rule exists.
+      if (longestEvent * value > barSize + 1e-9) continue;
       const placements = validPlacements(idiom, value, constraints);
       if (placements.length > 0) {
         candidates.push({
@@ -113,14 +119,27 @@ export function generateExercise(options: GenerateOptions): Exercise {
   const phrase = eligible.filter((idiom) => idiom.category !== 'cadential');
   const cadential = eligible.filter((idiom) => idiom.category === 'cadential');
 
-  const barSize = barDuration(config.timeSignature);
+  // One signature per exercise, weighted, so a new one arrives gradually.
+  let timeSignature = weightedPick(rng, config.timeSignatures, (entry) => entry.weight).value;
+  let barSize = barDuration(timeSignature);
+
+  let phraseCandidates = buildCandidates(phrase, noteValues, constraints, barSize);
+  // A shorter bar can rule out every idiom when the exercise happens to admit
+  // only long note values. Common time always leaves a candidate, so fall back
+  // to it rather than emit nothing.
+  if (phraseCandidates.length === 0 && barSize !== barDuration([4, 4])) {
+    timeSignature = [4, 4];
+    barSize = barDuration(timeSignature);
+    phraseCandidates = buildCandidates(phrase, noteValues, constraints, barSize);
+  }
+
   const target = config.targetBars * barSize;
 
   // Reserve the cadence up front so the phrase cannot fill the bar and leave no
   // room to land, which is the whole point of having one.
   let cadence: { placement: IdiomPlacement; duration: NoteValue } | null = null;
   if (cadential.length > 0 && rng() < config.cadenceChance) {
-    const candidates = buildCandidates(cadential, noteValues, constraints)
+    const candidates = buildCandidates(cadential, noteValues, constraints, barSize)
       // Cadential idioms resolve to their anchor degree, so only a tonic anchor
       // actually lands the phrase on the tonic.
       .map((c) => ({ ...c, placements: c.placements.filter((p) => p.startDegree % 7 === 0) }))
@@ -137,7 +156,6 @@ export function generateExercise(options: GenerateOptions): Exercise {
 
   const budget = Math.max(0, target - (cadence?.duration ?? 0));
   const notes: ExerciseNote[] = [];
-  const phraseCandidates = buildCandidates(phrase, noteValues, constraints);
 
   let used = 0;
   let instance = 0;
@@ -213,7 +231,7 @@ export function generateExercise(options: GenerateOptions): Exercise {
     );
   }
 
-  return { notes, keyCenter, key, timeSignature: config.timeSignature, bpm };
+  return { notes, keyCenter, key, timeSignature, bpm };
 }
 
 /**
@@ -365,12 +383,20 @@ function applyTuplet(
   const starts: number[] = [];
   for (let i = 0; i + ratio.num - 1 < events.length; i++) {
     if (!events.slice(i, i + ratio.num).every((event) => event.beats === 1)) continue;
+    const start = positions[i];
+
     // The whole group must sit within one bar. Split across a bar line, neither
     // bar holds all of it, so the bracket cannot be drawn over the group.
-    const start = positions[i];
     const sameBar =
       Math.floor(start / barSize + 1e-9) === Math.floor((start + span - 1e-9) / barSize);
-    if (sameBar) starts.push(i);
+    if (!sameBar) continue;
+
+    // And it must begin where the beats it replaces begin. A triplet occupying
+    // a crotchet belongs on a crotchet; starting it half a beat late is
+    // readable only as a puzzle, and is not how anyone writes one.
+    const withinBar = start % barSize;
+    const onBeat = Math.abs(withinBar / span - Math.round(withinBar / span)) < 1e-9;
+    if (onBeat) starts.push(i);
   }
   if (starts.length === 0) return false;
 

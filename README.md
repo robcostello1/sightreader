@@ -79,11 +79,16 @@ certificate, which the browser will warn about once per device.
 ## Difficulty
 
 Ten levels on a **fractional** dial (3.0, 3.1, … 3.9, 4.0). Across levels the
-settled parameters interpolate; *within* a level the newly introduced ones fade
-in by probability, so level 3.0 still plays like level 2 and 3.9 has level 3's
-ideas in nearly every exercise. Availability is rolled per exercise, not merely
-weighted — weighting alone does not hold a short note value back, because once
-the first idiom has eaten into the bar budget only short candidates still fit.
+settled parameters interpolate; *within* a level the newly introduced ones climb
+by probability. Reaching a whole level is a real step — its ideas arrive at once
+in about a fifth of exercises, enough to notice what changed — and they grow to
+every exercise by the next whole level. Availability is rolled per exercise, not
+merely weighted: weighting alone does not hold a short note value back, because
+once the first idiom has eaten into the bar budget only short candidates fit.
+
+Time signatures widen too — 3/4 from level 5, 6/8 from 8. 6/8 is beamed in
+threes and clicked in two dotted-crotchet beats, since it is a different feel
+rather than just a different bar length.
 
 Each device arrives at its own level and grows from there: note values get shorter *and* more likely, rests from
 level 3, triplets from 4 (quintuplets from 9), transposed sequences from 4,
@@ -103,10 +108,9 @@ exception, being open strings plus the first four frets.
 ## Progression
 
 The level advances on its own: **80% mean accuracy across the last 5 exercises
-moves you up 0.1**. The window rolls rather than resetting, so sustained
-accuracy keeps nudging the level up instead of stalling for five more exercises
-after each step, and the level settles wherever you stop clearing the bar. The
-slider still overrides it at any time.
+moves you up 0.1**. The window is cleared on each step, so the next one has to
+be earned at the difficulty it was set from — a full five exercises at the new
+level. The slider still overrides it at any time.
 
 Crossing a **whole** level pauses the session and names what is about to start
 appearing, so a new idea is read about before it turns up mid-exercise. Tenth

@@ -57,22 +57,23 @@ describe('shortestNoteValue', () => {
 });
 
 describe('adoption within a level', () => {
-  it('leaves a whole level playing like the one below it', () => {
-    // 3.0 introduces nothing new yet — quarters, rests and arpeggios all arrive
-    // across level 3, not at its start.
+  it('brings a level’s ideas in at once when it is reached', () => {
+    // Reaching 3.0 is a real step: quarters, rests and arpeggios start showing
+    // up straight away, in a minority of exercises rather than none.
     const at3 = levelConfig(3);
-    expect(at3.restChance).toBe(0);
-    expect(at3.categoryChance.arpeggio).toBe(0);
-    expect(at3.noteValues.some((v) => v.name === 'quarter')).toBe(false);
+    expect(at3.restChance).toBeGreaterThan(0);
+    expect(at3.categoryChance.arpeggio).toBeCloseTo(0.2, 5);
+    expect(at3.noteValues.some((v) => v.name === 'quarter')).toBe(true);
+    // But nothing before the level itself.
+    expect(levelConfig(2.9).categoryChance.arpeggio).toBe(0);
   });
 
-  it('phases new ideas in across the level that introduces them', () => {
+  it('climbs from that first share to every exercise by the next level', () => {
     const chances = [3.0, 3.3, 3.6, 3.9, 4.0].map((l) => levelConfig(l).categoryChance.arpeggio);
     expect(chances).toEqual([...chances].sort((a, b) => a - b));
-    expect(chances[0]).toBe(0);
+    expect(chances[0]).toBeCloseTo(0.2, 5);
     expect(chances[chances.length - 1]).toBe(1);
-    // By 3.9 the new idea is in nearly every exercise.
-    expect(levelConfig(3.9).categoryChance.arpeggio).toBeCloseTo(0.9, 5);
+    expect(levelConfig(3.5).categoryChance.arpeggio).toBeCloseTo(0.6, 5);
   });
 
   it.each([
@@ -80,25 +81,29 @@ describe('adoption within a level', () => {
     ['triplets', 4, (l: number) => levelConfig(l).tupletChance],
     ['sequences', 4, (l: number) => levelConfig(l).sequenceChance],
     ['accidentals', 6, (l: number) => levelConfig(l).accidentalChance],
-  ])('introduces %s gradually from level %i', (_name, from, read) => {
-    expect(read(from)).toBe(0);
-    expect(read(from + 0.5)).toBeGreaterThan(0);
+  ])('introduces %s from level %i and grows across it', (_name, from, read) => {
+    expect(read(from - 0.1)).toBe(0);
+    expect(read(from)).toBeGreaterThan(0);
+    expect(read(from)).toBeLessThan(read(from + 0.5));
     expect(read(from + 0.5)).toBeLessThan(read(from + 1));
   });
 
-  it('fades a new note value in rather than switching it on', () => {
-    const weightAt = (level: number) =>
-      levelConfig(level).noteValues.find((v) => v.name === 'quarter')?.weight ?? 0;
-    expect(weightAt(3)).toBe(0);
-    expect(weightAt(3.5)).toBeGreaterThan(0);
-    expect(weightAt(3.5)).toBeLessThan(weightAt(4));
+  it('admits a new note value in a minority of exercises before all of them', () => {
+    const chanceAt = (level: number) =>
+      levelConfig(level).noteValues.find((v) => v.name === 'quarter')?.chance ?? 0;
+    expect(chanceAt(2.9)).toBe(0);
+    expect(chanceAt(3)).toBeCloseTo(0.2, 5);
+    expect(chanceAt(3.5)).toBeCloseTo(0.6, 5);
+    expect(chanceAt(4)).toBe(1);
   });
 
   it('admits a new key signature occasionally before always', () => {
-    expect(levelConfig(3).maxKeyAccidentals).toBe(0);
-    // The fraction is the chance of one more accidental than the whole part.
+    // Nothing but C until level 3, then a minority share of one accidental —
+    // the fraction is the chance of one more than the whole part.
+    expect(levelConfig(2.9).maxKeyAccidentals).toBe(0);
+    expect(levelConfig(3).maxKeyAccidentals).toBeCloseTo(0.2, 5);
     const mid = levelConfig(5).maxKeyAccidentals;
-    expect(mid).toBeGreaterThan(0);
+    expect(mid).toBeGreaterThan(levelConfig(3).maxKeyAccidentals);
     expect(Math.floor(mid)).toBeLessThan(Math.floor(levelConfig(MAX_LEVEL).maxKeyAccidentals));
   });
 
@@ -125,6 +130,13 @@ describe('adoption within a level', () => {
     expect(brief.introducing).toEqual([]);
   });
 
+  it('treats a level boundary as a step, not a fresh start from nothing', () => {
+    // Arriving at 3.0 you should be able to see what changed.
+    const introducing = levelBrief(3).introducing.map((i) => i.label);
+    expect(introducing).toContain('arpeggios');
+    expect(introducing).toContain('rests');
+  });
+
   it('lists only what is currently arriving, not what has settled', () => {
     // At 3.5 quarters are half in; by 5 they are simply part of the reading.
     const arriving = levelBrief(3.5).introducing.map((i) => i.label);
@@ -135,13 +147,12 @@ describe('adoption within a level', () => {
 
   it('reports how far each arriving concept has come', () => {
     const item = levelBrief(3.5).introducing.find((i) => i.label === 'arpeggios');
-    expect(item?.progress).toBeCloseTo(0.5, 5);
+    expect(item?.progress).toBeCloseTo(0.6, 5);
   });
 
-  it('names what a whole level introduces, before any of it has arrived', () => {
-    // At exactly 4.0 these all have adoption 0, so the live config cannot
-    // describe them — the milestone panel needs them named.
-    expect(levelConfig(4).tupletChance).toBe(0);
+  it('names what a whole level introduces, for the milestone panel', () => {
+    // The milestone announces what is arriving; the config only says how often.
+    expect(levelConfig(4).tupletChance).toBeGreaterThan(0);
     expect(conceptsIntroducedAt(4)).toContain('triplets');
     expect(conceptsIntroducedAt(3)).toContain('quarter notes');
     expect(conceptsIntroducedAt(6)).toContain('accidentals');

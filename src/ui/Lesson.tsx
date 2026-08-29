@@ -7,10 +7,11 @@ import {
   levelConfig,
   shortestNoteValue,
 } from '../config/levels';
-import { isScorableAtTempo } from '../scoring';
+import { maxScorableBpm } from '../scoring';
 import { NOMINAL_HOP_MS } from '../audio';
 import { POSITIONS, fretRangeLabel, regionById, regionPool } from '../config/regions';
 import { DEFAULT_PROGRESSION, progressionState } from '../config/progression';
+import { BPM_STEP, MAX_BPM, MIN_BPM, clampBpm } from '../config/tempo';
 import { loadSetting, saveSetting } from '../lib/storage';
 import { centsFromTarget, midiToName, nearestMidi } from '../lib/pitch';
 import { formatSpelled, spellInKey, type MusicalKey } from '../lib/key';
@@ -35,14 +36,6 @@ const readLevel = (value: unknown) => (typeof value === 'number' ? clampLevel(va
 const readRegionId = (value: unknown) =>
   typeof value === 'string' && POSITIONS.some((p) => p.id === value) ? value : null;
 const readFlag = (value: unknown) => (typeof value === 'boolean' ? value : null);
-
-export const MIN_BPM = 60;
-export const MAX_BPM = 240;
-
-export function clampBpm(bpm: number): number {
-  return Math.min(MAX_BPM, Math.max(MIN_BPM, Math.round(bpm / 5) * 5));
-}
-
 const readBpm = (value: unknown) => (typeof value === 'number' ? clampBpm(value) : null);
 
 function LivePitch({
@@ -121,19 +114,23 @@ export function Lesson() {
   const config = levelConfig(level);
   const brief = levelBrief(level);
   const pool = regionPool(region);
-  // The detector only reports once per hop, so past a certain tempo the level's
-  // shortest note leaves too few samples to judge.
-  const tempoTooFast = !isScorableAtTempo(
-    shortestNoteValue(config),
-    config.timeSignature[1],
-    bpm,
-    config.scoring,
-    NOMINAL_HOP_MS,
+  // The detector reports once per hop and the attack guard eats the head of
+  // every window, so past a certain tempo this level's shortest note cannot be
+  // judged at all. Cap the control there rather than offering settings that
+  // return nothing but "too short to score". The tightest signature is the
+  // limiting one, since a smaller beat unit makes the same value briefer.
+  const tightestBeatUnit = Math.min(...config.timeSignatures.map((entry) => entry.value[1]));
+  const tempoCeiling = clampBpm(
+    Math.min(
+      MAX_BPM,
+      maxScorableBpm(shortestNoteValue(config), tightestBeatUnit, config.scoring, NOMINAL_HOP_MS),
+    ),
   );
+  const effectiveBpm = Math.min(bpm, tempoCeiling);
 
   // Advancement is gated on the same pass/fail scores used for feedback — no
   // separate mastery signal (spec §7).
-  const lesson = useLesson({ level, region, bpm, autoAdvance, onAdvance: setLevel });
+  const lesson = useLesson({ level, region, bpm: effectiveBpm, autoAdvance, onAdvance: setLevel });
   const progress = progressionState(level, lesson.history);
 
   const running = lesson.phase === 'count-in' || lesson.phase === 'playing';
@@ -240,22 +237,22 @@ export function Lesson() {
 
           <label className="field">
             <span className="field-label">
-              Tempo <strong>{bpm}</strong> bpm
+              Tempo <strong>{effectiveBpm}</strong> bpm
             </span>
             <input
               type="range"
               min={MIN_BPM}
-              max={MAX_BPM}
-              step={5}
-              value={bpm}
+              max={tempoCeiling}
+              step={BPM_STEP}
+              value={effectiveBpm}
               onChange={(event) => setBpm(Number(event.target.value))}
               disabled={running}
             />
           </label>
-          {tempoTooFast && (
-            <p className="muted small" role="alert">
-              Too fast to score this level’s shortest notes — they will come back
-              as “too short to score”.
+          {tempoCeiling < MAX_BPM && (
+            <p className="muted small">
+              Capped at {tempoCeiling} bpm — faster than this and the shortest notes
+              at this level are too brief to score.
             </p>
           )}
 

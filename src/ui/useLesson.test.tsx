@@ -354,18 +354,19 @@ describe('useLesson', () => {
       }
 
       expect(advances).toEqual([3.1]);
-      // The window rolls rather than resetting, so it stays full.
-      expect(result.current.history).toHaveLength(5);
+      // The count starts again, so the next step is earned at the new level.
+      expect(result.current.history).toEqual([]);
     });
 
-    it('keeps climbing while accuracy holds up', async () => {
+    it('requires a full window at the new level before stepping again', async () => {
       const advances: number[] = [];
       const { result } = renderHook(() =>
         useLesson({ level: 3, leadInMs: LEAD_IN, onAdvance: (n) => advances.push(n) }),
       );
 
-      // Eight clean exercises: five to fill the window, then one step each.
-      for (let i = 0; i < 8; i++) {
+      // Nine clean exercises: five earn the first step, four are not yet enough
+      // for the second.
+      for (let i = 0; i < 9; i++) {
         act(() => result.current.start());
         await flush();
         const schedule = buildSchedule(result.current.exercise!, {
@@ -378,8 +379,29 @@ describe('useLesson', () => {
         await advanceTo(schedule.endMs + 10);
       }
 
-      // A rolling window keeps nudging rather than stalling for five more.
-      expect(advances.length).toBeGreaterThan(1);
+      expect(advances).toEqual([3.1]);
+    });
+
+    it('steps again once another full window is earned', async () => {
+      const advances: number[] = [];
+      const { result } = renderHook(() =>
+        useLesson({ level: 3, leadInMs: LEAD_IN, onAdvance: (n) => advances.push(n) }),
+      );
+
+      for (let i = 0; i < 10; i++) {
+        act(() => result.current.start());
+        await flush();
+        const schedule = buildSchedule(result.current.exercise!, {
+          startMs: clock.currentTime * 1000 + LEAD_IN,
+          countInBars: CONFIG.countInBars,
+          clickThroughExercise: false,
+          attackGuardMs: CONFIG.scoring.attackGuardMs,
+        });
+        playCorrectly(schedule);
+        await advanceTo(schedule.endMs + 10);
+      }
+
+      expect(advances).toHaveLength(2);
     });
 
     it('does not advance on poor accuracy', async () => {

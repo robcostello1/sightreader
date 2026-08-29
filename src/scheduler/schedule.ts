@@ -30,6 +30,15 @@ export interface ScheduleOptions {
   attackGuardMs: number;
 }
 
+/**
+ * 6/8 and its relatives are counted in two dotted-quarter beats, not six
+ * quavers. Clicking every quaver would be both frantic and misleading about
+ * where the pulse is.
+ */
+export function isCompound([beatsPerBar, beatUnit]: [number, number]): boolean {
+  return beatUnit === 8 && beatsPerBar % 3 === 0 && beatsPerBar > 3;
+}
+
 export interface Schedule {
   startMs: AudioTimeMs;
   /**
@@ -39,6 +48,8 @@ export interface Schedule {
   t0: AudioTimeMs;
   endMs: AudioTimeMs;
   beatMs: number;
+  /** Gap between clicks — three beat-units in a compound meter, one otherwise. */
+  clickMs: number;
   clicks: ClickEvent[];
   windows: NoteWindow[];
 }
@@ -50,6 +61,8 @@ export function buildSchedule(exercise: Exercise, options: ScheduleOptions): Sch
 
   const countInBeats = countInBars * beatsPerBar;
   const t0 = startMs + countInBeats * beatMs;
+  const unitsPerClick = isCompound(exercise.timeSignature) ? 3 : 1;
+  const clickMs = beatMs * unitsPerClick;
 
   const windows: NoteWindow[] = [];
   let cursor = t0;
@@ -69,7 +82,7 @@ export function buildSchedule(exercise: Exercise, options: ScheduleOptions): Sch
   const endMs = cursor;
 
   const clicks: ClickEvent[] = [];
-  for (let beat = 0; beat < countInBeats; beat++) {
+  for (let beat = 0; beat < countInBeats; beat += unitsPerClick) {
     clicks.push({
       timeMs: startMs + beat * beatMs,
       accent: beat % beatsPerBar === 0,
@@ -77,7 +90,7 @@ export function buildSchedule(exercise: Exercise, options: ScheduleOptions): Sch
     });
   }
   if (clickThroughExercise) {
-    for (let beat = 0; t0 + beat * beatMs < endMs; beat++) {
+    for (let beat = 0; t0 + beat * beatMs < endMs; beat += unitsPerClick) {
       clicks.push({
         timeMs: t0 + beat * beatMs,
         accent: beat % beatsPerBar === 0,
@@ -86,7 +99,7 @@ export function buildSchedule(exercise: Exercise, options: ScheduleOptions): Sch
     }
   }
 
-  return { startMs, t0, endMs, beatMs, clicks, windows };
+  return { startMs, t0, endMs, beatMs, clickMs, clicks, windows };
 }
 
 /** The window containing `timestamp`, or null between/outside windows. */

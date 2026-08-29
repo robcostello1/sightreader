@@ -115,12 +115,21 @@ describe('generateExercise', () => {
 
     it('ends on a bar line without padding out dead time', () => {
       for (const exercise of exercises) {
+        const barSize = exercise.timeSignature[0] / exercise.timeSignature[1];
         const total = exercise.notes.reduce((sum, n) => sum + n.value, 0);
-        // A whole number of 4/4 bars.
-        expect(Math.abs(total - Math.round(total))).toBeLessThan(1e-9);
+        // A whole number of bars, in whatever signature was drawn.
+        const bars = total / barSize;
+        expect(Math.abs(bars - Math.round(bars))).toBeLessThan(1e-9);
         // Rounding up to a bar line can never add a whole bar of its own.
-        expect(total).toBeLessThanOrEqual(config.targetBars + 1);
-        expect(total).toBeGreaterThan(0);
+        expect(bars).toBeLessThanOrEqual(config.targetBars + 1);
+        expect(bars).toBeGreaterThan(0);
+      }
+    });
+
+    it('draws only signatures the level admits', () => {
+      const allowed = config.timeSignatures.map((entry) => entry.value.join('/'));
+      for (const exercise of exercises) {
+        expect(allowed).toContain(exercise.timeSignature.join('/'));
       }
     });
 
@@ -129,8 +138,9 @@ describe('generateExercise', () => {
       // waiting. Padding rounds to the bar line and turns to rests rather than
       // inflating a note past one bar.
       for (const exercise of exercises) {
+        const barSize = exercise.timeSignature[0] / exercise.timeSignature[1];
         for (const note of exercise.notes) {
-          expect(note.value).toBeLessThanOrEqual(1 + 1e-9);
+          expect(note.value).toBeLessThanOrEqual(barSize + 1e-9);
         }
       }
     });
@@ -145,8 +155,9 @@ describe('generateExercise', () => {
     it('keeps each tuplet group inside one bar', () => {
       // Split across a bar line, neither bar holds the whole group, so the
       // bracket cannot be drawn over it.
-      const barSize = config.timeSignature[0] / config.timeSignature[1];
+
       for (const exercise of exercises) {
+        const barSize = exercise.timeSignature[0] / exercise.timeSignature[1];
         let position = 0;
         const spans = new Map<number, { start: number; end: number }>();
         for (const note of exercise.notes) {
@@ -192,17 +203,19 @@ describe('generateExercise', () => {
     }
   });
 
-  it('leaves a whole level playing like the one below it', () => {
-    // 3.0 should feel like level 2: the ideas level 3 brings arrive across it.
-    const at3 = SEEDS.map((seed) => generateExercise({ level: 3, seed }));
-    expect(at3.some((e) => e.notes.some((n) => n.midi === null))).toBe(false);
-    expect(at3.every((e) => e.key.name === 'C')).toBe(true);
-    for (const exercise of at3) {
-      for (const note of exercise.notes) {
-        if (note.idiomId === PADDING_IDIOM_ID) continue;
-        expect(idiomById(note.idiomId)!.category).not.toBe('arpeggio');
-      }
-    }
+  it('brings a level’s ideas into a minority of exercises as soon as it is reached', () => {
+    const withArpeggios = (level: number) =>
+      SEEDS.filter((seed) =>
+        generateExercise({ level, seed }).notes.some(
+          (n) => n.idiomId !== PADDING_IDIOM_ID && idiomById(n.idiomId)!.category === 'arpeggio',
+        ),
+      ).length;
+
+    // None before the level, some at it, most by the end of it.
+    expect(withArpeggios(2.9)).toBe(0);
+    expect(withArpeggios(3)).toBeGreaterThan(0);
+    expect(withArpeggios(3)).toBeLessThan(SEEDS.length);
+    expect(withArpeggios(3.9)).toBeGreaterThan(withArpeggios(3));
   });
 
   it('phases a level’s new ideas in across its tenths', () => {
@@ -210,9 +223,9 @@ describe('generateExercise', () => {
       SEEDS.filter((seed) =>
         generateExercise({ level, seed }).notes.some((n) => n.midi === null),
       ).length;
-    // None at 3.0, some part-way, more by 3.9.
-    expect(restsAt(3)).toBe(0);
-    expect(restsAt(3.9)).toBeGreaterThan(restsAt(3.4));
+    // Nothing before the level, then a rising share across it.
+    expect(restsAt(2.9)).toBe(0);
+    expect(restsAt(3.9)).toBeGreaterThan(restsAt(3));
   });
 
   it('introduces devices only once their level is reached', () => {
@@ -227,6 +240,7 @@ describe('generateExercise', () => {
     expect(has(1, hasRest)).toBe(false);
     expect(has(1, hasTuplet)).toBe(false);
     expect(has(1, hasAccidental)).toBe(false);
+    expect(has(2, hasTuplet)).toBe(false);
     expect(has(MAX_LEVEL, hasRest)).toBe(true);
     expect(has(MAX_LEVEL, hasTuplet)).toBe(true);
   });

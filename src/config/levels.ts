@@ -32,6 +32,13 @@ export interface WeightedTuplet {
   weight: number;
 }
 
+export type TimeSignature = [beatsPerBar: number, beatUnit: number];
+
+export interface WeightedTimeSignature {
+  value: TimeSignature;
+  weight: number;
+}
+
 export interface WeightedNoteValue {
   name: NoteValueName;
   value: NoteValue;
@@ -72,7 +79,8 @@ export interface LevelConfig {
   cadenceChance: number;
   /** Bars of idioms to pack in; fractional, so the bar count varies. */
   targetBars: number;
-  timeSignature: [number, number];
+  /** Signatures the level may use, one drawn per exercise. */
+  timeSignatures: WeightedTimeSignature[];
   countInBars: number;
   /** Chance the click keeps going through the exercise rather than only the count-in. */
   clickThroughChance: number;
@@ -91,16 +99,21 @@ function lerp(a: number, b: number, t: number): number {
 }
 
 /**
- * How far a feature introduced at `from` has been taken up, over the level that
- * introduces it. At 3.0 an idea new to level 3 never appears, at 3.5 it appears
- * in half the exercises, by 4.0 always — so crossing a level is a slope rather
- * than a step, and 3.0 still plays like level 2.
+ * Share of exercises carrying an idea introduced at `from`.
+ *
+ * Reaching a whole level brings its ideas in straight away at INITIAL_ADOPTION
+ * — enough to notice what has changed — and they climb to every exercise by the
+ * next whole level. So a level boundary is a real step, and the tenths after it
+ * are the gradual part.
  */
+const INITIAL_ADOPTION = 0.2;
+
 function adoption(level: number, from: number): number {
   // Level 1 is the floor: what is present there is the baseline, not a new idea
   // easing in, so it applies in full from the start.
   if (from <= 1) return 1;
-  return ramp(level, from, from + 1);
+  if (level < from) return 0;
+  return lerp(INITIAL_ADOPTION, 1, ramp(level, from, from + 1));
 }
 
 /**
@@ -162,7 +175,11 @@ export function levelConfig(rawLevel: number): LevelConfig {
     maxLocalInterval: lerp(2, 12, t),
     sequenceChance: lerp(0.2, 0.6, ramp(level, 4, MAX_LEVEL)) * adoption(level, 4),
     accidentalChance: lerp(0.1, 0.35, ramp(level, 6, MAX_LEVEL)) * adoption(level, 6),
-    maxKeyAccidentals: lerp(0, 5, ramp(level, 3, MAX_LEVEL)),
+    // Keys widen across the whole range rather than within one level, but they
+    // still get the step at level 3 that everything else introduced there gets,
+    // so the milestone's promise of new keys is immediately true.
+    maxKeyAccidentals:
+      level < 3 ? 0 : Math.max(INITIAL_ADOPTION, lerp(0, 5, ramp(level, 3, MAX_LEVEL))),
     categoryChance: {
       scalar: 1,
       interval: 1,
@@ -172,7 +189,13 @@ export function levelConfig(rawLevel: number): LevelConfig {
     },
     cadenceChance: adoption(level, 4),
     targetBars: lerp(2, 4, ramp(level, 1, 5)),
-    timeSignature: [4, 4],
+    timeSignatures: [
+      { value: [4, 4] as TimeSignature, weight: 1 },
+      { value: [3, 4] as TimeSignature, weight: 0.6 * adoption(level, 4) },
+      // Compound time is a different feel, not just a different bar length, so
+      // it arrives well after the simple ones.
+      { value: [6, 8] as TimeSignature, weight: 0.5 * adoption(level, 7) },
+    ].filter((entry) => entry.weight > 1e-6),
     countInBars: 1,
     // Thins out once the pulse should be internalised: some exercises keep the
     // click, more of them lose it, until none has it.
@@ -254,6 +277,8 @@ export function levelBrief(rawLevel: number): LevelBrief {
   for (const { name, from } of VALUE_RAMPS) {
     if (from > 1) arriving(noteLabel(name), from);
   }
+  arriving('3/4 time', 4);
+  arriving('6/8 time', 7);
   arriving('rests', 3);
   arriving('arpeggios', 3);
   arriving('triplets', 4);
@@ -291,10 +316,12 @@ export function conceptsIntroducedAt(level: number): string[] {
       [3, 'rests'],
       [3, 'arpeggios'],
       [3, 'new keys'],
+      [4, '3/4 time'],
       [4, 'triplets'],
       [4, 'transposed sequences'],
       [4, 'phrases that land on the tonic'],
       [6, 'accidentals'],
+      [7, '6/8 time'],
       [9, 'quintuplets'],
     ] as [number, string][]
   )

@@ -5,6 +5,7 @@
 export {
   expectedSampleCount,
   isScorableAtTempo,
+  maxScorableBpm,
   scoreExercise,
   scoreWindow,
   summarise,

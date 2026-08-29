@@ -17,7 +17,14 @@ function isBeamable(note: StaveNote): boolean {
  *
  * `groups[i]` is the tuplet group id of `notes[i]`, or undefined outside one.
  */
-export function beamBar(notes: StaveNote[], groups: (number | undefined)[]): Beam[] {
+export function beamBar(
+  notes: StaveNote[],
+  groups: (number | undefined)[],
+  timeSignature: [number, number],
+): Beam[] {
+  // 6/8 beams in threes, 4/4 in beats. VexFlow knows the conventional grouping
+  // for each signature, so ask rather than assume crotchet beats.
+  const beamGroups = Beam.getDefaultBeamGroups(timeSignature.join('/'));
   const beams: Beam[] = [];
   let segment: StaveNote[] = [];
   let segmentGroup: number | undefined;
@@ -30,7 +37,7 @@ export function beamBar(notes: StaveNote[], groups: (number | undefined)[]): Bea
       // the bracket alone still reads correctly.
       if (segment.length > 1 && segment.every(isBeamable)) beams.push(new Beam(segment));
     } else {
-      beams.push(...Beam.generateBeams(segment));
+      beams.push(...Beam.generateBeams(segment, { groups: beamGroups }));
     }
     segment = [];
   };
