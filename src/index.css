@@ -9,17 +9,59 @@ body {
 }
 
 main {
-  max-width: 46rem;
+  max-width: 72rem;
   margin: 0 auto;
-  padding: 2rem 1.25rem;
+  padding: 1.5rem 1.25rem 4rem;
+}
+
+header {
+  margin-bottom: 1.5rem;
 }
 
 h1 {
   margin-bottom: 0.25rem;
 }
 
-section {
-  margin-top: 2rem;
+h2 {
+  font-size: 0.8125rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  margin: 0 0 0.75rem;
+}
+
+/* The exercise gets the room; settings sit out of the way beside it. */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 17rem;
+  gap: 2.5rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Reserved so the page does not jump between phases. */
+.stage {
+  min-height: 22rem;
+}
+
+.stage-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  min-height: 2.75rem;
+  margin-bottom: 1rem;
+}
+
+.sidebar section + section {
+  margin-top: 1.75rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
 }
 
 button {
@@ -32,59 +74,77 @@ button {
   cursor: pointer;
 }
 
-.readout {
-  display: flex;
-  align-items: baseline;
-  gap: 1rem;
-  padding: 1rem 0;
-  opacity: 0.45;
+button.primary {
+  font-weight: 600;
+  padding: 0.6rem 1.75rem;
 }
 
-.readout.is-confident {
-  opacity: 1;
+select {
+  font: inherit;
+  width: 100%;
+  padding: 0.35rem 0.5rem;
 }
 
-.readout .note {
-  font-size: 3rem;
-  font-variant-numeric: tabular-nums;
-  min-width: 4ch;
+input[type='range'] {
+  width: 100%;
 }
 
-.readout .detail {
-  font-variant-numeric: tabular-nums;
+.field {
+  display: block;
+  margin-bottom: 1rem;
 }
 
-.meter {
-  height: 0.5rem;
+.field-label {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+}
+
+.muted {
+  opacity: 0.7;
+}
+
+.small {
+  font-size: 0.8125rem;
+}
+
+.reading {
+  margin: 0 0 1rem;
+}
+
+.introducing {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+}
+
+.introducing li {
+  margin-bottom: 0.5rem;
+}
+
+/* Shows how far a concept has come in, so an arriving idea is visible rather
+   than a surprise mid-exercise. */
+.bar {
+  display: block;
+  height: 0.25rem;
+  margin-top: 0.25rem;
   border-radius: 999px;
   background: color-mix(in srgb, currentColor 15%, transparent);
   overflow: hidden;
 }
 
-.meter-fill {
+.bar-fill {
+  display: block;
   height: 100%;
   background: currentColor;
-}
-
-.muted {
-  opacity: 0.7;
-  font-size: 0.875rem;
-}
-
-header {
-  margin-bottom: 2rem;
-}
-
-.controls {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-select {
-  font: inherit;
-  padding: 0.35rem 0.5rem;
+  opacity: 0.55;
 }
 
 .score {
@@ -93,12 +153,33 @@ select {
 }
 
 .count-in {
-  font-size: 1.25rem;
-  margin-top: 1rem;
+  font-size: 1.125rem;
 }
 
 .count-in strong {
-  font-size: 2rem;
+  font-size: 1.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.readout {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.75rem 0;
+  opacity: 0.45;
+}
+
+.readout.is-confident {
+  opacity: 1;
+}
+
+.readout .note {
+  font-size: 2.5rem;
+  font-variant-numeric: tabular-nums;
+  min-width: 4ch;
+}
+
+.readout .detail {
   font-variant-numeric: tabular-nums;
 }
 
@@ -108,33 +189,35 @@ select {
 
 .failures {
   padding-left: 1.25rem;
+  font-size: 0.9375rem;
 }
 
 .failures li {
+  margin-bottom: 0.2rem;
+}
+
+.milestone {
+  padding: 2rem 0;
+  max-width: 32rem;
+}
+
+.milestone h2 {
+  font-size: 2rem;
+  text-transform: none;
+  letter-spacing: normal;
+  opacity: 1;
+  margin-bottom: 0.5rem;
+}
+
+.milestone ul {
+  padding-left: 1.25rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.milestone li {
   margin-bottom: 0.25rem;
 }
 
 [role='alert'] {
   color: #d1495b;
-}
-
-.level-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.level-control input[type='range'] {
-  width: 12rem;
-}
-
-.level-summary {
-  margin-top: 0.75rem;
-}
-
-.toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  cursor: pointer;
 }

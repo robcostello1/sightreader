@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { LEVELS, MAX_LEVEL, clampLevel, levelConfig, levelSummary } from './levels';
+import {
+  LEVELS,
+  MAX_LEVEL,
+  clampLevel,
+  conceptsIntroducedAt,
+  levelBrief,
+  levelConfig,
+  levelSummary,
+} from './levels';
 
 describe('level ramp', () => {
   it('clamps to range and quantises to tenths', () => {
@@ -92,6 +100,40 @@ describe('adoption within a level', () => {
     expect(levelConfig(5).clickThroughChance).toBe(1);
     expect(levelConfig(6).clickThroughChance).toBeCloseTo(0.5, 5);
     expect(levelConfig(7).clickThroughChance).toBe(0);
+  });
+
+  it('briefs in plain language rather than listing parameters', () => {
+    const brief = levelBrief(1);
+    expect(brief.reading).toContain('C major');
+    expect(brief.reading.join(' ')).toMatch(/half notes/);
+    // Nothing is arriving at level 1 — it is the baseline.
+    expect(brief.introducing).toEqual([]);
+  });
+
+  it('lists only what is currently arriving, not what has settled', () => {
+    // At 3.5 quarters are half in; by 5 they are simply part of the reading.
+    const arriving = levelBrief(3.5).introducing.map((i) => i.label);
+    expect(arriving).toContain('quarter notes');
+    expect(levelBrief(5).introducing.map((i) => i.label)).not.toContain('quarter notes');
+    expect(levelBrief(5).reading.join(' ')).toContain('quarter notes');
+  });
+
+  it('reports how far each arriving concept has come', () => {
+    const item = levelBrief(3.5).introducing.find((i) => i.label === 'arpeggios');
+    expect(item?.progress).toBeCloseTo(0.5, 5);
+  });
+
+  it('names what a whole level introduces, before any of it has arrived', () => {
+    // At exactly 4.0 these all have adoption 0, so the live config cannot
+    // describe them — the milestone panel needs them named.
+    expect(levelConfig(4).tupletChance).toBe(0);
+    expect(conceptsIntroducedAt(4)).toContain('triplets');
+    expect(conceptsIntroducedAt(3)).toContain('quarter notes');
+    expect(conceptsIntroducedAt(6)).toContain('accidentals');
+  });
+
+  it('falls back to a description when a level only widens what exists', () => {
+    expect(conceptsIntroducedAt(2)).toEqual(['longer phrases and wider leaps']);
   });
 
   it('summarises a level, showing how far new ideas have come in', () => {

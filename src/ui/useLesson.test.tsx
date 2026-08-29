@@ -344,6 +344,88 @@ describe('useLesson', () => {
     });
   });
 
+  describe('milestones', () => {
+    it('pauses on crossing a whole level so the new ideas can be read', async () => {
+      const advances: number[] = [];
+      const { result } = renderHook(() =>
+        useLesson({
+          level: 3.9,
+          leadInMs: LEAD_IN,
+          autoAdvance: true,
+          advanceDelayMs: ADVANCE_MS,
+          onAdvance: (n) => advances.push(n),
+        }),
+      );
+
+      for (let i = 0; i < 5; i++) {
+        act(() => result.current.start());
+        await flush();
+        const schedule = buildSchedule(result.current.exercise!, {
+          startMs: clock.currentTime * 1000 + LEAD_IN,
+          countInBars: CONFIG.countInBars,
+          clickThroughExercise: false,
+          attackGuardMs: CONFIG.scoring.attackGuardMs,
+        });
+        playCorrectly(schedule);
+        await advanceTo(schedule.endMs + 10);
+      }
+
+      expect(advances).toEqual([4]);
+      expect(result.current.milestone).toBe(4);
+
+      // Auto-advance is held back, so the panel is not skipped past.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ADVANCE_MS * 5);
+      });
+      expect(result.current.milestone).toBe(4);
+      expect(result.current.phase).toBe('results');
+    });
+
+    it('picks the session back up when acknowledged', async () => {
+      const { result } = renderHook(() =>
+        useLesson({ level: 3.9, leadInMs: LEAD_IN, onAdvance: () => {} }),
+      );
+      for (let i = 0; i < 5; i++) {
+        act(() => result.current.start());
+        await flush();
+        const schedule = buildSchedule(result.current.exercise!, {
+          startMs: clock.currentTime * 1000 + LEAD_IN,
+          countInBars: CONFIG.countInBars,
+          clickThroughExercise: false,
+          attackGuardMs: CONFIG.scoring.attackGuardMs,
+        });
+        playCorrectly(schedule);
+        await advanceTo(schedule.endMs + 10);
+      }
+      expect(result.current.milestone).toBe(4);
+
+      act(() => result.current.acknowledgeMilestone());
+      expect(result.current.milestone).toBeNull();
+      expect(result.current.phase).toBe('count-in');
+      // Same microphone session throughout.
+      expect(startMicCapture).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not pause on a tenth-of-a-level step', async () => {
+      const { result } = renderHook(() =>
+        useLesson({ level: 3, leadInMs: LEAD_IN, onAdvance: () => {} }),
+      );
+      for (let i = 0; i < 5; i++) {
+        act(() => result.current.start());
+        await flush();
+        const schedule = buildSchedule(result.current.exercise!, {
+          startMs: clock.currentTime * 1000 + LEAD_IN,
+          countInBars: CONFIG.countInBars,
+          clickThroughExercise: false,
+          attackGuardMs: CONFIG.scoring.attackGuardMs,
+        });
+        playCorrectly(schedule);
+        await advanceTo(schedule.endMs + 10);
+      }
+      expect(result.current.milestone).toBeNull();
+    });
+  });
+
   describe('auto-advance', () => {
     it('starts another exercise after the results pause', async () => {
       const { result } = renderLesson(LEVEL, true);

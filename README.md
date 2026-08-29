@@ -103,10 +103,26 @@ accuracy keeps nudging the level up instead of stalling for five more exercises
 after each step, and the level settles wherever you stop clearing the bar. The
 slider still overrides it at any time.
 
+Crossing a **whole** level pauses the session and names what is about to start
+appearing, so a new idea is read about before it turns up mid-exercise. Tenth
+steps pass without interruption.
+
 Gating uses the pass/fail occupancy scores directly — no separate mastery
 signal (spec §7). The threshold is short of perfect on purpose: sight-reading is
 meant to be attempted at the edge of fluency, and demanding a clean run would
 stall anyone on their first misread note.
+
+## Layout
+
+The exercise and its Start button own the main area; everything else sits in a
+sidebar, split into **Config** (level, position, keep going) and **Lesson**
+(what you are reading, and what is arriving).
+
+The lesson panel is written in plain language rather than as a parameter
+listing: one line for what has settled, then only the concepts mid-adoption,
+each with how far in it is. Once something appears in every exercise it stops
+being news and folds into the baseline line. `levelSummary()` still returns the
+full parameter dump, but only the dev preview page uses it.
 
 ## Session behaviour
 
