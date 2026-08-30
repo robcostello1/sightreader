@@ -6,6 +6,12 @@ import { OPEN_POSITION, POSITIONS, regionPool } from '../config/regions';
 import { MAX_LEVEL, levelConfig } from '../config/levels';
 import { DEFAULT_VIABILITY, isViable, type ViabilityConfig } from '../config/viability';
 import { midiToHz, nameToMidi } from '../lib/pitch';
+import { fastestViableBpmForPool } from '../config/viability';
+import { INSTRUMENTS, instrumentById, positionById, soundingPool } from '../config/instruments';
+import { shortestNoteValue } from '../config/levels';
+import { MAX_BPM } from '../config/tempo';
+import { maxScorableBpm } from '../scoring';
+import { NOMINAL_HOP_MS } from '../audio/constants';
 import { idiomById } from '../idioms';
 import { isInKey, keyByName } from '../lib/key';
 import { NOTE_VALUES } from '../lib/types';
@@ -487,4 +493,46 @@ describe('viability gating', () => {
       expect(exercise.notes.length).toBeGreaterThan(0);
     }
   });
+});
+
+describe('switching the gate on', () => {
+  const ON: ViabilityConfig = { ...DEFAULT_VIABILITY, enabled: true };
+  const instruments = INSTRUMENTS.filter((instrument) => instrument.status === 'available');
+
+  /** What the tempo control would allow for this instrument at this level. */
+  function ceilingFor(pool: readonly number[], level: number) {
+    const config = levelConfig(level);
+    const beatUnit = Math.min(...config.timeSignatures.map((entry) => entry.value[1]));
+    const shortest = shortestNoteValue(config);
+    return Math.min(
+      MAX_BPM,
+      maxScorableBpm(shortest, beatUnit, config.scoring, NOMINAL_HOP_MS),
+      fastestViableBpmForPool(pool, shortest, beatUnit, ON),
+    );
+  }
+
+  it.each(instruments.map((instrument) => [instrument.name, instrument.id] as const))(
+    'still produces exercises for %s at the tempo the control would allow',
+    (_name, id) => {
+      // The flip is one flag, so what happens on the other side of it is worth
+      // knowing before anyone throws it. The generator fails loudly when a
+      // constraint combination leaves it nothing — this is the check that the
+      // clamped tempo never puts it there.
+      const instrument = instrumentById(id);
+      const pool = soundingPool(instrument, positionById(instrument, null));
+      for (const level of [1, 5, 10]) {
+        const bpm = ceilingFor(pool, level);
+        for (const seed of SEEDS.slice(0, 8)) {
+          const exercise = generateExercise({
+            level,
+            pool,
+            bpm,
+            viability: ON,
+            rng: mulberry32(seed),
+          });
+          expect(exercise.notes.length).toBeGreaterThan(0);
+        }
+      }
+    },
+  );
 });
