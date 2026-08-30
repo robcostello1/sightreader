@@ -2,14 +2,39 @@ import { maxLocalInterval, placementPitches } from '../idioms';
 import type { IdiomPlacement } from '../idioms';
 import type { Idiom, Midi, NoteValue } from '../lib/types';
 
-/** Degrees searched when placing an idiom — comfortably beyond any one region. */
-const DEGREE_SEARCH = { min: -21, max: 28 };
+/**
+ * Degrees to search either side of the pool, so an idiom anchored just outside
+ * it still gets tried — its events reach up and down from the anchor.
+ */
+const DEGREE_MARGIN = 7;
+
+/** Scale degrees per octave, for converting a semitone span into a degree span. */
+const DEGREES_PER_OCTAVE = 7;
 
 export interface PlacementConstraints {
   keyCenter: Midi;
   pool: ReadonlySet<Midi>;
+  /** Lowest and highest pitches in play, used to bound the degree search. */
+  low: Midi;
+  high: Midi;
   /** Largest permitted leap between consecutive notes, in semitones. */
   maxInterval: number;
+}
+
+/**
+ * The degrees worth trying, derived from the pool rather than fixed.
+ *
+ * A constant window silently caps how high an idiom can be placed: anchored on
+ * a key centre at the bottom of the pool, a window of 28 degrees reaches four
+ * octaves and no further, which is fine for a guitar position and leaves the
+ * top three octaves of a piano unreachable.
+ */
+function degreeSearch(constraints: PlacementConstraints): { min: number; max: number } {
+  const degrees = (semitones: number) => (semitones * DEGREES_PER_OCTAVE) / 12;
+  return {
+    min: Math.floor(degrees(constraints.low - constraints.keyCenter)) - DEGREE_MARGIN,
+    max: Math.ceil(degrees(constraints.high - constraints.keyCenter)) + DEGREE_MARGIN,
+  };
 }
 
 /**
@@ -24,7 +49,8 @@ export function validPlacements(
   constraints: PlacementConstraints,
 ): IdiomPlacement[] {
   const placements: IdiomPlacement[] = [];
-  for (let startDegree = DEGREE_SEARCH.min; startDegree <= DEGREE_SEARCH.max; startDegree++) {
+  const search = degreeSearch(constraints);
+  for (let startDegree = search.min; startDegree <= search.max; startDegree++) {
     const placement: IdiomPlacement = {
       idiom,
       startDegree,

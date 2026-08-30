@@ -85,6 +85,30 @@ describe('LivePitch display steadying', () => {
   });
 });
 
+describe('LivePitch on a transposing instrument', () => {
+  it('names the note the player reads, not the one the microphone hears', () => {
+    // A B flat clarinettist sounding a concert D is playing their E. Telling
+    // them "D" would name a note that is not on their page.
+    const { container } = render(
+      <LivePitch
+        hz={midiToHz(50)} // concert D3
+        confidence={0.95}
+        gate={0.8}
+        musicalKey={keyByName('D')} // written key for concert C
+        writtenOffset={2}
+      />,
+    );
+    expect(container.querySelector('.note')!.textContent).toBe('E3');
+  });
+
+  it('leaves a non-transposing instrument alone', () => {
+    const { container } = render(
+      <LivePitch hz={midiToHz(60)} confidence={0.95} gate={0.8} musicalKey={C} />,
+    );
+    expect(container.querySelector('.note')!.textContent).toBe('C4');
+  });
+});
+
 describe('LivePitch', () => {
   it('names a confident pitch, spelled for the key', () => {
     const { container } = render(

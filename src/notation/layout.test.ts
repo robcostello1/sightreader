@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { GUITAR_WRITTEN_OFFSET, barDuration, layoutExercise, midiToVexKey, soundingToWritten } from './layout';
+import { barDuration, layoutExercise, midiToVexKey } from './layout';
+import { instrumentById, soundingToWritten } from '../config/instruments';
 import { generateExercise } from '../generator';
 import { keyByName } from '../lib/key';
 import { NOTE_VALUES } from '../lib/types';
@@ -38,13 +39,16 @@ describe('midiToVexKey', () => {
 
 describe('guitar octave transposition', () => {
   it('writes an octave above sounding pitch', () => {
-    expect(GUITAR_WRITTEN_OFFSET).toBe(12);
-    expect(soundingToWritten(40)).toBe(52); // low E sounds E2, written E3
-    expect(soundingToWritten(64)).toBe(76); // high E sounds E4, written E5
+    const guitar = instrumentById('guitar');
+    expect(soundingToWritten(40, guitar)).toBe(52); // low E sounds E2, written E3
+    expect(soundingToWritten(64, guitar)).toBe(76); // high E sounds E4, written E5
   });
 
   it('puts the open strings where a guitarist expects to read them', () => {
-    const written = [40, 45, 50, 55, 59, 64].map((m) => midiToVexKey(soundingToWritten(m), C_MAJOR));
+    const guitar = instrumentById('guitar');
+    const written = [40, 45, 50, 55, 59, 64].map((m) =>
+      midiToVexKey(soundingToWritten(m, guitar), C_MAJOR),
+    );
     expect(written).toEqual(['e/3', 'a/3', 'd/4', 'g/4', 'b/4', 'e/5']);
   });
 });

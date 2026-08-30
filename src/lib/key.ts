@@ -31,7 +31,44 @@ export const KEYS: MusicalKey[] = [
   { name: 'Ab', tonic: 8, accidentals: -4 },
   { name: 'B', tonic: 11, accidentals: 5 },
   { name: 'Db', tonic: 1, accidentals: -5 },
+  // Beyond five accidentals a key is never *chosen* — maxKeyAccidentals stops
+  // at five — but transposing instruments land here often. B major concert is
+  // C# major written for a B flat clarinet.
+  { name: 'F#', tonic: 6, accidentals: 6 },
+  { name: 'Gb', tonic: 6, accidentals: -6 },
+  { name: 'C#', tonic: 1, accidentals: 7 },
+  { name: 'Cb', tonic: 11, accidentals: -7 },
 ];
+
+const LETTERS_ORDER = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+
+/**
+ * Transposes a key by an interval given as semitones plus diatonic steps.
+ *
+ * Both halves are needed: semitones alone cannot tell D flat from C sharp. A
+ * major 2nd up is one letter and two semitones, so C major becomes D major —
+ * which is what a B flat instrument reads when the concert key is C.
+ *
+ * Where the letter-correct spelling would need more than seven accidentals — B
+ * major up a major 6th is G sharp major — it falls back to the enharmonic a
+ * player would actually be handed.
+ */
+export function transposeKey(key: MusicalKey, semitones: number, letters: number): MusicalKey {
+  const tonic = (((key.tonic + semitones) % 12) + 12) % 12;
+  const sameTonic = KEYS.filter((candidate) => candidate.tonic === tonic);
+  if (sameTonic.length === 0) throw new Error(`no key at pitch class ${tonic}`);
+
+  const wantedLetter =
+    LETTERS_ORDER[
+      (((LETTERS_ORDER.indexOf(key.name[0]) + letters) % 7) + 7) % 7
+    ];
+  const spelled = sameTonic.find((candidate) => candidate.name[0] === wantedLetter);
+  if (spelled) return spelled;
+
+  return sameTonic.reduce((best, candidate) =>
+    Math.abs(candidate.accidentals) < Math.abs(best.accidentals) ? candidate : best,
+  );
+}
 
 export function keyByName(name: string): MusicalKey {
   const found = KEYS.find((key) => key.name === name);

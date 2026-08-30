@@ -30,7 +30,7 @@ describe('startPitchWeight', () => {
 });
 
 describe('validPlacements', () => {
-  const constraints = { keyCenter: 60, pool: POOL, maxInterval: 12 };
+  const constraints = { keyCenter: 60, pool: POOL, low: LOW, high: HIGH, maxInterval: 12 };
 
   it('applies the local interval constraint independently of the pool', () => {
     const wide = validPlacements(idiomById('leap-fifth-step-back')!, NOTE_VALUES.quarter, constraints);
@@ -46,6 +46,54 @@ describe('validPlacements', () => {
     expect(
       validPlacements(idiomById('i-v-outline')!, NOTE_VALUES.quarter, { ...constraints, maxInterval: 3 }),
     ).toHaveLength(0);
+  });
+});
+
+describe('register window', () => {
+  // A pool spanning the readable width of a piano, which is what exposed both
+  // bugs this covers: unreachable heights and octave-hopping within one line.
+  const WIDE = Array.from({ length: 108 - 40 + 1 }, (_, i) => 40 + i);
+  const pitchesFor = (pool: readonly number[], seed: number) =>
+    generateExercise({ level: 4, pool, rng: mulberry32(seed) })
+      .notes.map((note) => note.midi)
+      .filter((midi): midi is number => midi !== null);
+
+  it('reaches the top of a wide pool, not just the bottom four octaves', () => {
+    // The degree search used to be a fixed window anchored on a key centre at
+    // the foot of the pool, which put everything above roughly D5 out of reach.
+    const highest = Math.max(...SEEDS.flatMap((seed) => pitchesFor(WIDE, seed)));
+    expect(highest).toBeGreaterThan(84); // above C6
+  });
+
+  it('keeps any one exercise inside a span a reader can hold', () => {
+    for (const seed of SEEDS) {
+      const pitches = pitchesFor(WIDE, seed);
+      expect(Math.max(...pitches) - Math.min(...pitches)).toBeLessThanOrEqual(28);
+    }
+  });
+
+  it('spreads those windows over the whole pool across exercises', () => {
+    const medians = SEEDS.map((seed) => {
+      const pitches = pitchesFor(WIDE, seed).sort((a, b) => a - b);
+      return pitches[Math.floor(pitches.length / 2)];
+    });
+    // Both hands get used: some exercises sit under middle C, some over it.
+    expect(medians.some((midi) => midi < 60)).toBe(true);
+    expect(medians.some((midi) => midi >= 72)).toBe(true);
+  });
+
+  it('leaves a fretboard region whole', () => {
+    // Every guitar position is narrower than the window, so none is narrowed —
+    // the extremes stay reachable, which is what the extreme bias is for.
+    for (const region of POSITIONS) {
+      const pool = regionPool(region);
+      const pitches = SEEDS.flatMap((seed) => pitchesFor(pool, seed));
+      // Within a tone of each end: whether the very top note turns up at all
+      // depends on the keys drawn, so demanding it exactly makes the test
+      // flaky about something it is not testing.
+      expect(Math.min(...pitches)).toBeLessThanOrEqual(pool[0] + 2);
+      expect(Math.max(...pitches)).toBeGreaterThanOrEqual(pool[pool.length - 1] - 2);
+    }
   });
 });
 
@@ -317,7 +365,7 @@ describe('generateExercise', () => {
     it('stays within that position’s pool', () => {
       const pool = new Set(regionPool(region));
       for (const seed of SEEDS.slice(0, 15)) {
-        const exercise = generateExercise({ level: 6, region, seed });
+        const exercise = generateExercise({ level: 6, pool: regionPool(region), seed });
         expect(exercise.notes.length).toBeGreaterThan(0);
         for (const note of exercise.notes) {
           if (note.midi !== null) expect(pool.has(note.midi)).toBe(true);
@@ -330,7 +378,9 @@ describe('generateExercise', () => {
     const lowestIn = (regionId: string) => {
       const region = POSITIONS.find((p) => p.id === regionId)!;
       const pitches = SEEDS.slice(0, 15).flatMap((seed) =>
-        generateExercise({ level: 6, region, seed }).notes.flatMap((n) => (n.midi === null ? [] : [n.midi])),
+        generateExercise({ level: 6, pool: regionPool(region), seed }).notes.flatMap((n) =>
+          n.midi === null ? [] : [n.midi],
+        ),
       );
       return Math.min(...pitches);
     };

@@ -6,7 +6,12 @@ import type { Schedule, ScheduledClicks } from '../scheduler';
 import { scoreWindow, summarise, type ExerciseSummary } from '../scoring';
 import { levelConfig } from '../config/levels';
 import { DEFAULT_PROGRESSION, advanceLevel } from '../config/progression';
-import type { FretboardRegion } from '../config/regions';
+import {
+  instrumentById,
+  positionById,
+  soundingPool,
+  DEFAULT_INSTRUMENT_ID,
+} from '../config/instruments';
 import type { Exercise, NoteResult, OnsetEvent, PitchSample } from '../lib/types';
 
 export type LessonPhase = 'idle' | 'arming' | 'count-in' | 'playing' | 'results' | 'error';
@@ -47,8 +52,10 @@ export interface LessonState {
 export interface UseLessonOptions {
   /** 1–10. */
   level: number;
-  /** Fretboard position, chosen independently of level. */
-  region?: FretboardRegion;
+  /** Instrument id; decides the pitch pool, the clef and the transposition. */
+  instrumentId?: string;
+  /** Position id, for the instruments that offer one. */
+  positionId?: string | null;
   bpm?: number;
   /** Grace period before the count-in, so the worklet can fill its first frame. */
   leadInMs?: number;
@@ -101,7 +108,8 @@ const INITIAL: LessonState = {
 export function useLesson(options: UseLessonOptions) {
   const {
     level,
-    region,
+    instrumentId = DEFAULT_INSTRUMENT_ID,
+    positionId = null,
     bpm = 60,
     leadInMs = 300,
     autoAdvance = false,
@@ -130,7 +138,8 @@ export function useLesson(options: UseLessonOptions) {
   // Read through refs inside the animation loop so it never restarts mid-exercise.
   const settingsRef = useRef({
     level,
-    region,
+    instrumentId,
+    positionId,
     bpm,
     leadInMs,
     autoAdvance,
@@ -140,14 +149,15 @@ export function useLesson(options: UseLessonOptions) {
   useEffect(() => {
     settingsRef.current = {
       level,
-      region,
+      instrumentId,
+      positionId,
       bpm,
       leadInMs,
       autoAdvance,
       advanceDelayMs,
       onAdvance,
     };
-  }, [level, region, bpm, leadInMs, autoAdvance, advanceDelayMs, onAdvance]);
+  }, [level, instrumentId, positionId, bpm, leadInMs, autoAdvance, advanceDelayMs, onAdvance]);
 
   // Lets the loop queue the next exercise without beginExercise capturing itself.
   const beginExerciseRef = useRef<((session: MicSession) => void) | null>(null);
@@ -199,13 +209,21 @@ export function useLesson(options: UseLessonOptions) {
   }, [closeSession]);
 
   const beginExercise = useCallback((session: MicSession) => {
-    const { level: lvl, region: reg, bpm: tempo, leadInMs: lead } = settingsRef.current;
+    const {
+      level: lvl,
+      instrumentId: instrId,
+      positionId: posId,
+      bpm: tempo,
+      leadInMs: lead,
+    } = settingsRef.current;
     const config = levelConfig(lvl);
+    const instrument = instrumentById(instrId);
+    const pool = soundingPool(instrument, positionById(instrument, posId));
     const seed = Math.floor(Math.random() * 1_000_000_000);
 
     let exercise: Exercise;
     try {
-      exercise = generateExercise({ level: config, region: reg, bpm: tempo, seed });
+      exercise = generateExercise({ level: config, pool, bpm: tempo, seed });
     } catch (cause) {
       setState((prev) => ({
         ...prev,

@@ -1,4 +1,4 @@
-import { OPEN_POSITION, regionPool, type FretboardRegion } from '../config/regions';
+import { OPEN_POSITION, regionPool } from '../config/regions';
 import { levelConfig, type LevelConfig } from '../config/levels';
 import { IDIOM_LIBRARY, idiomDuration, instantiateIdiom, placementPitches } from '../idioms';
 import type { IdiomPlacement } from '../idioms';
@@ -14,8 +14,12 @@ export const PADDING_IDIOM_ID = 'padding';
 export interface GenerateOptions {
   /** 1–10, or a pre-built config. */
   level: number | LevelConfig;
-  /** Fretboard position. Chosen independently of level — see regions.ts. */
-  region?: FretboardRegion;
+  /**
+   * Every sounding pitch the player can produce. Sounding, not written: the
+   * generator, the scorer and the microphone all work in concert pitch, and
+   * transposition is applied only when the notes reach the page.
+   */
+  pool?: readonly Midi[];
   /** Force a key; otherwise one is drawn from those the level admits. */
   key?: MusicalKey;
   bpm?: number;
@@ -35,6 +39,31 @@ interface Candidate {
 
 function barDuration([beatsPerBar, beatUnit]: [number, number]): NoteValue {
   return beatsPerBar / beatUnit;
+}
+
+/**
+ * The widest span one exercise may range over, in semitones.
+ *
+ * Matched to the guitar's open position, the widest region the app already
+ * treated as one readable unit — so a fretted position is unaffected and a
+ * five-octave keyboard range is not read as an invitation to leap across it.
+ */
+const MAX_EXERCISE_SPAN = 28;
+
+/**
+ * Narrows a wide pool to the register this exercise lives in.
+ *
+ * Idioms are compact by construction, but nothing constrains the gap between
+ * one and the next, so a pool spanning a whole piano produces a line that
+ * lurches between octaves. Drawing a window per exercise keeps each one
+ * readable while coverage still spreads over the full range across a session.
+ */
+function registerWindow(pool: readonly Midi[], rng: Rng): readonly Midi[] {
+  const low = pool[0];
+  const high = pool[pool.length - 1];
+  if (high - low <= MAX_EXERCISE_SPAN) return pool;
+  const start = low + Math.floor(rng() * (high - low - MAX_EXERCISE_SPAN + 1));
+  return pool.filter((midi) => midi >= start && midi <= start + MAX_EXERCISE_SPAN);
 }
 
 /**
@@ -89,10 +118,10 @@ function choosePlacement(
 
 export function generateExercise(options: GenerateOptions): Exercise {
   const config = typeof options.level === 'number' ? levelConfig(options.level) : options.level;
-  const { region = OPEN_POSITION, bpm = 60, extremeBias = 3 } = options;
+  const { bpm = 60, extremeBias = 3 } = options;
   const rng = options.rng ?? mulberry32(options.seed ?? 1);
 
-  const poolList = regionPool(region);
+  const poolList = registerWindow(options.pool ?? regionPool(OPEN_POSITION), rng);
   const pool = new Set(poolList);
   const low = poolList[0];
   const high = poolList[poolList.length - 1];
@@ -103,7 +132,7 @@ export function generateExercise(options: GenerateOptions): Exercise {
   const accidentals = rng() < config.maxKeyAccidentals - keyTier ? keyTier + 1 : keyTier;
   const key = options.key ?? pick(rng, keysUpTo(accidentals));
   const keyCenter = keyCentreFor(key, low);
-  const constraints = { keyCenter, pool, maxInterval: config.maxLocalInterval };
+  const constraints = { keyCenter, pool, low, high, maxInterval: config.maxLocalInterval };
 
   // Categories are rolled per exercise, so a newly introduced one shows up in
   // some exercises before all of them.
@@ -226,8 +255,9 @@ export function generateExercise(options: GenerateOptions): Exercise {
   // placement. Failing loudly here beats silently rendering a blank stave.
   if (notes.length === 0) {
     throw new Error(
-      `generator produced no notes (level ${config.level}, region ${region.id}, ` +
-        `key ${key.name}, seed ${options.seed ?? 'n/a'})`,
+      `generator produced no notes (level ${config.level}, pool ${poolList.length} pitches ` +
+        `${poolList[0]}-${poolList[poolList.length - 1]}, key ${key.name}, ` +
+        `seed ${options.seed ?? 'n/a'})`,
     );
   }
 
