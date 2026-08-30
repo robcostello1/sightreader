@@ -34,7 +34,7 @@
     "vite": "^8.2.2",
     "vitest": "^4.1.11"
   },
-  "description": "Client-side guitar sight-reading trainer with microphone pitch and rhythm scoring",
+  "description": "Client-side sight-reading trainer with microphone pitch and rhythm scoring",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   }

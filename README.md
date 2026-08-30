@@ -1,8 +1,8 @@
 # Sightreader
 
-A browser-based sight-reading trainer for guitar. The player is shown notated
-music, plays it on a real instrument, and the app listens via microphone to
-score pitch and rhythm accuracy.
+A browser-based sight-reading trainer. The player is shown notated music,
+plays it on their own instrument, and the app listens via microphone to score
+pitch and rhythm accuracy.
 
 Everything runs client-side — no backend, no accounts, no server round-trip —
 to keep latency low for real-time audio feedback.
@@ -21,7 +21,7 @@ difficulty tier config are in place. Tier wiring and the lesson UI are not yet
 implemented.
 
 `npm run dev` gives a live pitch readout (note name, Hz, cents, confidence)
-to sanity-check the pipeline against a real guitar.
+to sanity-check the pipeline against a real instrument.
 
 ## Getting started
 
@@ -233,7 +233,7 @@ is a holding pattern until a note-level viability check replaces it.
   self-contained IIFE in both modes. Import it as
   `./pitch-processor.ts?audio-worklet`.
 - **Onset thresholds are per-instrument and only synthetically calibrated.**
-  Defaults come from synthetic plucks, not real guitars; `ONSET_PRESETS` is the
+  Defaults come from synthetic plucks, not real playing; `ONSET_PRESETS` is the
   tuning knob. Recall degrades when several notes sustain and beat together,
   because the constant flux inflates the adaptive median.
 - **Mic input disables `echoCancellation`, `noiseSuppression` and
@@ -254,7 +254,7 @@ Everything below the microphone. 136 unit tests cover the detector, worklet,
 scheduler, scorer, generator, layout and lesson state machine — including
 running the real bundled worklet in a Node VM and rendering every generated
 exercise through VexFlow in jsdom. But no part of this has been run against a
-real guitar, so the following are calibrated on synthetic signals only and
+real instrument, so the following are calibrated on synthetic signals only and
 should be expected to need tuning:
 
 - `PitchyDetectorOptions.rmsFloor` (default 0.005) — the most likely thing to

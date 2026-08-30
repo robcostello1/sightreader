@@ -16,8 +16,9 @@ export interface MusicalKey {
 
 /**
  * Ordered by how many accidentals the signature carries, which is the order a
- * learner meets them. Guitar-friendly keys are favoured within each count:
- * sharp keys before their flat equivalents, since open strings sit in them.
+ * learner meets them. Within a count, sharp keys come before their flat
+ * equivalents — worth revisiting now that wind players, who meet flat keys
+ * first, read from the same list.
  */
 export const KEYS: MusicalKey[] = [
   { name: 'C', tonic: 0, accidentals: 0 },

@@ -59,9 +59,10 @@ function followPageColour(root: Element): void {
 }
 
 /**
- * Vertical budget. Guitar's written range in open position runs from E3, three
- * ledger lines below the staff, up to G#5 just above it — so the staff needs
- * headroom above and considerably more below, or the low strings get clipped.
+ * Vertical budget. A part can run several ledger lines either side of the staff
+ * — a guitar's open position reaches from E3, three lines below, up to G#5 just
+ * above — so there is headroom above and considerably more below, or the
+ * extremes get clipped.
  */
 const STAVE_TOP = 40;
 /** Vertical pitch between systems when the music wraps onto several lines. */

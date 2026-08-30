@@ -1,10 +1,10 @@
-# Guitar Sight-Reading Trainer — Design Spec
+# Sight-Reading Trainer — Design Spec
 
 ## 1. Overview
 
-A browser-based sight-reading trainer for guitar (electric or acoustic). The
-player is shown notated music, plays it on a real instrument, and the app
-listens via microphone to score pitch and rhythm accuracy. Everything runs
+A browser-based sight-reading trainer. The player is shown notated music,
+plays it on their own instrument, and the app listens via microphone to score
+pitch and rhythm accuracy. Everything runs
 **client-side** for v1 (no backend, no account system, no server round-trip)
 to keep latency low for real-time audio feedback.
 
@@ -15,8 +15,8 @@ arpeggios, cadential figures) rather than decoding each note in isolation.
 The app should therefore be built around a small, reusable **idiom library**
 that recurs across many exercises, rather than fully random note generation.
 
-Scope for this phase: **simple and medium difficulty tiers**, guitar only,
-no singing, no backend, no accounts.
+Scope for this phase: **simple and medium difficulty tiers**, monophonic
+playing, no singing, no backend, no accounts.
 
 ---
 
@@ -148,11 +148,11 @@ rests/triplets/accidentals per tier rules.
 ### Onset detection
 - Needed to establish the note-window clock in combination with the
   scheduled tempo (see §6). Spectral-flux / energy-based onset detection is
-  standard and works well for guitar's plucked/picked transient.
-- Guitar-specific note: pick-attack sharpness differs meaningfully between
-  distorted electric and fingerstyle acoustic — onset sensitivity should be
-  tunable/tested separately per instrument type rather than one fixed
-  global threshold.
+  standard and works well for a plucked or picked transient.
+- Attack sharpness differs meaningfully between instruments — a distorted
+  electric against a fingerstyle acoustic, either against a bowed string or a
+  flute — so onset sensitivity should be tunable/tested separately per
+  instrument type rather than one fixed global threshold.
 
 ---
 

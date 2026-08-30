@@ -26,8 +26,9 @@ export function centsFromTarget(hz: number, target: Midi, a4 = A4_HZ): number {
 
 /**
  * Whether a detected frequency counts as the target note. Tolerance is
- * deliberately wide: guitar intonation, bent strings and pitch-detector jitter
- * all bias readings, and the occupancy model already filters noise by majority.
+ * deliberately wide: intonation, embouchure, a bent string and pitch-detector
+ * jitter all bias readings, and the occupancy model already filters noise by
+ * majority.
  */
 export function matchesTarget(hz: number, target: Midi, toleranceCents = 50): boolean {
   return Math.abs(centsFromTarget(hz, target)) <= toleranceCents;

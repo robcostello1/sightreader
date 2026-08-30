@@ -16,7 +16,7 @@ export interface WaveformProps {
 /**
  * Logarithmic amplitude shaping, so quiet playing is still visible.
  *
- * A guitar into a laptop microphone spends most of its time near the bottom of
+ * An instrument into a laptop microphone spends most of its time near the bottom of
  * the scale, where a linear waveform is a flat line. This maps 0 to 0 and 1 to
  * 1 while lifting everything between — at compression 60, a sample at 1% of
  * full scale draws at about 11% of the height instead of 1%.
