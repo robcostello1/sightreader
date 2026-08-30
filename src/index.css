@@ -507,7 +507,9 @@ input[type='range'] {
   font-size: 1.75rem;
   text-transform: none;
   letter-spacing: normal;
-  opacity: 1;
+  /* Full strength: h2 is a quiet card label everywhere else, but here it is the
+     first thing to read. */
+  color: var(--fg);
   margin-bottom: 0.75rem;
 }
 
@@ -596,6 +598,13 @@ input[type='range'] {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+}
+
+
+/* Exercises read, when there is no accuracy to fill the slot with. */
+.window-fill.is-played {
+  width: 100%;
+  background: var(--fg-muted);
 }
 
 

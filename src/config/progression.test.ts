@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PROGRESSION, advanceLevel, progressionState } from './progression';
+import {
+  DEFAULT_PROGRESSION,
+  UNSCORED_WINDOW,
+  advanceLevel,
+  advanceUnscored,
+  progressionState,
+} from './progression';
 import { MAX_LEVEL } from './levels';
 
 const fill = (n: number, value: number) => Array.from({ length: n }, () => value);
@@ -44,5 +50,27 @@ describe('progression', () => {
 
   it('uses the agreed thresholds by default', () => {
     expect(DEFAULT_PROGRESSION).toEqual({ windowSize: 5, threshold: 0.8, step: 0.1 });
+  });
+});
+
+describe('advanceUnscored', () => {
+  it('waits for a full run of exercises', () => {
+    expect(advanceUnscored(3, UNSCORED_WINDOW - 1)).toBe(3);
+    expect(advanceUnscored(3, UNSCORED_WINDOW)).toBeCloseTo(3.1, 9);
+  });
+
+  it('takes the same step a scored advance does', () => {
+    // Only what earns the step changes, not the shape of the ramp.
+    expect(advanceUnscored(3, UNSCORED_WINDOW) - 3).toBeCloseTo(DEFAULT_PROGRESSION.step, 9);
+  });
+
+  it('asks for more exercises than a scored run needs', () => {
+    // Time served should not outrun reading well: five clean exercises earn a
+    // step, and this is deliberately slower than that.
+    expect(UNSCORED_WINDOW).toBeGreaterThan(DEFAULT_PROGRESSION.windowSize);
+  });
+
+  it('stops at the ceiling like everything else', () => {
+    expect(advanceUnscored(MAX_LEVEL, UNSCORED_WINDOW)).toBe(MAX_LEVEL);
   });
 });

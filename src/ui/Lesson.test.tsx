@@ -115,3 +115,21 @@ describe('changing instrument later', () => {
     expect(JSON.parse(localStorage.getItem('sightreader.instrument') ?? '""')).toBe('flute');
   });
 });
+
+describe('without a microphone', () => {
+  it('runs the lesson with scoring off, and offers a way back to it', async () => {
+    asReturning('denied');
+    render(<Lesson />);
+    await settle();
+
+    // Past onboarding and into the lesson, but nothing is listening.
+    expect(explainerShown()).toBe(false);
+    expect(screen.getByRole('button', { name: /^start$/i })).toBeTruthy();
+    expect(startMicCapture).not.toHaveBeenCalled();
+    expect(screen.getByText(/scoring is off/i)).toBeTruthy();
+
+    // And the way back is the explanation again, not a silent retry.
+    await click(/turn scoring on/i);
+    expect(explainerShown()).toBe(true);
+  });
+});

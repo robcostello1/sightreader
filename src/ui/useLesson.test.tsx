@@ -13,7 +13,12 @@ vi.mock('../scheduler', async (importOriginal) => ({
 }));
 
 const startMicCapture = vi.hoisted(() => vi.fn());
-vi.mock('../audio', () => ({ startMicCapture, isMicCaptureSupported: () => true }));
+const startSilentSession = vi.hoisted(() => vi.fn());
+vi.mock('../audio', () => ({
+  startMicCapture,
+  startSilentSession,
+  isMicCaptureSupported: () => true,
+}));
 
 const { useLesson } = await import('./useLesson');
 const { buildSchedule } = await import('../scheduler');
@@ -31,6 +36,17 @@ beforeEach(() => {
   clock = { currentTime: 0 };
   stopped = false;
   startMicCapture.mockClear();
+  startSilentSession.mockClear();
+  startSilentSession.mockImplementation(
+    async (): Promise<MicSession> => ({
+      context: clock as unknown as AudioContext,
+      analyser: { fftSize: 1024 } as unknown as AnalyserNode,
+      sampleRate: 44100,
+      stop: async () => {
+        stopped = true;
+      },
+    }),
+  );
   startMicCapture.mockImplementation(async (options: MicCaptureOptions): Promise<MicSession> => {
     emit = options.onSample;
     return {
@@ -594,5 +610,71 @@ describe('useLesson', () => {
     await flush();
     expect(result.current.phase).toBe('error');
     expect(result.current.error).toBe('Permission denied');
+  });
+});
+
+describe('without a microphone', () => {
+  const UNSCORED = 10;
+
+  function renderSilent(level = LEVEL, onAdvance?: (next: number) => void) {
+    return renderHook(() =>
+      useLesson({ level, scoring: false, leadInMs: LEAD_IN, advanceDelayMs: ADVANCE_MS, onAdvance }),
+    );
+  }
+
+  /** Runs one exercise from start to finish, playing nothing. */
+  async function readThrough(result: { current: ReturnType<typeof useLesson> }) {
+    act(() => result.current.start());
+    await flush();
+    const schedule = buildSchedule(result.current.exercise!, {
+      startMs: clock.currentTime * 1000 + LEAD_IN,
+      clickThroughExercise: false,
+      attackGuardMs: CONFIG.scoring.attackGuardMs,
+    });
+    await advanceTo(schedule.endMs + 10);
+  }
+
+  it('never opens the microphone, but still has a clock to run against', async () => {
+    const { result } = renderSilent();
+    act(() => result.current.start());
+    await flush();
+
+    expect(startMicCapture).not.toHaveBeenCalled();
+    expect(startSilentSession).toHaveBeenCalledTimes(1);
+    expect(result.current.phase).toBe('count-in');
+    expect(result.current.exercise).not.toBeNull();
+  });
+
+  it('passes no verdict rather than failing every note', async () => {
+    const { result } = renderSilent();
+    await readThrough(result);
+
+    // Silence is a verdict; the absence of a microphone is not.
+    expect(result.current.phase).toBe('results');
+    expect(result.current.results).toEqual([]);
+    expect(result.current.summary).toBeNull();
+    expect(result.current.history).toEqual([]);
+  });
+
+  it('counts the exercises read, since that is the only signal left', async () => {
+    const { result } = renderSilent();
+    await readThrough(result);
+    await readThrough(result);
+
+    expect(result.current.unscoredCompleted).toBe(2);
+    expect(result.current.stats.completed).toBe(2);
+  });
+
+  it('advances a tenth of a level once enough have been read, and starts again', async () => {
+    const advances: number[] = [];
+    const { result } = renderSilent(3, (next) => advances.push(next));
+
+    for (let i = 0; i < UNSCORED; i++) {
+      await readThrough(result);
+      if (i < UNSCORED - 1) expect(advances).toHaveLength(0);
+    }
+
+    expect(advances).toEqual([3.1]);
+    expect(result.current.unscoredCompleted).toBe(0);
   });
 });

@@ -77,3 +77,25 @@ export function advanceLevel(
     ? clampLevel(level + config.step)
     : clampLevel(level);
 }
+
+/**
+ * Exercises before the level nudges up when nothing can be scored.
+ *
+ * Without a microphone there is no accuracy to gate on, so the only honest
+ * signal left is that the reading was attempted. Ten is deliberately slower
+ * than a scored run needs — five exercises read well earn a step, and time
+ * served should not outrun that.
+ */
+export const UNSCORED_WINDOW = 10;
+
+/**
+ * The level after playing `completed` exercises with scoring off. Same step as
+ * a scored advance, so the ramp keeps its shape; only what earns it changes.
+ */
+export function advanceUnscored(
+  level: number,
+  completed: number,
+  config: ProgressionConfig = DEFAULT_PROGRESSION,
+): number {
+  return completed >= UNSCORED_WINDOW ? clampLevel(level + config.step) : clampLevel(level);
+}

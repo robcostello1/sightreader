@@ -65,15 +65,38 @@ describe('permission step', () => {
     expect(props.onPermission).toHaveBeenCalledWith('granted');
   });
 
-  it('says so when the browser refuses, and offers another go', async () => {
+  it('says what a refusal costs, and offers a way on and a way back', async () => {
     const props = setup({ request: refuses() });
     await click(enableButton());
 
     expect(props.onPermission).toHaveBeenCalledWith('denied');
-    expect(screen.getByText(/did not allow the microphone/i)).toBeTruthy();
+    expect(screen.getByText(/scoring is disabled/i)).toBeTruthy();
+    // Not "try again": once a browser has been told no, asking again does
+    // nothing visible, so the way back is through its own settings.
+    expect(screen.queryByRole('button', { name: /try again/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /^continue$/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /troubleshoot/i })).toBeTruthy();
+  });
 
-    await click(screen.getByRole('button', { name: /try again/i }));
-    expect(props.request).toHaveBeenCalledTimes(2);
+  it('gives instructions for the browser it is actually running in', async () => {
+    setup({ request: refuses() });
+    await click(enableButton());
+    await click(screen.getByRole('button', { name: /troubleshoot/i }));
+
+    // jsdom reports itself as Mozilla/5.0 … Chrome-free, so this lands on the
+    // generic advice rather than confidently naming the wrong menu.
+    expect(screen.getByText(/reload the page/i)).toBeTruthy();
+    await click(screen.getByRole('button', { name: /back/i }));
+    expect(screen.getByRole('button', { name: /troubleshoot/i })).toBeTruthy();
+  });
+
+  it('carries on to the instrument step when the player continues without it', async () => {
+    const props = setup({ request: refuses() });
+    await click(enableButton());
+    await click(screen.getByRole('button', { name: /^continue$/i }));
+
+    expect(screen.getByText(/what are you playing/i)).toBeTruthy();
+    expect(props.onDone).not.toHaveBeenCalled();
   });
 
   it('does not record a refusal when there was simply no microphone', async () => {

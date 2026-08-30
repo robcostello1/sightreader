@@ -23,7 +23,7 @@ import {
   soundingPool,
 } from '../config/instruments';
 import { fretRangeLabel } from '../config/regions';
-import { DEFAULT_PROGRESSION, progressionState } from '../config/progression';
+import { DEFAULT_PROGRESSION, UNSCORED_WINDOW, progressionState } from '../config/progression';
 import { BPM_STEP, MAX_BPM, MIN_BPM, clampBpm } from '../config/tempo';
 import { loadSetting, saveSetting } from '../lib/storage';
 import { midiToName } from '../lib/pitch';
@@ -107,11 +107,14 @@ export function Lesson() {
 
   // Advancement is gated on the same pass/fail scores used for feedback — no
   // separate mastery signal (spec §7).
+  // No microphone, no scoring — the exercise still runs, but nothing is judged.
+  const scoring = micPermission === 'granted';
   const lesson = useLesson({
     level,
     instrumentId,
     positionId: position?.id ?? null,
     bpm: effectiveBpm,
+    scoring,
     autoAdvance,
     onAdvance: setLevel,
   });
@@ -247,34 +250,50 @@ export function Lesson() {
             </div>
 
             <div className="status">
-              <div className="card monitor">
-                <div className="monitor-row">
-                  <LivePitch
-                    hz={lesson.livePitch?.hz ?? null}
-                    confidence={lesson.livePitch?.confidence ?? 0}
-                    gate={config.scoring.confidenceGate}
-                    musicalKey={writtenKey}
-                    writtenOffset={-instrument.transposition.semitones}
-                  />
-                  <Waveform analyser={lesson.analyser} />
+              {scoring ? (
+                <div className="card monitor">
+                  <div className="monitor-row">
+                    <LivePitch
+                      hz={lesson.livePitch?.hz ?? null}
+                      confidence={lesson.livePitch?.confidence ?? 0}
+                      gate={config.scoring.confidenceGate}
+                      musicalKey={writtenKey}
+                      writtenOffset={-instrument.transposition.semitones}
+                    />
+                    <Waveform analyser={lesson.analyser} />
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="card monitor">
+                  <p className="muted small">
+                    Scoring is off — the microphone was not available.
+                  </p>
+                  <button type="button" onClick={() => setMicPermission('unknown')}>
+                    Turn scoring on
+                  </button>
+                </div>
+              )}
 
               <section className="card progress-card">
                 <h2>Levelling up</h2>
+                {/* With nothing scored there is no accuracy to fill a bar with,
+                    so the same window counts exercises read instead. */}
                 <div
                   className="window"
                   role="img"
                   aria-label={
                     progress.atCeiling
                       ? 'Top level reached'
-                      : `${progress.completed} of ${progress.needed} exercises played, ` +
-                        `${Math.round((progress.accuracy ?? 0) * 100)}% accuracy, ` +
-                        `${threshold}% needed to level up`
+                      : scoring
+                        ? `${progress.completed} of ${progress.needed} exercises played, ` +
+                          `${Math.round((progress.accuracy ?? 0) * 100)}% accuracy, ` +
+                          `${threshold}% needed to level up`
+                        : `${lesson.unscoredCompleted} of ${UNSCORED_WINDOW} exercises played`
                   }
                 >
-                  {Array.from({ length: progress.needed }, (_, i) => {
-                    const accuracy = lesson.history[i];
+                  {Array.from({ length: scoring ? progress.needed : UNSCORED_WINDOW }, (_, i) => {
+                    const accuracy = scoring ? lesson.history[i] : undefined;
+                    const played = !scoring && i < lesson.unscoredCompleted;
                     return (
                       <span key={i} className="window-slot">
                         {accuracy !== undefined && (
@@ -285,26 +304,29 @@ export function Lesson() {
                             style={{ width: `${Math.max(4, accuracy * 100)}%` }}
                           />
                         )}
+                        {played && <span className="window-fill is-played" />}
                       </span>
                     );
                   })}
                 </div>
               </section>
 
-              <section className="card result-card">
-                <h2>Last exercise</h2>
-                <p className="result-line">
-                  <span className="result-score">
-                    {lesson.summary ? `${Math.round(lesson.summary.accuracy * 100)}%` : '—'}
-                  </span>
-                  <span className="muted small">
-                    {lesson.summary &&
-                      `${lesson.summary.passed}/${
-                        lesson.summary.total - lesson.summary.unscorable
-                      }`}
-                  </span>
-                </p>
-              </section>
+              {scoring && (
+                <section className="card result-card">
+                  <h2>Last exercise</h2>
+                  <p className="result-line">
+                    <span className="result-score">
+                      {lesson.summary ? `${Math.round(lesson.summary.accuracy * 100)}%` : '—'}
+                    </span>
+                    <span className="muted small">
+                      {lesson.summary &&
+                        `${lesson.summary.passed}/${
+                          lesson.summary.total - lesson.summary.unscorable
+                        }`}
+                    </span>
+                  </p>
+                </section>
+              )}
             </div>
 
           </>

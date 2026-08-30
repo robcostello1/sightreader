@@ -126,3 +126,37 @@ export async function startMicCapture(options: MicCaptureOptions): Promise<MicSe
     },
   };
 }
+
+/**
+ * A session with a clock but no ear, for playing without a microphone.
+ *
+ * The exercise loop is anchored on an AudioContext throughout — every note
+ * window is a timestamp on that clock, and the count-in clicks are scheduled
+ * against it — so it is the context, not the microphone, that the lesson
+ * actually needs. Opening one alone leaves the metronome and the notation
+ * working while nothing is listening.
+ *
+ * The analyser is real but connected to nothing, and reads silence. Whatever
+ * shows it should be hidden rather than left to draw a flat line that says
+ * audio is arriving.
+ */
+export async function startSilentSession(): Promise<MicSession> {
+  const context = new AudioContext({ latencyHint: 'interactive' });
+  const analyser = context.createAnalyser();
+
+  if (context.state === 'suspended') {
+    await context.resume().catch(() => undefined);
+  }
+
+  let stopped = false;
+  return {
+    context,
+    analyser,
+    sampleRate: context.sampleRate,
+    stop: async () => {
+      if (stopped) return;
+      stopped = true;
+      await context.close();
+    },
+  };
+}

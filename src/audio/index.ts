@@ -2,7 +2,7 @@
  * Build order steps 1-2: mic capture -> AudioWorklet -> pitch stream with
  * confidence values, plus spectral-flux onset detection on the same frames.
  */
-export { startMicCapture, isMicCaptureSupported } from './capture';
+export { startMicCapture, startSilentSession, isMicCaptureSupported } from './capture';
 export {
   isPermissionDenial,
   loadMicPermission,

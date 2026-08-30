@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { isPermissionDenial, type MicPermission } from '../audio';
+import { recoverySteps } from '../lib/browser';
 import { InstrumentPicker } from './InstrumentPicker';
 import type { MicRequest } from './useLesson';
 
@@ -18,7 +19,7 @@ export interface OnboardingProps {
   onDone: () => void;
 }
 
-type Stage = 'explainer' | 'blocked' | 'instrument';
+type Stage = 'explainer' | 'blocked' | 'denied' | 'troubleshoot' | 'instrument';
 
 /**
  * The steps before the first exercise.
@@ -59,11 +60,60 @@ export function Onboarding({
         return;
       }
       // Only a refusal is worth remembering; no device, or a device held by
-      // something else, is worth trying again.
+      // something else, is worth trying again. A refusal is not: once a browser
+      // has been told no, asking again does nothing visible, so the way back is
+      // its own settings.
+      if (isPermissionDenial(result.cause)) {
+        onPermission('denied');
+        setStage('denied');
+        return;
+      }
       setStage('blocked');
-      if (isPermissionDenial(result.cause)) onPermission('denied');
     });
   };
+
+  if (stage === 'denied' || stage === 'troubleshoot') {
+    const recovery = recoverySteps(
+      typeof navigator === 'undefined' ? '' : navigator.userAgent,
+    );
+    return (
+      <section className="onboarding">
+        <h2>Scoring needs the microphone</h2>
+        <p>
+          We were unable to enable microphone permissions. You can still use the app, but scoring
+          is disabled.
+        </p>
+
+        {stage === 'troubleshoot' ? (
+          <>
+            <p className="muted">In {recovery.name}:</p>
+            <ol className="reassurance">
+              {recovery.steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+            <div className="stage-controls">
+              <button type="button" className="primary" onClick={settled}>
+                Continue without scoring
+              </button>
+              <button type="button" onClick={() => setStage('denied')}>
+                Back
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="stage-controls">
+            <button type="button" className="primary" onClick={settled}>
+              Continue
+            </button>
+            <button type="button" onClick={() => setStage('troubleshoot')}>
+              Troubleshoot permissions
+            </button>
+          </div>
+        )}
+      </section>
+    );
+  }
 
   if (stage === 'instrument') {
     return (
