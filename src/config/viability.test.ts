@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_VIABILITY,
   fastestViableBpm,
+  fastestViableBpmForPool,
   isViable,
   noteDurationMs,
   periodsAvailable,
@@ -114,5 +115,45 @@ describe('fastestViableBpm', () => {
     const at = (name: string) => fastestViableBpm(hz(name), NOTE_VALUES.eighth, 4, CONFIG);
     expect(at('E2')).toBeGreaterThan(at('E1'));
     expect(at('E4')).toBeGreaterThan(at('E2'));
+  });
+});
+
+describe('fastestViableBpmForPool', () => {
+  const pool = (low: string, high: string) => {
+    const from = nameToMidi(low);
+    return Array.from({ length: nameToMidi(high) - from + 1 }, (_, i) => from + i);
+  };
+
+  it('is set by the lowest note, whose cycles are longest', () => {
+    const cello = pool('C2', 'C5');
+    expect(fastestViableBpmForPool(cello, NOTE_VALUES.eighth, 4, CONFIG)).toBeCloseTo(
+      fastestViableBpm(hz('C2'), NOTE_VALUES.eighth, 4, CONFIG),
+      9,
+    );
+  });
+
+  it('separates the instruments it is meant to, rather than capping them alike', () => {
+    // The whole point of doing this per register: a flute's ceiling sits well
+    // above a cello's.
+    const value = NOTE_VALUES.eighth;
+    const flute = fastestViableBpmForPool(pool('C4', 'C7'), value, 4, CONFIG);
+    const cello = fastestViableBpmForPool(pool('C2', 'C5'), value, 4, CONFIG);
+    expect(flute).toBeGreaterThan(cello * 1.5);
+
+    // But not without limit. The attack exclusion is a fixed cost the pitch
+    // cannot buy its way out of, so the ceiling flattens as the register rises:
+    // even an infinitely high note only reaches the attack-only tempo.
+    const attackOnly = (value * 4 * 60_000) / CONFIG.attackExclusionMs;
+    expect(flute).toBeLessThan(attackOnly);
+    expect(fastestViableBpmForPool(pool('C7', 'C8'), value, 4, CONFIG)).toBeLessThan(attackOnly);
+  });
+
+  it('imposes no ceiling while the gate is off', () => {
+    expect(fastestViableBpmForPool(pool('C2', 'C5'), NOTE_VALUES.eighth, 4, DEFAULT_VIABILITY)).toBe(
+      Number.POSITIVE_INFINITY,
+    );
+    expect(fastestViableBpmForPool([], NOTE_VALUES.eighth, 4, CONFIG)).toBe(
+      Number.POSITIVE_INFINITY,
+    );
   });
 });

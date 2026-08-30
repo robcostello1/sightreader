@@ -1,4 +1,5 @@
-import type { NoteValue } from '../lib/types';
+import { midiToHz } from '../lib/pitch';
+import type { Midi, NoteValue } from '../lib/types';
 
 /**
  * Whether a note is long enough, at its own frequency, to be worth generating.
@@ -105,4 +106,23 @@ export function fastestViableBpm(
   if (!config.enabled) return Number.POSITIVE_INFINITY;
   const neededMs = config.attackExclusionMs + (requiredPeriods(config) * 1000) / hz;
   return (value * beatUnit * 60_000) / neededMs;
+}
+
+/**
+ * Fastest tempo the whole register can sustain at this note value.
+ *
+ * The lowest pitch is the binding one: its cycles are the longest, so it fails
+ * first. Per instrument and range rather than globally, which is the point —
+ * a flute's ceiling and a cello's are nowhere near each other.
+ *
+ * `pool` is sounding pitches, ascending, as the generator holds them.
+ */
+export function fastestViableBpmForPool(
+  pool: readonly Midi[],
+  value: NoteValue,
+  beatUnit: number,
+  config: ViabilityConfig,
+): number {
+  if (!config.enabled || pool.length === 0) return Number.POSITIVE_INFINITY;
+  return fastestViableBpm(midiToHz(Math.min(...pool)), value, beatUnit, config);
 }

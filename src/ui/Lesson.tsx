@@ -26,6 +26,7 @@ import {
 import { fretRangeLabel } from '../config/regions';
 import { DEFAULT_PROGRESSION, UNSCORED_WINDOW, progressionState } from '../config/progression';
 import { BPM_STEP, MAX_BPM, MIN_BPM, clampBpm } from '../config/tempo';
+import { DEFAULT_VIABILITY, fastestViableBpmForPool } from '../config/viability';
 import { loadSetting, saveSetting } from '../lib/storage';
 import { applyTheme, loadTheme, type ThemePreference } from '../lib/theme';
 import { midiToName } from '../lib/pitch';
@@ -107,13 +108,24 @@ export function Lesson() {
   // return nothing but "too short to score". The tightest signature is the
   // limiting one, since a smaller beat unit makes the same value briefer.
   const tightestBeatUnit = Math.min(...config.timeSignatures.map((entry) => entry.value[1]));
+  const shortest = shortestNoteValue(config);
+  // Two ceilings, and the lower wins. One counts detector frames, which arrive
+  // at a fixed rate whatever is played; the other counts cycles of the note
+  // itself, which is why it moves with the instrument's lowest pitch. A cello
+  // runs out of the second long before a flute does.
   const tempoCeiling = clampBpm(
     Math.min(
       MAX_BPM,
-      maxScorableBpm(shortestNoteValue(config), tightestBeatUnit, config.scoring, NOMINAL_HOP_MS),
+      maxScorableBpm(shortest, tightestBeatUnit, config.scoring, NOMINAL_HOP_MS),
+      fastestViableBpmForPool(pool, shortest, tightestBeatUnit, DEFAULT_VIABILITY),
     ),
   );
   const effectiveBpm = Math.min(bpm, tempoCeiling);
+  // Which of the two ceilings is doing the capping, so the reason given is the
+  // real one: the register's limit and the level's are different sentences.
+  const registerBound =
+    fastestViableBpmForPool(pool, shortest, tightestBeatUnit, DEFAULT_VIABILITY) <
+    maxScorableBpm(shortest, tightestBeatUnit, config.scoring, NOMINAL_HOP_MS);
 
   // Advancement is gated on the same pass/fail scores used for feedback — no
   // separate mastery signal (spec §7).
@@ -359,7 +371,8 @@ export function Lesson() {
           {tempoCeiling < MAX_BPM && (
             <p className="muted small">
               Capped at {tempoCeiling} bpm — faster than this and the shortest notes
-              at this level are too brief to score.
+              {registerBound ? ' in this register' : ' at this level'} are too brief to
+              score.
             </p>
           )}
 

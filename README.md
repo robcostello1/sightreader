@@ -231,6 +231,12 @@ should be expected to need tuning:
 - `ONSET_PRESETS` thresholds, per instrument. Defaults come from synthetic
   plucks, not real playing. Recall degrades when several notes sustain and beat
   together, because the constant flux inflates the adaptive median.
+- `DEFAULT_VIABILITY` — the pitch/value/tempo gate that keeps notes the
+  microphone could not score out of exercises. Built and tested, but shipped
+  **off**: its three constants are placeholders, and gating real exercises on a
+  guessed margin is either needlessly restrictive or not restrictive enough
+  with no way to tell which. Switching it on is one flag once the constants are
+  measured.
 - `DEFAULT_SCORING.passThreshold` and `confidenceGate`
 
 `docs/spec.md` holds the original design spec, including the parts not built.
