@@ -18,6 +18,7 @@ import {
 import {
   DEFAULT_INSTRUMENT_ID,
   INSTRUMENTS,
+  INSTRUMENT_FAMILIES,
   instrumentById,
   positionById,
   soundingPool,
@@ -28,7 +29,6 @@ import { BPM_STEP, MAX_BPM, MIN_BPM, clampBpm } from '../config/tempo';
 import { loadSetting, saveSetting } from '../lib/storage';
 import { midiToName } from '../lib/pitch';
 import { keyByName, transposeKey } from '../lib/key';
-import { InstrumentPicker } from './InstrumentPicker';
 import { LivePitch } from './LivePitch';
 import { Onboarding } from './Onboarding';
 import { Waveform } from './Waveform';
@@ -69,8 +69,6 @@ export function Lesson() {
    * likeliest reason to return is having gone and fixed the permission.
    */
   const [micAsked, setMicAsked] = useState(false);
-  /** Reopening the picker from settings, once onboarding is behind us. */
-  const [picking, setPicking] = useState(false);
 
   useEffect(() => saveSetting('level', level), [level]);
   useEffect(() => saveSetting('instrument', instrumentId), [instrumentId]);
@@ -155,53 +153,28 @@ export function Lesson() {
   // is usually followed by going and fixing it, and the app has to notice.
   // The instrument is asked once ever, and changed from the sidebar after that.
   const needsMicrophone = micPermission !== 'granted' && !micAsked;
-  if (needsMicrophone || !onboarded) {
-    return (
-      <div className="layout">
-        <div className="stage">
-          <Onboarding
-            request={lesson.requestMicrophone}
-            onPermission={setMicPermission}
-            needsMicrophone={needsMicrophone}
-            needsInstrument={!onboarded}
-            previouslyDenied={micPermission === 'denied'}
-            instrumentId={instrumentId}
-            positionId={positionId}
-            onInstrument={setInstrumentId}
-            onPosition={setPositionId}
-            onDone={() => {
-              setOnboarded(true);
-              setMicAsked(true);
-            }}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  if (picking) {
-    return (
-      <div className="layout">
-        <div className="stage">
-          <section className="onboarding onboarding-wide">
-            <h2>What are you playing?</h2>
-            <InstrumentPicker
-              instrumentId={instrumentId}
-              positionId={positionId}
-              onInstrument={setInstrumentId}
-              onPosition={setPositionId}
-            />
-            <button type="button" className="primary" onClick={() => setPicking(false)}>
-              Done
-            </button>
-          </section>
-        </div>
-      </div>
-    );
-  }
+  const onboarding = needsMicrophone || !onboarded;
 
   return (
     <div className="layout">
+      {/* The checklist sits over the app rather than in place of it, so what is
+          being set up is visible behind the questions. */}
+      <Onboarding
+        open={onboarding}
+        request={lesson.requestMicrophone}
+        permission={micPermission}
+        onPermission={setMicPermission}
+        needsInstrument={!onboarded}
+        instrumentId={instrumentId}
+        positionId={positionId}
+        onInstrument={setInstrumentId}
+        onPosition={setPositionId}
+        onDone={() => {
+          setOnboarded(true);
+          setMicAsked(true);
+        }}
+      />
+
       <div className="stage">
         {lesson.milestone !== null ? (
           <section className="milestone">
@@ -384,18 +357,33 @@ export function Lesson() {
             </p>
           )}
 
-          <div className="field">
+          <label className="field">
             <span className="field-label">Instrument</span>
-            {/* The grid is the one place all twenty-five are legible, so
-                changing instrument reopens it rather than duplicating it as a
-                dropdown that would drift out of step. */}
-            <div className="field-inline">
-              <strong>{instrument.name}</strong>
-              <button type="button" onClick={() => setPicking(true)} disabled={running}>
-                Change
-              </button>
-            </div>
-          </div>
+            <select
+              value={instrumentId}
+              onChange={(event) => {
+                setInstrumentId(event.target.value);
+                // Positions belong to an instrument; the old one means nothing here.
+                setPositionId(null);
+              }}
+              disabled={running}
+            >
+              {INSTRUMENT_FAMILIES.map((family) => (
+                <optgroup key={family.id} label={family.label}>
+                  {INSTRUMENTS.filter((option) => option.family === family.id).map((option) => (
+                    <option
+                      key={option.id}
+                      value={option.id}
+                      disabled={option.status === 'comingSoon'}
+                    >
+                      {option.name}
+                      {option.status === 'comingSoon' ? ' — coming soon' : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
 
           {instrument.hasPositions && instrument.positions && (
             <label className="field">

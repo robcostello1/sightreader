@@ -1,62 +1,64 @@
 import { useState } from 'react';
+import * as Dialog from '@radix-ui/react-dialog';
 import { isPermissionDenial, type MicPermission } from '../audio';
+import { INSTRUMENT_FAMILIES, INSTRUMENTS, instrumentById, positionById } from '../config/instruments';
 import { recoverySteps } from '../lib/browser';
-import { InstrumentPicker } from './InstrumentPicker';
 import type { MicRequest } from './useLesson';
 
 export interface OnboardingProps {
+  open: boolean;
   /** Opens the microphone. Must be called from the click, not from an effect. */
   request: () => Promise<MicRequest>;
-  /** Records what the browser decided, as soon as it decides. */
+  /** What the browser has said so far, and where to record what it says next. */
+  permission: MicPermission;
   onPermission: (permission: MicPermission) => void;
-  /** Whether the microphone step is still owed; false once it is granted. */
-  needsMicrophone: boolean;
-  /** Whether the instrument step is still owed. Asked once, then never again. */
+  /** Whether the instrument is still to be chosen; it is asked once ever. */
   needsInstrument: boolean;
-  /** Whether a refusal is already on record, which is why we are asking again. */
-  previouslyDenied?: boolean;
   instrumentId: string;
   positionId: string | null;
   onInstrument: (id: string) => void;
   onPosition: (id: string | null) => void;
-  /** Every step done; the lesson can run. */
+  /** Both items settled; the lesson can run. */
   onDone: () => void;
 }
 
-type Stage = 'explainer' | 'blocked' | 'denied' | 'troubleshoot' | 'instrument';
-
 /**
- * The steps before the first exercise.
+ * Everything asked before the first exercise, as one checklist over the app.
  *
  * A native permission dialog with no preamble gets a reflexive Block — it
  * arrives unasked, in the browser's words rather than the app's, and refusing
- * is the safe move. So the ask is explained first, in the app's own voice, and
- * the browser is only reached through a button the player pressed on purpose.
+ * is the safe move. So the ask is explained first, and the browser is only
+ * reached through a button the player pressed on purpose.
  *
- * Instrument comes after, not before: it is the question you can only answer
- * once you know the app is going to listen to you play — and it is asked once,
- * since the answer does not change between sessions the way a browser
- * permission does.
+ * Both items sit on one screen rather than being paced across several: there
+ * are only two, one has a sensible answer already, and a player who can see the
+ * whole list knows how far there is to go.
  */
 export function Onboarding({
+  open,
   request,
+  permission,
   onPermission,
-  needsMicrophone,
   needsInstrument,
-  previouslyDenied = false,
   instrumentId,
   positionId,
   onInstrument,
   onPosition,
   onDone,
 }: OnboardingProps) {
-  const [stage, setStage] = useState<Stage>(needsMicrophone ? 'explainer' : 'instrument');
   const [busy, setBusy] = useState(false);
+  const [skipped, setSkipped] = useState(false);
+  const [blocked, setBlocked] = useState(false);
+  // An instrument already chosen is not asked about again; a new one starts
+  // unset, so the list is answered rather than defaulted past.
+  const [picked, setPicked] = useState(!needsInstrument);
 
-  const settled = () => {
-    if (needsInstrument) setStage('instrument');
-    else onDone();
-  };
+  const instrument = instrumentById(instrumentId);
+  const position = positionById(instrument, positionId);
+  const granted = permission === 'granted';
+  // Every item answered: the microphone one way or the other, the instrument
+  // by an actual choice. There is no other way out of the dialog.
+  const ready = (granted || skipped) && picked;
 
   const enable = () => {
     setBusy(true);
@@ -64,115 +66,162 @@ export function Onboarding({
       setBusy(false);
       if (result.granted) {
         onPermission('granted');
-        settled();
+        setSkipped(false);
+        setBlocked(false);
         return;
       }
-      // Only a refusal is worth remembering; no device, or a device held by
-      // something else, is worth trying again. A refusal is not: once a browser
-      // has been told no, asking again does nothing visible, so the way back is
-      // its own settings.
+      // Only a refusal is worth remembering; no device, or one held by another
+      // app, is worth simply trying again.
       if (isPermissionDenial(result.cause)) {
         onPermission('denied');
-        setStage('denied');
-        return;
+        setBlocked(true);
       }
-      setStage('blocked');
+      setSkipped(true);
     });
   };
 
-  if (stage === 'denied' || stage === 'troubleshoot') {
-    const recovery = recoverySteps(
-      typeof navigator === 'undefined' ? '' : navigator.userAgent,
-    );
-    return (
-      <section className="onboarding">
-        <h2>Scoring needs the microphone</h2>
-        <p>
-          We were unable to enable microphone permissions. You can still use the app, but scoring
-          is disabled.
-        </p>
-
-        {stage === 'troubleshoot' ? (
-          <>
-            <p className="muted">In {recovery.name}:</p>
-            <ol className="reassurance">
-              {recovery.steps.map((step) => (
-                <li key={step}>{step}</li>
-              ))}
-            </ol>
-            <div className="stage-controls">
-              <button type="button" className="primary" onClick={settled}>
-                Continue without scoring
-              </button>
-              <button type="button" onClick={() => setStage('denied')}>
-                Back
-              </button>
-            </div>
-          </>
-        ) : (
-          <div className="stage-controls">
-            <button type="button" className="primary" onClick={settled}>
-              Continue
-            </button>
-            <button type="button" onClick={() => setStage('troubleshoot')}>
-              Troubleshoot permissions
-            </button>
-          </div>
-        )}
-      </section>
-    );
-  }
-
-  if (stage === 'instrument') {
-    return (
-      <section className="onboarding onboarding-wide">
-        <h2>What are you playing?</h2>
-        <p className="muted">
-          It sets the clef, the octave and — for a transposing instrument — the key you read in.
-          You can change it later.
-        </p>
-        <InstrumentPicker
-          instrumentId={instrumentId}
-          positionId={positionId}
-          onInstrument={onInstrument}
-          onPosition={onPosition}
-        />
-        <button type="button" className="primary" onClick={onDone}>
-          Start reading
-        </button>
-      </section>
-    );
-  }
+  const recovery = recoverySteps(typeof navigator === 'undefined' ? '' : navigator.userAgent);
 
   return (
-    <section className="onboarding">
-      <h2>Sightreader listens while you play</h2>
-      <p>
-        Reading is scored by ear: the app follows the notes you play through your microphone and
-        marks each one as it goes.
-      </p>
-      <ul className="reassurance">
-        <li>Pitch is worked out on this device, frame by frame.</li>
-        <li>Nothing is recorded, stored, or sent anywhere.</li>
-        <li>Your browser can withdraw access at any time.</li>
-      </ul>
+    <Dialog.Root open={open}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="modal-overlay" />
+        {/* No close button, and no dismissing by clicking away: the way out is
+            the checklist, and skipping is one of its answers. */}
+        <Dialog.Content
+          className="modal"
+          onEscapeKeyDown={(event) => event.preventDefault()}
+          onInteractOutside={(event) => event.preventDefault()}
+        >
+          <Dialog.Title>Before you start</Dialog.Title>
+          <Dialog.Description className="muted small">
+            Two things, then you are reading.
+          </Dialog.Description>
 
-      {stage === 'blocked' && (
-        <p className="warning">
-          Your browser did not allow the microphone. Nothing has been lost — you can ask it again.
-        </p>
-      )}
+          <ol className="checklist">
+            <li className={granted ? 'is-done' : skipped ? 'is-warned' : ''}>
+              <h3>
+                <span className="check-mark" aria-hidden="true">
+                  {granted ? '✓' : skipped ? '!' : '○'}
+                </span>
+                Microphone
+              </h3>
 
-      {stage === 'explainer' && previouslyDenied && (
-        <p className="muted">
-          Scoring has been off since the microphone was blocked. If you have allowed it since, this
-          picks it up.
-        </p>
-      )}
+              {granted ? (
+                <p className="muted small">
+                  Scoring is on. Pitch is worked out on this device; nothing is recorded or sent.
+                </p>
+              ) : (
+                <>
+                  <p className="muted small">
+                    Scoring listens to what you play. Pitch is worked out on this device — nothing
+                    is recorded, stored, or sent anywhere.
+                  </p>
 
-      <button type="button" className="primary" onClick={enable} disabled={busy}>
-        {busy ? 'Waiting for your browser…' : stage === 'blocked' ? 'Try again' : 'Enable microphone'}
-      </button>
-    </section>
+                  {skipped && (
+                    <p className="warning small">
+                      {blocked
+                        ? 'Your browser blocked the microphone. Exercises still run, but nothing is scored.'
+                        : 'Without it, exercises still run but nothing is scored.'}
+                    </p>
+                  )}
+
+                  {blocked && (
+                    <ol className="steps muted small">
+                      {recovery.steps.map((step) => (
+                        <li key={step}>{step}</li>
+                      ))}
+                    </ol>
+                  )}
+
+                  <div className="check-actions">
+                    <button type="button" onClick={enable} disabled={busy}>
+                      {busy ? 'Waiting for your browser…' : 'Enable microphone'}
+                    </button>
+                    {!skipped && (
+                      <button type="button" onClick={() => setSkipped(true)}>
+                        Skip
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </li>
+
+            {needsInstrument && (
+            <li className={picked ? 'is-done' : ''}>
+              <h3>
+                <span className="check-mark" aria-hidden="true">
+                  {picked ? '✓' : '○'}
+                </span>
+                Instrument
+              </h3>
+
+              <label className="field">
+                <span className="field-label">What are you playing?</span>
+                <select
+                  value={picked ? instrumentId : ''}
+                  onChange={(event) => {
+                    setPicked(true);
+                    onInstrument(event.target.value);
+                    // Positions belong to an instrument; the old one means
+                    // nothing here.
+                    onPosition(null);
+                  }}
+                >
+                  <option value="" disabled>
+                    Choose…
+                  </option>
+                  {INSTRUMENT_FAMILIES.map((family) => (
+                    <optgroup key={family.id} label={family.label}>
+                      {INSTRUMENTS.filter((option) => option.family === family.id).map((option) => (
+                        <option
+                          key={option.id}
+                          value={option.id}
+                          disabled={option.status === 'comingSoon'}
+                        >
+                          {option.name}
+                          {option.status === 'comingSoon' ? ' — coming soon' : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </label>
+
+              {picked && instrument.positions && (
+                <label className="field">
+                  <span className="field-label">
+                    Starting {instrument.id === 'guitar' ? 'position' : 'range'}
+                  </span>
+                  <select
+                    value={position?.id ?? ''}
+                    onChange={(event) => onPosition(event.target.value)}
+                  >
+                    {instrument.positions.map((option) => (
+                      <option
+                        key={option.id}
+                        value={option.id}
+                        disabled={option.status === 'comingSoon'}
+                      >
+                        {option.label}
+                        {option.status === 'comingSoon' ? ' — coming soon' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </li>
+            )}
+          </ol>
+
+          <div className="modal-actions">
+            <button type="button" className="primary" onClick={onDone} disabled={!ready}>
+              Start reading
+            </button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

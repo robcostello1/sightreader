@@ -49,31 +49,43 @@ function browserRefuses() {
   startMicCapture.mockRejectedValue(new DOMException('no', 'NotAllowedError'));
 }
 
-/** As a player who has already been through onboarding would arrive. */
+/** As a player who has already been through the checklist would arrive. */
 function asReturning(permission = 'granted') {
   localStorage.setItem('sightreader.micPermission', JSON.stringify(permission));
   localStorage.setItem('sightreader.onboarded', JSON.stringify(true));
 }
 
-const explainerShown = () => screen.queryByRole('button', { name: /enable microphone/i }) !== null;
-const pickerShown = () => screen.queryByText(/what are you playing/i) !== null;
+const modalShown = () => screen.queryByRole('dialog') !== null;
+const instrumentAsked = () => screen.queryByLabelText(/what are you playing/i) !== null;
 
-describe('permission signposting', () => {
+/** Answers the instrument item, which the checklist will not let go without. */
+function chooseInstrument(id: string) {
+  fireEvent.change(screen.getByLabelText(/what are you playing/i), { target: { value: id } });
+}
+
+describe('the checklist', () => {
   it('does not touch the microphone before the player has been told why', async () => {
     render(<Lesson />);
     await settle();
 
     expect(startMicCapture).not.toHaveBeenCalled();
-    expect(explainerShown()).toBe(true);
+    expect(modalShown()).toBe(true);
+    // The app is behind it, not replaced by it.
+    expect(document.querySelector('.layout')).not.toBeNull();
   });
 
-  it('opens it on the button, then asks what is being played', async () => {
+  it('opens the microphone on the button and lets go once both are answered', async () => {
     render(<Lesson />);
     await settle();
-    await click(/enable microphone/i);
 
+    await click(/enable microphone/i);
     expect(startMicCapture).toHaveBeenCalledTimes(1);
-    expect(pickerShown()).toBe(true);
+
+    chooseInstrument('flute');
+    await click(/start reading/i);
+
+    expect(modalShown()).toBe(false);
+    expect(screen.getByRole('button', { name: /^start$/i })).toBeTruthy();
   });
 
   it('remembers both answers, so a returning player lands in the lesson', async () => {
@@ -81,43 +93,9 @@ describe('permission signposting', () => {
     render(<Lesson />);
     await settle();
 
-    expect(explainerShown()).toBe(false);
-    expect(pickerShown()).toBe(false);
-    // Listening from load, as it did before there was an explainer.
+    expect(modalShown()).toBe(false);
+    // Listening from load, as it did before there was a checklist.
     expect(startMicCapture).toHaveBeenCalledTimes(1);
-  });
-
-  it('explains again when access has lapsed, without asking for the instrument again', async () => {
-    localStorage.setItem('sightreader.onboarded', JSON.stringify(true));
-    render(<Lesson />);
-    await settle();
-
-    expect(explainerShown()).toBe(true);
-    await click(/enable microphone/i);
-    // Straight back to the lesson: the instrument was never in question.
-    expect(pickerShown()).toBe(false);
-    expect(explainerShown()).toBe(false);
-  });
-});
-
-describe('changing instrument later', () => {
-  it('reopens the picker from the settings, and takes the choice', async () => {
-    asReturning();
-    render(<Lesson />);
-    await settle();
-
-    await click(/^change$/i);
-    expect(pickerShown()).toBe(true);
-
-    await act(async () => {
-      fireEvent.click(screen.getByText('Flute'));
-      await Promise.resolve();
-    });
-    await click(/^done$/i);
-
-    expect(pickerShown()).toBe(false);
-    expect(screen.getByText('Flute')).toBeTruthy();
-    expect(JSON.parse(localStorage.getItem('sightreader.instrument') ?? '""')).toBe('flute');
   });
 });
 
@@ -129,28 +107,27 @@ describe('without a microphone', () => {
     render(<Lesson />);
     await settle();
 
-    expect(explainerShown()).toBe(true);
-    expect(screen.getByText(/scoring has been off/i)).toBeTruthy();
+    expect(modalShown()).toBe(true);
     // But not the instrument again — that answer does not go stale.
-    expect(pickerShown()).toBe(false);
+    expect(instrumentAsked()).toBe(false);
   });
 
-  it('runs the lesson with scoring off once the player carries on', async () => {
-    asReturning('denied');
-    browserRefuses();
+  it('runs the lesson with scoring off once the player skips', async () => {
     render(<Lesson />);
     await settle();
-    await click(/enable microphone/i);
-    await click(/^continue$/i);
 
-    expect(explainerShown()).toBe(false);
-    expect(pickerShown()).toBe(false);
+    await click(/^skip$/i);
+    chooseInstrument('flute');
+    await click(/start reading/i);
+
+    expect(modalShown()).toBe(false);
+    expect(startMicCapture).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: /^start$/i })).toBeTruthy();
     expect(screen.getByText(/scoring is off/i)).toBeTruthy();
 
-    // And the way back is the explanation again, not a silent retry.
+    // And the way back is the checklist again, not a silent retry.
     await click(/turn scoring on/i);
-    expect(explainerShown()).toBe(true);
+    expect(modalShown()).toBe(true);
   });
 
   it('does not ask twice in one session', async () => {
@@ -158,12 +135,27 @@ describe('without a microphone', () => {
     browserRefuses();
     render(<Lesson />);
     await settle();
-    await click(/enable microphone/i);
-    await click(/^continue$/i);
 
-    // Changing something unrelated must not drag the ask back up.
-    await click(/^change$/i);
-    await click(/^done$/i);
-    expect(explainerShown()).toBe(false);
+    await click(/enable microphone/i);
+    await click(/start reading/i);
+    expect(modalShown()).toBe(false);
+
+    // Changing something unrelated must not drag the checklist back up.
+    fireEvent.change(screen.getByLabelText(/^instrument$/i), { target: { value: 'flute' } });
+    await settle();
+    expect(modalShown()).toBe(false);
+  });
+});
+
+describe('changing instrument later', () => {
+  it('is a dropdown in the sidebar, and persists', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    fireEvent.change(screen.getByLabelText(/^instrument$/i), { target: { value: 'flute' } });
+    await settle();
+
+    expect(JSON.parse(localStorage.getItem('sightreader.instrument') ?? '""')).toBe('flute');
   });
 });

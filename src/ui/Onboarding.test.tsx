@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Onboarding, type OnboardingProps } from './Onboarding';
 import { INSTRUMENTS } from '../config/instruments';
@@ -24,9 +24,10 @@ const refuses = () =>
 
 function setup(overrides: Partial<OnboardingProps> = {}) {
   const props: OnboardingProps = {
+    open: true,
     request: grants(),
+    permission: 'unknown',
     onPermission: vi.fn(),
-    needsMicrophone: true,
     needsInstrument: true,
     instrumentId: 'guitar',
     positionId: null,
@@ -35,22 +36,52 @@ function setup(overrides: Partial<OnboardingProps> = {}) {
     onDone: vi.fn(),
     ...overrides,
   };
-  render(<Onboarding {...props} />);
-  return props;
+  const view = render(<Onboarding {...props} />);
+  return { props, rerender: (next: Partial<OnboardingProps>) =>
+    view.rerender(<Onboarding {...props} {...next} />) };
 }
 
-const enableButton = () => screen.getByRole('button', { name: /enable microphone/i });
+const button = (name: RegExp) => screen.getByRole('button', { name });
+const instrumentSelect = () => screen.getByLabelText(/what are you playing/i);
+const startButton = () => button(/start reading/i);
 
-/** The tile for one instrument, found by its exact name — "Guitar" is not "Bass guitar". */
-function tileFor(name: string): HTMLButtonElement {
-  const tile = screen.getByText(name).closest('button');
-  if (tile === null) throw new Error(`no tile for ${name}`);
-  return tile;
-}
+describe('the checklist', () => {
+  it('stays out of the way when there is nothing to ask', () => {
+    setup({ open: false });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
 
-describe('permission step', () => {
+  it('cannot be dismissed except by answering it', async () => {
+    const { props } = setup();
+    // No close control, and escape does nothing: skipping is an answer, not an
+    // escape hatch, so it has to be chosen.
+    expect(screen.queryByRole('button', { name: /close/i })).toBeNull();
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(props.onDone).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeTruthy();
+  });
+
+  it('will not let go until both items are answered', async () => {
+    const { props, rerender } = setup();
+    expect(startButton().hasAttribute('disabled')).toBe(true);
+
+    // The microphone alone is not enough.
+    await click(button(/enable microphone/i));
+    rerender({ permission: 'granted' });
+    expect(startButton().hasAttribute('disabled')).toBe(true);
+
+    fireEvent.change(instrumentSelect(), { target: { value: 'flute' } });
+    expect(props.onInstrument).toHaveBeenCalledWith('flute');
+    expect(startButton().hasAttribute('disabled')).toBe(false);
+
+    await click(startButton());
+    expect(props.onDone).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the microphone item', () => {
   it('explains the ask before anything reaches the browser', () => {
-    const props = setup();
+    const { props } = setup();
 
     // Nothing may touch getUserMedia on render: the whole point is that the
     // native dialog arrives only after the player has read why.
@@ -59,147 +90,102 @@ describe('permission step', () => {
   });
 
   it('asks the browser when the player presses the button', async () => {
-    const props = setup();
-    await click(enableButton());
+    const { props } = setup();
+    await click(button(/enable microphone/i));
 
     expect(props.request).toHaveBeenCalledTimes(1);
     expect(props.onPermission).toHaveBeenCalledWith('granted');
   });
 
-  it('says what a refusal costs, and offers a way on and a way back', async () => {
-    const props = setup({ request: refuses() });
-    await click(enableButton());
+  it('warns rather than silently accepting a skip', async () => {
+    const { props } = setup();
+    await click(button(/^skip$/i));
+
+    expect(props.request).not.toHaveBeenCalled();
+    expect(screen.getByText(/nothing is scored/i)).toBeTruthy();
+    // Still offered afterwards: skipping is not a door closing.
+    expect(button(/enable microphone/i)).toBeTruthy();
+  });
+
+  it('says what a refusal costs and how to undo it', async () => {
+    const { props } = setup({ request: refuses() });
+    await click(button(/enable microphone/i));
 
     expect(props.onPermission).toHaveBeenCalledWith('denied');
-    expect(screen.getByText(/scoring is disabled/i)).toBeTruthy();
-    // Not "try again": once a browser has been told no, asking again does
-    // nothing visible, so the way back is through its own settings.
-    expect(screen.queryByRole('button', { name: /try again/i })).toBeNull();
-    expect(screen.getByRole('button', { name: /^continue$/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /troubleshoot/i })).toBeTruthy();
-  });
-
-  it('gives instructions for the browser it is actually running in', async () => {
-    setup({ request: refuses() });
-    await click(enableButton());
-    await click(screen.getByRole('button', { name: /troubleshoot/i }));
-
-    // jsdom reports itself as Mozilla/5.0 … Chrome-free, so this lands on the
-    // generic advice rather than confidently naming the wrong menu.
+    expect(screen.getByText(/blocked the microphone/i)).toBeTruthy();
+    // jsdom names no browser it recognises, so this is the generic advice.
     expect(screen.getByText(/reload the page/i)).toBeTruthy();
-    await click(screen.getByRole('button', { name: /back/i }));
-    expect(screen.getByRole('button', { name: /troubleshoot/i })).toBeTruthy();
-  });
 
-  it('carries on to the instrument step when the player continues without it', async () => {
-    const props = setup({ request: refuses() });
-    await click(enableButton());
-    await click(screen.getByRole('button', { name: /^continue$/i }));
-
-    expect(screen.getByText(/what are you playing/i)).toBeTruthy();
-    expect(props.onDone).not.toHaveBeenCalled();
+    // A refusal is an answer: with the instrument chosen, the way out is open.
+    fireEvent.change(instrumentSelect(), { target: { value: 'flute' } });
+    expect(startButton().hasAttribute('disabled')).toBe(false);
   });
 
   it('does not record a refusal when there was simply no microphone', async () => {
     // Nothing was refused, so nothing should be remembered — plugging an
     // interface in and pressing again is the whole recovery.
-    const props = setup({
+    const { props } = setup({
       request: vi.fn().mockResolvedValue({
         granted: false,
         cause: new DOMException('none', 'NotFoundError'),
       }),
     });
-    await click(enableButton());
+    await click(button(/enable microphone/i));
 
     expect(props.onPermission).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: /try again/i })).toBeTruthy();
+    expect(screen.queryByText(/blocked the microphone/i)).toBeNull();
   });
 
-  it('goes straight through when only access had lapsed', async () => {
-    // Already onboarded, so there is no instrument to pick — just the
-    // explanation the revoked microphone deserves.
-    const props = setup({ needsInstrument: false });
-    await click(enableButton());
-
-    expect(props.onDone).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText(/what are you playing/i)).toBeNull();
-  });
-
-  it('says why it is asking again, when a refusal is already on record', () => {
-    setup({ previouslyDenied: true });
-    expect(screen.getByText(/scoring has been off/i)).toBeTruthy();
-    // Still the ask, not the refusal screen: the likeliest reason to be back
-    // is having gone and allowed it.
-    expect(enableButton()).toBeTruthy();
-  });
-
-  it('skips the ask when the microphone is already sorted', () => {
-    // Granted, but the instrument was never chosen — a reload part way through.
-    setup({ needsMicrophone: false });
-    expect(screen.getByText(/what are you playing/i)).toBeTruthy();
+  it('is settled already when access is granted', () => {
+    setup({ permission: 'granted' });
     expect(screen.queryByRole('button', { name: /enable microphone/i })).toBeNull();
+    expect(screen.getByText(/scoring is on/i)).toBeTruthy();
   });
 });
 
-describe('instrument step', () => {
-  async function reachPicker(overrides: Partial<OnboardingProps> = {}) {
-    const props = setup(overrides);
-    await click(enableButton());
-    return props;
-  }
+describe('the instrument item', () => {
+  it('lists every instrument, grouped, with piano and guitar first', () => {
+    setup();
+    const options = within(instrumentSelect()).getAllByRole('option');
+    const names = options.map((option) => option.textContent);
 
-  it('follows the permission step, not the other way round', async () => {
-    await reachPicker();
-    expect(screen.getByText(/what are you playing/i)).toBeTruthy();
-  });
-
-  it('lists every instrument, grouped by family', async () => {
-    await reachPicker();
-
+    // "Choose…" first, then the two most people arrive holding.
+    expect(names[1]).toBe('Piano');
+    expect(names[2]).toBe('Guitar');
     for (const instrument of INSTRUMENTS) {
-      expect(tileFor(instrument.name)).toBeTruthy();
-    }
-    for (const family of ['Fretted', 'Bowed strings', 'Woodwind', 'Brass', 'Keyboard']) {
-      expect(screen.getByRole('heading', { name: family })).toBeTruthy();
+      expect(names.some((name) => name?.startsWith(instrument.name))).toBe(true);
     }
   });
 
-  it('shows what is not supported yet rather than hiding it', async () => {
-    await reachPicker();
-
+  it('shows what is not supported yet rather than hiding it', () => {
+    setup();
+    const options = within(instrumentSelect()).getAllByRole('option');
     // An absent instrument reads as an app that does not cover you; a disabled
     // one reads as an app that knows what it does not do yet.
-    const gated = INSTRUMENTS.filter((i) => i.status === 'comingSoon');
-    expect(gated.length).toBeGreaterThan(0);
-    for (const instrument of gated) {
-      const tile = tileFor(instrument.name);
-      expect(tile.hasAttribute('disabled')).toBe(true);
-      expect(tile.textContent).toMatch(/coming soon/i);
+    for (const instrument of INSTRUMENTS.filter((i) => i.status === 'comingSoon')) {
+      const option = options.find((o) => o.textContent?.startsWith(instrument.name));
+      expect(option?.hasAttribute('disabled')).toBe(true);
+      expect(option?.textContent).toMatch(/coming soon/i);
     }
   });
 
-  it('reports a choice, and clears the position it does not belong to', async () => {
-    const props = await reachPicker();
-    await click(tileFor('Flute'));
+  it('offers a starting range only where there is one to choose, and only once picked', () => {
+    const { rerender } = setup();
+    expect(screen.queryByLabelText(/starting/i)).toBeNull();
 
-    expect(props.onInstrument).toHaveBeenCalledWith('flute');
-    expect(props.onPosition).toHaveBeenCalledWith(null);
+    fireEvent.change(instrumentSelect(), { target: { value: 'guitar' } });
+    rerender({ instrumentId: 'guitar' });
+    expect(screen.getByLabelText(/starting position/i)).toBeTruthy();
+
+    fireEvent.change(instrumentSelect(), { target: { value: 'flute' } });
+    rerender({ instrumentId: 'flute' });
+    expect(screen.queryByLabelText(/starting/i)).toBeNull();
   });
 
-  it('offers a range only for the instrument that has one, and only once picked', async () => {
-    await reachPicker({ instrumentId: 'flute' });
-    expect(screen.queryByRole('combobox')).toBeNull();
-
-    cleanup();
-    await reachPicker({ instrumentId: 'guitar' });
-    // Guitar is selected, so its fretboard positions are there to choose from.
-    expect(screen.getByRole('combobox')).toBeTruthy();
-    expect(screen.getByText(/fretboard position/i)).toBeTruthy();
-  });
-
-  it('finishes when the player says so', async () => {
-    const props = await reachPicker();
-    await click(screen.getByRole('button', { name: /start reading/i }));
-    expect(props.onDone).toHaveBeenCalledTimes(1);
+  it('is not asked again once it has been answered', () => {
+    setup({ needsInstrument: false, permission: 'granted' });
+    expect(screen.queryByLabelText(/what are you playing/i)).toBeNull();
+    // Only the microphone was owed, and it is settled, so the way out is open.
+    expect(startButton().hasAttribute('disabled')).toBe(false);
   });
 });

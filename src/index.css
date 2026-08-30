@@ -496,110 +496,106 @@ input[type='range'] {
  * Fitting everything into one screen only works while there are two columns to
  * put it in; stacked, it just clips.
  */
-/* Onboarding: one thing to read and one thing to press, so the ask lands
-   before the browser's own dialog does. */
-.onboarding {
-  padding: 2rem 0;
-  max-width: 34rem;
+/* Onboarding: one dialog over the app, so what is being set up stays visible
+   behind the questions. */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 0.7);
 }
 
-.onboarding h2 {
-  font-size: 1.75rem;
+.modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(30rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 1.5rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.modal h2 {
+  font-size: 1.25rem;
   text-transform: none;
   letter-spacing: normal;
-  /* Full strength: h2 is a quiet card label everywhere else, but here it is the
-     first thing to read. */
   color: var(--fg);
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.25rem;
 }
 
-.reassurance {
-  padding-left: 1.25rem;
-  margin: 0 0 1.5rem;
+.checklist {
+  list-style: none;
+  padding: 0;
+  margin: 1.25rem 0 0;
+}
+
+.checklist > li {
+  padding: 1rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.checklist > li > :last-child {
+  margin-bottom: 0;
+}
+
+.checklist h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+  margin: 0 0 0.35rem;
+}
+
+/* Fixed width so the heading does not shift as the mark changes. */
+.check-mark {
+  display: inline-flex;
+  justify-content: center;
+  width: 1.1rem;
   color: var(--fg-muted);
 }
 
-.reassurance li {
-  margin-bottom: 0.25rem;
+.is-done .check-mark {
+  color: var(--pass);
+}
+
+.is-warned .check-mark {
+  color: var(--unclear);
+}
+
+.check-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.steps {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.steps li {
+  margin-bottom: 0.2rem;
 }
 
 .warning {
   color: var(--fail);
-  margin-bottom: 1.25rem;
 }
 
-
-/* The instrument grid is wider than a column of prose wants to be. */
-.onboarding-wide {
-  max-width: 52rem;
-}
-
-.picker {
-  margin-bottom: 1.5rem;
-}
-
-.picker-family {
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--fg-muted);
-  margin: 1.25rem 0 0.5rem;
-}
-
-.picker-grid {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  /* Tiles size themselves; the grid decides how many fit. */
-  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
-  gap: 0.5rem;
-}
-
-.picker-choice {
-  width: 100%;
-  text-align: left;
-  border-color: var(--line);
-  background: var(--surface);
+.modal-actions {
   display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
+  justify-content: flex-end;
+  margin-top: 1.25rem;
 }
 
-.picker-choice[aria-pressed='true'] {
-  border-color: var(--accent);
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.picker-choice:disabled {
+.modal-actions button:disabled {
   color: var(--fg-muted);
+  border-color: var(--line);
   cursor: not-allowed;
 }
-
-.picker-note {
-  font-size: 0.8rem;
-}
-
-/* The range control belongs to the tile above it, so it sits inside the cell
-   rather than pushing the grid around. */
-.picker-range {
-  display: block;
-  margin-top: 0.5rem;
-}
-
-.picker-range .field-label {
-  font-size: 0.8rem;
-  color: var(--fg-muted);
-}
-
-.field-inline {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
 
 /* Exercises read, when there is no accuracy to fill the slot with. */
 .window-fill.is-played {

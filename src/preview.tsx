@@ -1,11 +1,10 @@
-import { StrictMode, useState } from 'react';
+import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Score } from './notation';
 import { generateExercise } from './generator';
 import { levelConfig, levelSummary } from './config/levels';
 import { OPEN_POSITION, regionPool } from './config/regions';
 import { instrumentById, positionById, soundingPool } from './config/instruments';
-import { InstrumentPicker } from './ui/InstrumentPicker';
 import './index.css';
 
 /**
@@ -37,23 +36,6 @@ const PIANO = [
   { position: 'grand-close', level: 8, seed: 9 },
   { position: 'grand-wide', level: 9, seed: 5 },
 ];
-
-// eslint-disable-next-line react/only-export-components -- dev-only entry point
-function PickerPreview() {
-  const [instrumentId, setInstrumentId] = useState('guitar');
-  const [positionId, setPositionId] = useState<string | null>(null);
-  return (
-    <section className="onboarding onboarding-wide">
-      <h2>What are you playing?</h2>
-      <InstrumentPicker
-        instrumentId={instrumentId}
-        positionId={positionId}
-        onInstrument={setInstrumentId}
-        onPosition={setPositionId}
-      />
-    </section>
-  );
-}
 
 // eslint-disable-next-line react/only-export-components -- dev-only entry point
 function Preview() {
@@ -98,9 +80,6 @@ function Preview() {
           </section>
         );
       })}
-
-      <h1>Instrument picker</h1>
-      <PickerPreview />
     </main>
   );
 }
