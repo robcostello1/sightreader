@@ -313,11 +313,7 @@ export function Score({
 
           // Beams and tuplets must be constructed BEFORE the voice is drawn.
           // Building a Beam is what tells its notes to suppress their own flags.
-          const beams = beamBar(
-            notes,
-            source.map((notated) => notated.tuplet?.group),
-            exercise.timeSignature,
-          );
+          const beams = beamBar(notes, source, exercise.timeSignature);
 
           const groups = new Map<
             number,

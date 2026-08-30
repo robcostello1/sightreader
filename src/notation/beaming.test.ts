@@ -2,10 +2,24 @@
 import { describe, expect, it } from 'vitest';
 import { StaveNote } from 'vexflow/bravura';
 import { beamBar } from './beaming';
+import type { NotatedNote } from './layout';
 
 const eighth = () => new StaveNote({ keys: ['c/4'], duration: '8' });
 const quarter = () => new StaveNote({ keys: ['c/4'], duration: 'q' });
+const sixteenth = () => new StaveNote({ keys: ['c/4'], duration: '16' });
 const rest = () => new StaveNote({ keys: ['b/4'], duration: '8r' });
+
+/** The notes beamBar reads lengths and tuplet membership from. */
+function sourceFor(notes: StaveNote[], groups: (number | undefined)[]): NotatedNote[] {
+  return notes.map((note, i) => ({
+    midi: note.isRest() ? null : 60,
+    code: note.getDuration(),
+    dots: 0,
+    tuplet: groups[i] === undefined ? undefined : { group: groups[i]!, num: 3, inSpaceOf: 2 },
+    tiedToNext: false,
+    sourceIndex: i,
+  }));
+}
 
 /** Note counts of each beam produced, in order. */
 function beamSizes(
@@ -13,7 +27,9 @@ function beamSizes(
   groups: (number | undefined)[],
   timeSignature: [number, number] = [4, 4],
 ): number[] {
-  return beamBar(notes, groups, timeSignature).map((beam) => beam.getNotes().length);
+  return beamBar(notes, sourceFor(notes, groups), timeSignature).map(
+    (beam) => beam.getNotes().length,
+  );
 }
 
 describe('beamBar', () => {
@@ -46,9 +62,39 @@ describe('beamBar', () => {
     expect(beamSizes(notes, [0, 0, 0])).toEqual([]);
   });
 
-  it('beams ordinary runs in beats', () => {
-    const notes = Array.from({ length: 4 }, eighth);
-    expect(beamSizes(notes, [undefined, undefined, undefined, undefined])).toEqual([2, 2]);
+  it('beams quavers in common time four to a beam', () => {
+    const four = Array.from({ length: 4 }, eighth);
+    expect(beamSizes(four, Array(4).fill(undefined))).toEqual([4]);
+    const bar = Array.from({ length: 8 }, eighth);
+    expect(beamSizes(bar, Array(8).fill(undefined))).toEqual([4, 4]);
+  });
+
+  it('never beams quavers across the middle of a common-time bar', () => {
+    // Beats 2, 3 and 4 as quavers: the first pair belongs to the first half of
+    // the bar, and joining it to the rest would bury beat three.
+    const notes = [quarter(), ...Array.from({ length: 6 }, eighth)];
+    expect(beamSizes(notes, Array(7).fill(undefined))).toEqual([2, 4]);
+  });
+
+  it('breaks a half-bar beam where a rest falls', () => {
+    const notes = [eighth(), rest(), eighth(), eighth()];
+    expect(beamSizes(notes, Array(4).fill(undefined))).toEqual([2]);
+  });
+
+  it('keeps semiquavers in beats', () => {
+    // Four to a beam is a quaver convention; semiquavers are written by beat,
+    // and eight under one beam would be unreadable.
+    const notes = Array.from({ length: 8 }, sixteenth);
+    expect(beamSizes(notes, Array(8).fill(undefined))).toEqual([4, 4]);
+  });
+
+  it('falls back to beats for a run that starts off the half bar', () => {
+    // A triplet of quavers occupies beat one, so the run after it starts a
+    // quarter of the way through the bar — where half-bar groups would land on
+    // nothing, since VexFlow counts them from the first note it is given.
+    const notes = Array.from({ length: 7 }, eighth);
+    const groups = [0, 0, 0, undefined, undefined, undefined, undefined];
+    expect(beamSizes(notes, groups)).toEqual([3, 2, 2]);
   });
 
   it('beams compound time in threes', () => {
@@ -57,7 +103,9 @@ describe('beamBar', () => {
     const notes = Array.from({ length: 6 }, eighth);
     const none = Array.from({ length: 6 }, () => undefined);
     expect(beamSizes(notes, none, [6, 8])).toEqual([3, 3]);
-    expect(beamSizes(notes, none, [4, 4])).toEqual([2, 2, 2]);
+    // The same six quavers in common time fill the first half bar and spill
+    // two into the second.
+    expect(beamSizes(notes, none, [4, 4])).toEqual([4, 2]);
   });
 
   it('beams 3/4 in crotchet beats', () => {
