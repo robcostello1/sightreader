@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { Score } from './notation';
 import { generateExercise } from './generator';
 import { levelConfig, levelSummary } from './config/levels';
-import { POSITIONS } from './config/regions';
+import { OPEN_POSITION, regionPool } from './config/regions';
 import './index.css';
 
 /**
@@ -28,7 +28,7 @@ function Preview() {
       <h1>Notation preview</h1>
       {SAMPLES.map(({ level, seed }) => {
         const config = levelConfig(level);
-        const exercise = generateExercise({ level: config, region: POSITIONS[0], seed });
+        const exercise = generateExercise({ level: config, pool: regionPool(OPEN_POSITION), seed });
         return (
           <section key={`${level}`}>
             <p className="muted">

@@ -1,4 +1,4 @@
-import { OPEN_POSITION, regionPool, type FretboardRegion } from '../config/regions';
+import { OPEN_POSITION, regionPool } from '../config/regions';
 import { levelConfig, type LevelConfig } from '../config/levels';
 import { IDIOM_LIBRARY, idiomDuration, instantiateIdiom, placementPitches } from '../idioms';
 import type { IdiomPlacement } from '../idioms';
@@ -14,8 +14,12 @@ export const PADDING_IDIOM_ID = 'padding';
 export interface GenerateOptions {
   /** 1–10, or a pre-built config. */
   level: number | LevelConfig;
-  /** Fretboard position. Chosen independently of level — see regions.ts. */
-  region?: FretboardRegion;
+  /**
+   * Every sounding pitch the player can produce. Sounding, not written: the
+   * generator, the scorer and the microphone all work in concert pitch, and
+   * transposition is applied only when the notes reach the page.
+   */
+  pool?: readonly Midi[];
   /** Force a key; otherwise one is drawn from those the level admits. */
   key?: MusicalKey;
   bpm?: number;
@@ -89,10 +93,10 @@ function choosePlacement(
 
 export function generateExercise(options: GenerateOptions): Exercise {
   const config = typeof options.level === 'number' ? levelConfig(options.level) : options.level;
-  const { region = OPEN_POSITION, bpm = 60, extremeBias = 3 } = options;
+  const { bpm = 60, extremeBias = 3 } = options;
   const rng = options.rng ?? mulberry32(options.seed ?? 1);
 
-  const poolList = regionPool(region);
+  const poolList = options.pool ?? regionPool(OPEN_POSITION);
   const pool = new Set(poolList);
   const low = poolList[0];
   const high = poolList[poolList.length - 1];
@@ -226,8 +230,9 @@ export function generateExercise(options: GenerateOptions): Exercise {
   // placement. Failing loudly here beats silently rendering a blank stave.
   if (notes.length === 0) {
     throw new Error(
-      `generator produced no notes (level ${config.level}, region ${region.id}, ` +
-        `key ${key.name}, seed ${options.seed ?? 'n/a'})`,
+      `generator produced no notes (level ${config.level}, pool ${poolList.length} pitches ` +
+        `${poolList[0]}-${poolList[poolList.length - 1]}, key ${key.name}, ` +
+        `seed ${options.seed ?? 'n/a'})`,
     );
   }
 

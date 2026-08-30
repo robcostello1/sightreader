@@ -14,7 +14,15 @@ import {
 } from 'vexflow/bravura';
 import { beamBar } from './beaming';
 import { verdictColours, type VerdictColours } from './colours';
-import { layoutExercise, midiToVexKey, soundingToWritten, type NotatedNote } from './layout';
+import { layoutExercise, midiToVexKey, type NotatedNote } from './layout';
+import {
+  instrumentById,
+  soundingToWritten,
+  staffModeFor,
+  type InstrumentDefinition,
+  type PositionDefinition,
+} from '../config/instruments';
+import { transposeKey } from '../lib/key';
 import type { Exercise, NoteResult } from '../lib/types';
 import type { MusicalKey } from '../lib/key';
 
@@ -71,6 +79,9 @@ function leadingModifierWidth(accidentals: number, withTimeSignature: boolean): 
 
 export interface ScoreProps {
   exercise: Exercise;
+  /** Decides the clef, the written octave and the written key. */
+  instrument?: InstrumentDefinition;
+  position?: PositionDefinition | null;
   /** Per-note verdicts, indexed as in exercise.notes. Absent notes stay unscored. */
   results?: readonly NoteResult[];
   /** Index of the note currently being played, for the live cursor. */
@@ -92,14 +103,24 @@ function colourFor(
   return result.verdict === 'unclear' ? colours.unclear : colours.fail;
 }
 
-function buildNote(notated: NotatedNote, key: MusicalKey): StaveNote {
+function buildNote(
+  notated: NotatedNote,
+  key: MusicalKey,
+  instrument: InstrumentDefinition,
+  clef: string,
+): StaveNote {
   const isRest = notated.midi === null;
-  // Sounding pitch in, written pitch on the page — see GUITAR_WRITTEN_OFFSET.
-  const spelled = isRest ? REST_KEY : midiToVexKey(soundingToWritten(notated.midi!), key);
+  // Sounding pitch in, written pitch on the page.
+  const spelled = isRest
+    ? REST_KEY
+    : midiToVexKey(soundingToWritten(notated.midi!, instrument), key);
 
   const note = new StaveNote({
     keys: [spelled],
     duration: isRest ? `${notated.code}r` : notated.code,
+    // Without this a bass or alto staff would place every note as if it were
+    // treble — the same line means a different pitch on each clef.
+    clef,
   });
 
   for (let i = 0; i < notated.dots; i++) Dot.buildAndAttach([note], { all: true });
@@ -112,7 +133,14 @@ function buildNote(notated: NotatedNote, key: MusicalKey): StaveNote {
  * its window has been scored. VexFlow does the engraving; layoutExercise has
  * already done the bar splitting it expects.
  */
-export function Score({ exercise, results, activeIndex, width }: ScoreProps) {
+export function Score({
+  exercise,
+  instrument = instrumentById('guitar'),
+  position = null,
+  results,
+  activeIndex,
+  width,
+}: ScoreProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [measured, setMeasured] = useState<number | null>(null);
   /** Last system scrolled to, so the view moves on wrapping and not every frame. */
@@ -138,6 +166,19 @@ export function Score({ exercise, results, activeIndex, width }: ScoreProps) {
     host.replaceChildren();
 
     const colours = verdictColours(host);
+    // The page is in the instrument's key, not the concert one: a B flat
+    // clarinet playing in concert C reads D major, and its accidentals have to
+    // agree with the notes beside them.
+    const writtenKey = transposeKey(
+      exercise.key,
+      -instrument.transposition.semitones,
+      -instrument.transposition.letters,
+    );
+    const staffMode = staffModeFor(instrument, position);
+    const clef = staffMode === 'bass' ? 'bass' : instrument.clef === 'alto' ? 'alto' : 'treble';
+    // Only guitar carries the octave mark; other octave-transposing instruments
+    // are conventionally written without one.
+    const clefAnnotation = instrument.id === 'guitar' ? '8vb' : undefined;
     const bars = layoutExercise(exercise);
 
     // Width is driven by how many notes a bar holds. Giving every bar an equal
@@ -171,7 +212,7 @@ export function Score({ exercise, results, activeIndex, width }: ScoreProps) {
     const drawn = new Map<number, { note: StaveNote; system: number }[]>();
 
     systems.forEach((system, systemIndex) => {
-      const leading = leadingModifierWidth(exercise.key.accidentals, systemIndex === 0);
+      const leading = leadingModifierWidth(writtenKey.accidentals, systemIndex === 0);
       const minWidths = system.map(barMinWidth);
       const maxWidths = system.map(
         (bar) => BAR_PADDING + Math.max(1, bar.notes.length) * MAX_WIDTH_PER_NOTE,
@@ -192,14 +233,14 @@ export function Score({ exercise, results, activeIndex, width }: ScoreProps) {
         const stave = new Stave(x, y, width);
         // Every system restates the clef and key, as a printed score does.
         if (barIndex === 0) {
-          stave.addClef('treble', undefined, '8vb').addKeySignature(exercise.key.name);
+          stave.addClef(clef, undefined, clefAnnotation).addKeySignature(writtenKey.name);
           if (systemIndex === 0) stave.addTimeSignature(exercise.timeSignature.join('/'));
         }
         stave.setContext(context).draw();
         x += width;
 
         const notes = bar.notes.map((notated) => {
-          const note = buildNote(notated, exercise.key);
+          const note = buildNote(notated, writtenKey, instrument, clef);
           const colour = colourFor(notated.sourceIndex, results, activeIndex, colours);
           note.setStyle({ fillStyle: colour, strokeStyle: colour });
           const existing = drawn.get(notated.sourceIndex) ?? [];
@@ -220,7 +261,7 @@ export function Score({ exercise, results, activeIndex, width }: ScoreProps) {
         // VexFlow decides which accidentals are actually needed, given the key
         // signature and what has already been altered earlier in the bar. Adding
         // them by hand would restate what the signature already says.
-        Accidental.applyAccidentals([voice], exercise.key.name);
+        Accidental.applyAccidentals([voice], writtenKey.name);
 
         // Beams and tuplets must be constructed BEFORE the voice is drawn.
         // Building a Beam is what tells its notes to suppress their own flags —
@@ -290,7 +331,7 @@ export function Score({ exercise, results, activeIndex, width }: ScoreProps) {
         scroller.scrollTo({ top: activeSystem * SYSTEM_HEIGHT, behavior: 'smooth' });
       }
     }
-  }, [exercise, results, activeIndex, renderWidth]);
+  }, [exercise, instrument, position, results, activeIndex, renderWidth]);
 
   return <div ref={hostRef} className="score" aria-label="Notated exercise" />;
 }

@@ -9,7 +9,14 @@ import {
 } from '../config/levels';
 import { maxScorableBpm } from '../scoring';
 import { NOMINAL_HOP_MS } from '../audio';
-import { POSITIONS, fretRangeLabel, regionById, regionPool } from '../config/regions';
+import {
+  DEFAULT_INSTRUMENT_ID,
+  INSTRUMENTS,
+  instrumentById,
+  positionById,
+  soundingPool,
+} from '../config/instruments';
+import { fretRangeLabel } from '../config/regions';
 import { DEFAULT_PROGRESSION, progressionState } from '../config/progression';
 import { BPM_STEP, MAX_BPM, MIN_BPM, clampBpm } from '../config/tempo';
 import { loadSetting, saveSetting } from '../lib/storage';
@@ -26,8 +33,12 @@ const Score = lazy(() => import('../notation').then((m) => ({ default: m.Score }
 
 /** Stored settings are validated on read — see loadSetting. */
 const readLevel = (value: unknown) => (typeof value === 'number' ? clampLevel(value) : null);
-const readRegionId = (value: unknown) =>
-  typeof value === 'string' && POSITIONS.some((p) => p.id === value) ? value : null;
+const readInstrumentId = (value: unknown) =>
+  typeof value === 'string' &&
+  INSTRUMENTS.some((i) => i.id === value && i.status === 'available')
+    ? value
+    : null;
+const readPositionId = (value: unknown) => (typeof value === 'string' ? value : null);
 /** Fallback for the readout before an exercise names a key. */
 const C_MAJOR = keyByName('C');
 
@@ -36,21 +47,24 @@ const readBpm = (value: unknown) => (typeof value === 'number' ? clampBpm(value)
 
 export function Lesson() {
   const [level, setLevel] = useState(() => loadSetting('level', readLevel, 1));
-  const [regionId, setRegionId] = useState(() =>
-    loadSetting('position', readRegionId, POSITIONS[0].id),
+  const [instrumentId, setInstrumentId] = useState(() =>
+    loadSetting('instrument', readInstrumentId, DEFAULT_INSTRUMENT_ID),
   );
+  const [positionId, setPositionId] = useState(() => loadSetting('position', readPositionId, null));
   const [autoAdvance, setAutoAdvance] = useState(() => loadSetting('autoAdvance', readFlag, true));
   const [bpm, setBpm] = useState(() => loadSetting('bpm', readBpm, MIN_BPM));
 
   useEffect(() => saveSetting('level', level), [level]);
-  useEffect(() => saveSetting('position', regionId), [regionId]);
+  useEffect(() => saveSetting('instrument', instrumentId), [instrumentId]);
+  useEffect(() => saveSetting('position', positionId), [positionId]);
   useEffect(() => saveSetting('autoAdvance', autoAdvance), [autoAdvance]);
   useEffect(() => saveSetting('bpm', bpm), [bpm]);
 
-  const region = regionById(regionId);
+  const instrument = instrumentById(instrumentId);
+  const position = positionById(instrument, positionId);
   const config = levelConfig(level);
   const brief = levelBrief(level);
-  const pool = regionPool(region);
+  const pool = soundingPool(instrument, position);
   // The detector reports once per hop and the attack guard eats the head of
   // every window, so past a certain tempo this level's shortest note cannot be
   // judged at all. Cap the control there rather than offering settings that
@@ -67,7 +81,14 @@ export function Lesson() {
 
   // Advancement is gated on the same pass/fail scores used for feedback — no
   // separate mastery signal (spec §7).
-  const lesson = useLesson({ level, region, bpm: effectiveBpm, autoAdvance, onAdvance: setLevel });
+  const lesson = useLesson({
+    level,
+    instrumentId,
+    positionId: position?.id ?? null,
+    bpm: effectiveBpm,
+    autoAdvance,
+    onAdvance: setLevel,
+  });
   const progress = progressionState(level, lesson.history);
 
   const threshold = Math.round(DEFAULT_PROGRESSION.threshold * 100);
@@ -135,6 +156,8 @@ export function Lesson() {
                 <Suspense fallback={<p className="muted">Loading notation…</p>}>
                   <Score
                     exercise={lesson.exercise}
+                    instrument={instrument}
+                    position={position}
                     results={lesson.results}
                     activeIndex={lesson.activeIndex ?? undefined}
                   />
@@ -245,23 +268,53 @@ export function Lesson() {
           )}
 
           <label className="field">
-            <span className="field-label">Fretboard position</span>
+            <span className="field-label">Instrument</span>
             <select
-              value={regionId}
-              onChange={(event) => setRegionId(event.target.value)}
+              value={instrumentId}
+              onChange={(event) => {
+                setInstrumentId(event.target.value);
+                // Positions belong to an instrument; the old one means nothing here.
+                setPositionId(null);
+              }}
               disabled={running}
             >
-              {POSITIONS.map((option) => (
-                <option key={option.id} value={option.id}>
+              {INSTRUMENTS.map((option) => (
+                <option
+                  key={option.id}
+                  value={option.id}
+                  disabled={option.status === 'comingSoon'}
+                >
                   {option.name}
+                  {option.status === 'comingSoon' ? ' — coming soon' : ''}
                 </option>
               ))}
             </select>
           </label>
+
+          {instrument.hasPositions && instrument.positions && (
+            <label className="field">
+              <span className="field-label">
+                {instrument.id === 'guitar' ? 'Fretboard position' : 'Range'}
+              </span>
+              <select
+                value={position?.id ?? ''}
+                onChange={(event) => setPositionId(event.target.value)}
+                disabled={running}
+              >
+                {instrument.positions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
           <p className="muted small">
-            {/* The dropdown already names it; this is only the detail. */}
-            {fretRangeLabel(region)} · {pool.length} pitches, {midiToName(pool[0])}–
-            {midiToName(pool[pool.length - 1])}
+            {position?.region && `${fretRangeLabel(position.region)} · `}
+            {pool.length} pitches, {midiToName(pool[0])}–{midiToName(pool[pool.length - 1])}
+            {instrument.transposition.semitones !== 0 &&
+              ` · ${instrument.transposition.label.toLowerCase()}`}
           </p>
 
           <label className="toggle">

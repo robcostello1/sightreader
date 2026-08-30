@@ -317,7 +317,7 @@ describe('generateExercise', () => {
     it('stays within that position’s pool', () => {
       const pool = new Set(regionPool(region));
       for (const seed of SEEDS.slice(0, 15)) {
-        const exercise = generateExercise({ level: 6, region, seed });
+        const exercise = generateExercise({ level: 6, pool: regionPool(region), seed });
         expect(exercise.notes.length).toBeGreaterThan(0);
         for (const note of exercise.notes) {
           if (note.midi !== null) expect(pool.has(note.midi)).toBe(true);
@@ -330,7 +330,9 @@ describe('generateExercise', () => {
     const lowestIn = (regionId: string) => {
       const region = POSITIONS.find((p) => p.id === regionId)!;
       const pitches = SEEDS.slice(0, 15).flatMap((seed) =>
-        generateExercise({ level: 6, region, seed }).notes.flatMap((n) => (n.midi === null ? [] : [n.midi])),
+        generateExercise({ level: 6, pool: regionPool(region), seed }).notes.flatMap((n) =>
+          n.midi === null ? [] : [n.midi],
+        ),
       );
       return Math.min(...pitches);
     };
