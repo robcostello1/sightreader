@@ -1,11 +1,14 @@
 // @vitest-environment jsdom
-import { cleanup, render } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { act, cleanup, render } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LivePitch } from './LivePitch';
 import { keyByName } from '../lib/key';
 import { midiToHz } from '../lib/pitch';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 const C = keyByName('C');
 const F = keyByName('F');
@@ -14,6 +17,73 @@ function markerPercent(container: HTMLElement): number | null {
   const marker = container.querySelector<HTMLElement>('.tuning-marker');
   return marker ? Number.parseFloat(marker.style.left) : null;
 }
+
+const noteText = (container: HTMLElement) => container.querySelector('.note')!.textContent;
+
+describe('LivePitch display steadying', () => {
+  // The detector dips below the gate constantly mid-note — a decaying string, a
+  // shifting finger — and a readout that blinks in and out is unreadable. None
+  // of this touches the sample stream the scorer uses.
+  const props = (hz: number | null, confidence = 0.95) => ({
+    hz,
+    confidence,
+    gate: 0.8,
+    musicalKey: C,
+  });
+
+  it('shows the first note it hears without waiting', () => {
+    vi.useFakeTimers();
+    const { container } = render(<LivePitch {...props(midiToHz(60))} />);
+    expect(noteText(container)).toBe('C4');
+  });
+
+  it('holds the note through a brief dropout', () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(<LivePitch {...props(midiToHz(60))} />);
+
+    act(() => rerender(<LivePitch {...props(null, 0)} />));
+    act(() => {
+      vi.advanceTimersByTime(120);
+    });
+    expect(noteText(container)).toBe('C4');
+  });
+
+  it('lets the note go once the dropout outlasts the hold', () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(<LivePitch {...props(midiToHz(60))} />);
+
+    act(() => rerender(<LivePitch {...props(null, 0)} />));
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(noteText(container)).toBe('—');
+  });
+
+  it('ignores a single stray reading of another note', () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(<LivePitch {...props(midiToHz(60))} />);
+
+    // One frame of a different pitch, then back — an octave error or a bump.
+    act(() => rerender(<LivePitch {...props(midiToHz(64))} />));
+    expect(noteText(container)).toBe('C4');
+    act(() => rerender(<LivePitch {...props(midiToHz(60))} />));
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(noteText(container)).toBe('C4');
+  });
+
+  it('changes over once another note actually holds', () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(<LivePitch {...props(midiToHz(60))} />);
+
+    act(() => rerender(<LivePitch {...props(midiToHz(64))} />));
+    act(() => {
+      vi.advanceTimersByTime(120);
+    });
+    expect(noteText(container)).toBe('E4');
+  });
+});
 
 describe('LivePitch', () => {
   it('names a confident pitch, spelled for the key', () => {
