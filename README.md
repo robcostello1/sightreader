@@ -118,6 +118,12 @@ one pass at the end: a verdict cannot exist before its window is over, but
 waiting for the whole exercise would feel laggy, so the live pitch shows
 immediately and pass/fail lands a note later.
 
+**The count-in grows with the tempo.** Four pulses is plenty at 60bpm and
+nothing at 240, where a bar of common time goes by in a second — so it takes as
+many bars as it needs to run longer than a second and a half, which is a second
+bar of 4/4 from 150bpm. 3/4 and 6/8 already took two, being fewer pulses to the
+bar.
+
 **The count-in is not part of the performance.** Audio during it is ignored
 entirely — not scored, not classified, not even retained. Samples timestamped
 before `t0` are dropped as they arrive, so nothing downstream can act on them.

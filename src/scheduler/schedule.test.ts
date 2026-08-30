@@ -50,9 +50,39 @@ describe('countInBarsFor', () => {
   it('gives four pulses whatever the signature is worth', () => {
     // A bar is a different number of clicks in each: four in 4/4, three in 3/4,
     // and only two in 6/8 once it is counted in dotted crotchets.
-    expect(countInBarsFor([4, 4])).toBe(1);
-    expect(countInBarsFor([3, 4])).toBe(2);
-    expect(countInBarsFor([6, 8])).toBe(2);
+    expect(countInBarsFor([4, 4], 60)).toBe(1);
+    expect(countInBarsFor([3, 4], 60)).toBe(2);
+    expect(countInBarsFor([6, 8], 60)).toBe(2);
+  });
+
+  it('takes a second bar of common time from 150bpm', () => {
+    // Where one bar has shrunk to 1.6 seconds, which is over before it has
+    // established a pulse.
+    expect(countInBarsFor([4, 4], 145)).toBe(1);
+    expect(countInBarsFor([4, 4], 150)).toBe(2);
+    expect(countInBarsFor([4, 4], 240)).toBe(2);
+  });
+
+  it('never shortens a count-in as the tempo rises', () => {
+    for (const signature of [[4, 4], [3, 4], [6, 8]] as [number, number][]) {
+      let previous = 0;
+      for (let bpm = 60; bpm <= 240; bpm += 5) {
+        const bars = countInBarsFor(signature, bpm);
+        expect(bars).toBeGreaterThanOrEqual(previous);
+        previous = bars;
+      }
+    }
+  });
+
+  it('always lasts more than a second and a half', () => {
+    // The property the bar count is there to deliver, checked directly rather
+    // than through the arithmetic that produces it.
+    for (const signature of [[4, 4], [3, 4], [6, 8]] as [number, number][]) {
+      for (let bpm = 60; bpm <= 240; bpm += 5) {
+        const bars = countInBarsFor(signature, bpm);
+        expect(bars * signature[0] * (60_000 / bpm)).toBeGreaterThan(1600);
+      }
+    }
   });
 });
 
