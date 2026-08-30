@@ -9,8 +9,12 @@ export interface OnboardingProps {
   request: () => Promise<MicRequest>;
   /** Records what the browser decided, as soon as it decides. */
   onPermission: (permission: MicPermission) => void;
-  /** Whether the instrument step is still owed; false when only access lapsed. */
+  /** Whether the microphone step is still owed; false once it is granted. */
+  needsMicrophone: boolean;
+  /** Whether the instrument step is still owed. Asked once, then never again. */
   needsInstrument: boolean;
+  /** Whether a refusal is already on record, which is why we are asking again. */
+  previouslyDenied?: boolean;
   instrumentId: string;
   positionId: string | null;
   onInstrument: (id: string) => void;
@@ -30,19 +34,23 @@ type Stage = 'explainer' | 'blocked' | 'denied' | 'troubleshoot' | 'instrument';
  * the browser is only reached through a button the player pressed on purpose.
  *
  * Instrument comes after, not before: it is the question you can only answer
- * once you know the app is going to listen to you play.
+ * once you know the app is going to listen to you play — and it is asked once,
+ * since the answer does not change between sessions the way a browser
+ * permission does.
  */
 export function Onboarding({
   request,
   onPermission,
+  needsMicrophone,
   needsInstrument,
+  previouslyDenied = false,
   instrumentId,
   positionId,
   onInstrument,
   onPosition,
   onDone,
 }: OnboardingProps) {
-  const [stage, setStage] = useState<Stage>('explainer');
+  const [stage, setStage] = useState<Stage>(needsMicrophone ? 'explainer' : 'instrument');
   const [busy, setBusy] = useState(false);
 
   const settled = () => {
@@ -152,6 +160,13 @@ export function Onboarding({
       {stage === 'blocked' && (
         <p className="warning">
           Your browser did not allow the microphone. Nothing has been lost — you can ask it again.
+        </p>
+      )}
+
+      {stage === 'explainer' && previouslyDenied && (
+        <p className="muted">
+          Scoring has been off since the microphone was blocked. If you have allowed it since, this
+          picks it up.
         </p>
       )}
 

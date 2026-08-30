@@ -26,6 +26,7 @@ function setup(overrides: Partial<OnboardingProps> = {}) {
   const props: OnboardingProps = {
     request: grants(),
     onPermission: vi.fn(),
+    needsMicrophone: true,
     needsInstrument: true,
     instrumentId: 'guitar',
     positionId: null,
@@ -122,6 +123,21 @@ describe('permission step', () => {
 
     expect(props.onDone).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/what are you playing/i)).toBeNull();
+  });
+
+  it('says why it is asking again, when a refusal is already on record', () => {
+    setup({ previouslyDenied: true });
+    expect(screen.getByText(/scoring has been off/i)).toBeTruthy();
+    // Still the ask, not the refusal screen: the likeliest reason to be back
+    // is having gone and allowed it.
+    expect(enableButton()).toBeTruthy();
+  });
+
+  it('skips the ask when the microphone is already sorted', () => {
+    // Granted, but the instrument was never chosen — a reload part way through.
+    setup({ needsMicrophone: false });
+    expect(screen.getByText(/what are you playing/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /enable microphone/i })).toBeNull();
   });
 });
 

@@ -63,6 +63,12 @@ export function Lesson() {
   const [bpm, setBpm] = useState(() => loadSetting('bpm', readBpm, MIN_BPM));
   const [micPermission, setMicPermission] = useState<MicPermission>(loadMicPermission);
   const [onboarded, setOnboarded] = useState(() => loadSetting('onboarded', readFlag, false));
+  /**
+   * Set when the player chooses to carry on without a microphone, and
+   * deliberately not stored: the ask comes back next session, because the
+   * likeliest reason to return is having gone and fixed the permission.
+   */
+  const [micAsked, setMicAsked] = useState(false);
   /** Reopening the picker from settings, once onboarding is behind us. */
   const [picking, setPicking] = useState(false);
 
@@ -145,21 +151,28 @@ export function Lesson() {
     listen();
   }, [listen, micPermission]);
 
-  // Onboarding runs when a step is still owed — and again when access lapses,
-  // since a revoked microphone deserves the same explanation as a new one.
-  if (!onboarded || micPermission === 'unknown') {
+  // The microphone is asked for once a session until it is granted — a refusal
+  // is usually followed by going and fixing it, and the app has to notice.
+  // The instrument is asked once ever, and changed from the sidebar after that.
+  const needsMicrophone = micPermission !== 'granted' && !micAsked;
+  if (needsMicrophone || !onboarded) {
     return (
       <div className="layout">
         <div className="stage">
           <Onboarding
             request={lesson.requestMicrophone}
             onPermission={setMicPermission}
+            needsMicrophone={needsMicrophone}
             needsInstrument={!onboarded}
+            previouslyDenied={micPermission === 'denied'}
             instrumentId={instrumentId}
             positionId={positionId}
             onInstrument={setInstrumentId}
             onPosition={setPositionId}
-            onDone={() => setOnboarded(true)}
+            onDone={() => {
+              setOnboarded(true);
+              setMicAsked(true);
+            }}
           />
         </div>
       </div>
@@ -268,7 +281,7 @@ export function Lesson() {
                   <p className="muted small">
                     Scoring is off — the microphone was not available.
                   </p>
-                  <button type="button" onClick={() => setMicPermission('unknown')}>
+                  <button type="button" onClick={() => setMicAsked(false)}>
                     Turn scoring on
                   </button>
                 </div>

@@ -44,6 +44,11 @@ async function click(name: RegExp) {
   });
 }
 
+/** Makes the browser refuse, as it does once a site has been blocked. */
+function browserRefuses() {
+  startMicCapture.mockRejectedValue(new DOMException('no', 'NotAllowedError'));
+}
+
 /** As a player who has already been through onboarding would arrive. */
 function asReturning(permission = 'granted') {
   localStorage.setItem('sightreader.micPermission', JSON.stringify(permission));
@@ -117,19 +122,48 @@ describe('changing instrument later', () => {
 });
 
 describe('without a microphone', () => {
-  it('runs the lesson with scoring off, and offers a way back to it', async () => {
+  it('asks again on every startup until it is granted', async () => {
+    // The likeliest reason to come back after a refusal is having gone and
+    // fixed it in browser settings, which the app has to notice.
     asReturning('denied');
     render(<Lesson />);
     await settle();
 
-    // Past onboarding and into the lesson, but nothing is listening.
+    expect(explainerShown()).toBe(true);
+    expect(screen.getByText(/scoring has been off/i)).toBeTruthy();
+    // But not the instrument again — that answer does not go stale.
+    expect(pickerShown()).toBe(false);
+  });
+
+  it('runs the lesson with scoring off once the player carries on', async () => {
+    asReturning('denied');
+    browserRefuses();
+    render(<Lesson />);
+    await settle();
+    await click(/enable microphone/i);
+    await click(/^continue$/i);
+
     expect(explainerShown()).toBe(false);
+    expect(pickerShown()).toBe(false);
     expect(screen.getByRole('button', { name: /^start$/i })).toBeTruthy();
-    expect(startMicCapture).not.toHaveBeenCalled();
     expect(screen.getByText(/scoring is off/i)).toBeTruthy();
 
     // And the way back is the explanation again, not a silent retry.
     await click(/turn scoring on/i);
     expect(explainerShown()).toBe(true);
+  });
+
+  it('does not ask twice in one session', async () => {
+    asReturning('denied');
+    browserRefuses();
+    render(<Lesson />);
+    await settle();
+    await click(/enable microphone/i);
+    await click(/^continue$/i);
+
+    // Changing something unrelated must not drag the ask back up.
+    await click(/^change$/i);
+    await click(/^done$/i);
+    expect(explainerShown()).toBe(false);
   });
 });
