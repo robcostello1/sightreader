@@ -270,7 +270,7 @@ export function Lesson() {
               checked={autoAdvance}
               onChange={(event) => setAutoAdvance(event.target.checked)}
             />
-            Auto-advance to next exercise
+            Auto-advance
           </label>
         </section>
 
