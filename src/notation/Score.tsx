@@ -5,6 +5,7 @@ import {
   Formatter,
   Renderer,
   Stave,
+  StaveConnector,
   StaveNote,
   StaveTie,
   Tuplet,
@@ -26,8 +27,16 @@ import { transposeKey } from '../lib/key';
 import type { Exercise, NoteResult } from '../lib/types';
 import type { MusicalKey } from '../lib/key';
 
-/** Rest position on the staff, by convention around the middle line. */
-const REST_KEY = 'b/4';
+/**
+ * Where a rest sits, by clef. A rest is placed by staff position rather than by
+ * pitch, so the same key that centres it on a treble staff floats it well above
+ * a bass one.
+ */
+const REST_KEYS: Record<string, string> = {
+  treble: 'b/4',
+  bass: 'd/3',
+  alto: 'c/4',
+};
 
 /**
  * VexFlow hardcodes these into the SVG — black glyphs, #444 stave lines — and
@@ -56,6 +65,12 @@ function followPageColour(root: Element): void {
 const STAVE_TOP = 40;
 /** Vertical pitch between systems when the music wraps onto several lines. */
 const SYSTEM_HEIGHT = 175;
+/** A grand staff is two staves and needs room for both, plus their ledger lines. */
+const GRAND_SYSTEM_HEIGHT = 300;
+/** Treble stave top to bass stave top. */
+const GRAND_STAFF_GAP = 120;
+/** Where the hands divide. Middle C and above is the right hand's. */
+const MIDDLE_C = 60;
 const FALLBACK_WIDTH = 720;
 /** Horizontal room a single note needs before it starts colliding. */
 const WIDTH_PER_NOTE = 34;
@@ -75,6 +90,23 @@ const MARGIN = 12;
  */
 function leadingModifierWidth(accidentals: number, withTimeSignature: boolean): number {
   return 46 + 11 * Math.abs(accidentals) + (withTimeSignature ? 28 : 0);
+}
+
+/**
+ * One staff's view of a bar: the notes that belong to it, with the other
+ * staff's notes standing in as rests so both voices span the same bar.
+ */
+function notesForStaff(
+  notes: readonly NotatedNote[],
+  side: 'treble' | 'bass',
+  instrument: InstrumentDefinition,
+): NotatedNote[] {
+  return notes.map((notated) => {
+    if (notated.midi === null) return notated; // a rest is a rest in both hands
+    const written = soundingToWritten(notated.midi, instrument);
+    const belongs = written >= MIDDLE_C ? 'treble' : 'bass';
+    return belongs === side ? notated : { ...notated, midi: null, tiedToNext: false };
+  });
 }
 
 export interface ScoreProps {
@@ -112,7 +144,7 @@ function buildNote(
   const isRest = notated.midi === null;
   // Sounding pitch in, written pitch on the page.
   const spelled = isRest
-    ? REST_KEY
+    ? (REST_KEYS[clef] ?? REST_KEYS.treble)
     : midiToVexKey(soundingToWritten(notated.midi!, instrument), key);
 
   const note = new StaveNote({
@@ -175,7 +207,10 @@ export function Score({
       -instrument.transposition.letters,
     );
     const staffMode = staffModeFor(instrument, position);
-    const clef = staffMode === 'bass' ? 'bass' : instrument.clef === 'alto' ? 'alto' : 'treble';
+    const grand = staffMode === 'grand';
+    const systemHeight = grand ? GRAND_SYSTEM_HEIGHT : SYSTEM_HEIGHT;
+    const singleClef =
+      staffMode === 'bass' ? 'bass' : instrument.clef === 'alto' ? 'alto' : 'treble';
     // Only guitar carries the octave mark; other octave-transposing instruments
     // are conventionally written without one.
     const clefAnnotation = instrument.id === 'guitar' ? '8vb' : undefined;
@@ -191,13 +226,13 @@ export function Score({
     // Pack bars into systems, wrapping rather than shrinking past legibility.
     const systems: (typeof bars)[] = [];
     let current: typeof bars = [];
-    let currentWidth = leadingModifierWidth(exercise.key.accidentals, true);
+    let currentWidth = leadingModifierWidth(writtenKey.accidentals, true);
     for (const bar of bars) {
       const width = barMinWidth(bar);
       if (current.length > 0 && currentWidth + width > available) {
         systems.push(current);
         current = [];
-        currentWidth = leadingModifierWidth(exercise.key.accidentals, false);
+        currentWidth = leadingModifierWidth(writtenKey.accidentals, false);
       }
       current.push(bar);
       currentWidth += width;
@@ -205,7 +240,7 @@ export function Score({
     if (current.length > 0) systems.push(current);
 
     const renderer = new Renderer(host, Renderer.Backends.SVG);
-    renderer.resize(renderWidth, STAVE_TOP + systems.length * SYSTEM_HEIGHT);
+    renderer.resize(renderWidth, STAVE_TOP + systems.length * systemHeight);
     const context = renderer.getContext();
 
     /** Fragments of each source note, per system, so ties stay within a line. */
@@ -222,80 +257,127 @@ export function Score({
       // no bar grows past what its notes can use. A purely proportional split
       // starves a busy bar and stretches an empty one.
       const spare = Math.max(0, available - leading - totalMin);
-      const y = STAVE_TOP + systemIndex * SYSTEM_HEIGHT;
+      const y = STAVE_TOP + systemIndex * systemHeight;
       let x = MARGIN;
 
       system.forEach((bar, barIndex) => {
         const share = minWidths[barIndex] + (spare * minWidths[barIndex]) / totalMin;
-        const width =
-          Math.min(share, maxWidths[barIndex]) + (barIndex === 0 ? leading : 0);
+        const width = Math.min(share, maxWidths[barIndex]) + (barIndex === 0 ? leading : 0);
+        const first = barIndex === 0;
+        const last = barIndex === system.length - 1;
 
-        const stave = new Stave(x, y, width);
-        // Every system restates the clef and key, as a printed score does.
-        if (barIndex === 0) {
-          stave.addClef(clef, undefined, clefAnnotation).addKeySignature(writtenKey.name);
-          if (systemIndex === 0) stave.addTimeSignature(exercise.timeSignature.join('/'));
-        }
-        stave.setContext(context).draw();
-        x += width;
+        /** Builds and draws one staff of this bar; returns its voice for formatting. */
+        const buildStaff = (clef: string, staveY: number, side: 'treble' | 'bass' | null) => {
+          const stave = new Stave(x, staveY, width);
+          // Every system restates the clef and key, as a printed score does.
+          if (first) {
+            stave.addClef(clef, undefined, clefAnnotation).addKeySignature(writtenKey.name);
+            if (systemIndex === 0) stave.addTimeSignature(exercise.timeSignature.join('/'));
+          }
+          stave.setContext(context).draw();
 
-        const notes = bar.notes.map((notated) => {
-          const note = buildNote(notated, writtenKey, instrument, clef);
-          const colour = colourFor(notated.sourceIndex, results, activeIndex, colours);
-          note.setStyle({ fillStyle: colour, strokeStyle: colour });
-          const existing = drawn.get(notated.sourceIndex) ?? [];
-          existing.push({ note, system: systemIndex });
-          drawn.set(notated.sourceIndex, existing);
-          return note;
-        });
-        if (notes.length === 0) return;
+          const source = side === null ? bar.notes : notesForStaff(bar.notes, side, instrument);
+          const notes = source.map((notated, i) => {
+            const note = buildNote(notated, writtenKey, instrument, clef);
+            const colour = colourFor(notated.sourceIndex, results, activeIndex, colours);
+            note.setStyle({ fillStyle: colour, strokeStyle: colour });
+            // Only sounding notes are tied; a stand-in rest on the other staff
+            // shares a source index but is not the same note.
+            if (notated.midi !== null && bar.notes[i].midi !== null) {
+              const existing = drawn.get(notated.sourceIndex) ?? [];
+              existing.push({ note, system: systemIndex });
+              drawn.set(notated.sourceIndex, existing);
+            }
+            return note;
+          });
+          if (notes.length === 0) return null;
 
-        const voice = new Voice({
-          numBeats: exercise.timeSignature[0],
-          beatValue: exercise.timeSignature[1],
-        });
-        // Soft mode: the final bar may be short while an exercise is built up.
-        voice.setMode(VoiceMode.SOFT);
-        voice.addTickables(notes);
+          const voice = new Voice({
+            numBeats: exercise.timeSignature[0],
+            beatValue: exercise.timeSignature[1],
+          });
+          // Soft mode: the final bar may be short while an exercise is built up.
+          voice.setMode(VoiceMode.SOFT);
+          voice.addTickables(notes);
 
-        // VexFlow decides which accidentals are actually needed, given the key
-        // signature and what has already been altered earlier in the bar. Adding
-        // them by hand would restate what the signature already says.
-        Accidental.applyAccidentals([voice], writtenKey.name);
+          // VexFlow decides which accidentals are actually needed, given the key
+          // signature and what has already been altered earlier in the bar.
+          Accidental.applyAccidentals([voice], writtenKey.name);
 
-        // Beams and tuplets must be constructed BEFORE the voice is drawn.
-        // Building a Beam is what tells its notes to suppress their own flags —
-        // do it afterwards and every beamed note renders a beam *and* a flag.
-        const beams = beamBar(
-          notes,
-          bar.notes.map((notated) => notated.tuplet?.group),
-          exercise.timeSignature,
-        );
-
-        const groups = new Map<number, { notes: StaveNote[]; num: number; inSpaceOf: number }>();
-        bar.notes.forEach((notated, i) => {
-          if (!notated.tuplet) return;
-          const { group, num, inSpaceOf } = notated.tuplet;
-          const entry = groups.get(group) ?? { notes: [], num, inSpaceOf };
-          entry.notes.push(notes[i]);
-          groups.set(group, entry);
-        });
-        const tuplets = [...groups.values()]
-          .filter((group) => group.notes.length === group.num)
-          .map(
-            (group) =>
-              new Tuplet(group.notes, { numNotes: group.num, notesOccupied: group.inSpaceOf }),
+          // Beams and tuplets must be constructed BEFORE the voice is drawn.
+          // Building a Beam is what tells its notes to suppress their own flags.
+          const beams = beamBar(
+            notes,
+            source.map((notated) => notated.tuplet?.group),
+            exercise.timeSignature,
           );
 
-        // Format to the stave's own note area, not its raw width. The leading
-        // bar spends real space on clef, key and time signature; formatting to
-        // the full width makes the formatter believe it has room it does not,
-        // and the last notes end up on top of the bar line.
-        const usable = stave.getNoteEndX() - stave.getNoteStartX();
-        new Formatter().joinVoices([voice]).format([voice], Math.max(20, usable - 10));
-        voice.draw(context, stave);
-        for (const beam of beams) beam.setContext(context).draw();
-        for (const tuplet of tuplets) tuplet.setContext(context).draw();
+          const groups = new Map<
+            number,
+            { notes: StaveNote[]; num: number; inSpaceOf: number; sounds: boolean }
+          >();
+          source.forEach((notated, i) => {
+            if (!notated.tuplet) return;
+            const { group, num, inSpaceOf } = notated.tuplet;
+            const entry = groups.get(group) ?? { notes: [], num, inSpaceOf, sounds: false };
+            entry.notes.push(notes[i]);
+            // Stand-in rests keep their tuplet so both staves count the same
+            // ticks, but a bracket over nothing but rests belongs to the other
+            // hand — draw it there, not here.
+            entry.sounds = entry.sounds || notated.midi !== null;
+            groups.set(group, entry);
+          });
+          const tuplets = [...groups.values()]
+            .filter((g) => g.sounds && g.notes.length === g.num)
+            .map((g) => new Tuplet(g.notes, { numNotes: g.num, notesOccupied: g.inSpaceOf }));
+
+          return { stave, voice, beams, tuplets };
+        };
+
+        const staves = grand
+          ? [buildStaff('treble', y, 'treble'), buildStaff('bass', y + GRAND_STAFF_GAP, 'bass')]
+          : [buildStaff(singleClef, y, null)];
+        const built = staves.filter((entry) => entry !== null);
+        x += width;
+        if (built.length === 0) return;
+
+        // Both hands are formatted together, so a note in one lines up with
+        // whatever sounds against it in the other.
+        const formatter = new Formatter();
+        for (const entry of built) formatter.joinVoices([entry.voice]);
+        // Format to the stave's own note area, not its raw width: the leading
+        // bar spends real space on clef, key and time signature.
+        const usable = built[0].stave.getNoteEndX() - built[0].stave.getNoteStartX();
+        formatter.format(
+          built.map((entry) => entry.voice),
+          Math.max(20, usable - 10),
+        );
+
+        for (const entry of built) {
+          entry.voice.draw(context, entry.stave);
+          for (const beam of entry.beams) beam.setContext(context).draw();
+          for (const tuplet of entry.tuplets) tuplet.setContext(context).draw();
+        }
+
+        // The brace and the joined barlines are what make two staves read as one
+        // instrument rather than two parts.
+        if (grand && built.length === 2) {
+          const [top, bottom] = built;
+          if (first) {
+            new StaveConnector(top.stave, bottom.stave)
+              .setType('brace')
+              .setContext(context)
+              .draw();
+            new StaveConnector(top.stave, bottom.stave)
+              .setType('singleLeft')
+              .setContext(context)
+              .draw();
+          }
+          new StaveConnector(top.stave, bottom.stave)
+            .setType(last ? 'boldDoubleRight' : 'singleRight')
+            .setContext(context)
+            .draw();
+        }
       });
     });
 
@@ -328,7 +410,7 @@ export function Score({
         scrolledSystemRef.current = activeSystem;
         // Leaves the system's own STAVE_TOP as headroom, so ledger lines above
         // the staff are not clipped against the top edge.
-        scroller.scrollTo({ top: activeSystem * SYSTEM_HEIGHT, behavior: 'smooth' });
+        scroller.scrollTo({ top: activeSystem * systemHeight, behavior: 'smooth' });
       }
     }
   }, [exercise, instrument, position, results, activeIndex, renderWidth]);
