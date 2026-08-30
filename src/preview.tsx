@@ -28,8 +28,13 @@ const PIANO = [
   { position: 'grand-close', level: 4, seed: 3 },
   { position: 'grand-close', level: 7, seed: 12 },
   { position: 'grand-wide', level: 5, seed: 21 },
-  { position: 'grand-wide', level: 8, seed: 5 },
   { position: 'grand-wide', level: 10, seed: 17 },
+  // Tuplets against a silent hand, in both signatures, and one that straddles
+  // middle C — the shapes that laid out worst.
+  { position: 'grand-close', level: 6, seed: 1 },
+  { position: 'grand-close', level: 8, seed: 8 },
+  { position: 'grand-close', level: 8, seed: 9 },
+  { position: 'grand-wide', level: 9, seed: 5 },
 ];
 
 // eslint-disable-next-line react/only-export-components -- dev-only entry point

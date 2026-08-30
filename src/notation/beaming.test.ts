@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { StaveNote } from 'vexflow/bravura';
+import { StaveNote, Stem } from 'vexflow/bravura';
 import { beamBar } from './beaming';
 import type { NotatedNote } from './layout';
 
 const eighth = () => new StaveNote({ keys: ['c/4'], duration: '8' });
 const quarter = () => new StaveNote({ keys: ['c/4'], duration: 'q' });
 const sixteenth = () => new StaveNote({ keys: ['c/4'], duration: '16' });
+const high = () => new StaveNote({ keys: ['c/6'], duration: '8' });
 const rest = () => new StaveNote({ keys: ['b/4'], duration: '8r' });
 
 /** The notes beamBar reads lengths and tuplet membership from. */
@@ -74,6 +75,21 @@ describe('beamBar', () => {
     // the bar, and joining it to the rest would bury beat three.
     const notes = [quarter(), ...Array.from({ length: 6 }, eighth)];
     expect(beamSizes(notes, Array(7).fill(undefined))).toEqual([2, 4]);
+  });
+
+  it('points stems the way the run does, not the way its first note does', () => {
+    // A beam over notes above the staff went stems-up, which also flipped the
+    // tuplet numeral upside down beneath it.
+    const [tuplet] = beamBar(
+      Array.from({ length: 3 }, high),
+      sourceFor(Array.from({ length: 3 }, high), [0, 0, 0]),
+      [4, 4],
+    );
+    expect(tuplet.getStemDirection()).toBe(Stem.DOWN);
+
+    const notes = Array.from({ length: 4 }, high);
+    const [plain] = beamBar(notes, sourceFor(notes, Array(4).fill(undefined)), [4, 4]);
+    expect(plain.getStemDirection()).toBe(Stem.DOWN);
   });
 
   it('breaks a half-bar beam where a rest falls', () => {

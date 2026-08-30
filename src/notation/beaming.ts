@@ -14,6 +14,17 @@ const HALF_BAR = 0.5;
 
 const EPSILON = 1e-9;
 
+/**
+ * A beam over notes chosen by them, not by whichever came first.
+ *
+ * new Beam(notes) points every stem the way the first note's does, which turns
+ * a run above the staff stems-up — and takes the tuplet numeral with it, drawn
+ * upside down under the beam. autoStem reads the run as a whole.
+ */
+function beamOver(notes: StaveNote[]): Beam {
+  return new Beam(notes, true);
+}
+
 /** Which half of a common-time bar a position falls in. */
 function halfBar(position: number): number {
   return Math.floor(position / HALF_BAR + EPSILON);
@@ -38,7 +49,7 @@ function beamRun(run: StaveNote[], defaults: Fraction[]): Beam[] {
   const beams: Beam[] = [];
   let beamed: StaveNote[] = [];
   const flush = () => {
-    if (beamed.length > 1) beams.push(new Beam(beamed));
+    if (beamed.length > 1) beams.push(beamOver(beamed));
     beamed = [];
   };
   for (const note of run) {
@@ -95,7 +106,7 @@ export function beamBar(
       // Left unbeamed when the group holds a rest or a note too long to beam —
       // the bracket alone still reads correctly.
       const segment = notes.slice(index, end);
-      if (segment.length > 1 && segment.every(isBeamable)) beams.push(new Beam(segment));
+      if (segment.length > 1 && segment.every(isBeamable)) beams.push(beamOver(segment));
     } else if (!common) {
       beams.push(...Beam.generateBeams(notes.slice(index, end), { groups: defaults }));
     } else {
