@@ -58,6 +58,15 @@ export function decompose(value: NoteValue): NoteValue[] {
   return parts;
 }
 
+const VALUES = new Map([...CODES].map(([value, code]) => [code, value] as const));
+
+/** Whole-note value of a symbol — the inverse of toNotated. */
+export function notatedValue({ code, dots }: NotatedValue): NoteValue {
+  const base = VALUES.get(code);
+  if (base === undefined) throw new Error(`unknown duration code: ${code}`);
+  return base * (dots === 0 ? 1 : dots === 1 ? 1.5 : 1.75);
+}
+
 export function isNotatable(value: NoteValue): boolean {
   return toNotated(value) !== null;
 }

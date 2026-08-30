@@ -16,6 +16,7 @@ import {
 import { beamBar } from './beaming';
 import { verdictColours, type VerdictColours } from './colours';
 import { layoutExercise, midiToVexKey, type NotatedNote } from './layout';
+import { NO_SOURCE, mergeRests } from './rests';
 import {
   instrumentById,
   soundingToWritten,
@@ -105,7 +106,11 @@ function notesForStaff(
     if (notated.midi === null) return notated; // a rest is a rest in both hands
     const written = soundingToWritten(notated.midi, instrument);
     const belongs = written >= MIDDLE_C ? 'treble' : 'bass';
-    return belongs === side ? notated : { ...notated, midi: null, tiedToNext: false };
+    // Not this staff's note at all, so it answers to no result and no cursor —
+    // it is only here so both voices count the same ticks.
+    return belongs === side
+      ? notated
+      : { ...notated, midi: null, tiedToNext: false, sourceIndex: NO_SOURCE };
   });
 }
 
@@ -276,14 +281,16 @@ export function Score({
           }
           stave.setContext(context).draw();
 
-          const source = side === null ? bar.notes : notesForStaff(bar.notes, side, instrument);
-          const notes = source.map((notated, i) => {
+          const forThisStaff =
+            side === null ? bar.notes : notesForStaff(bar.notes, side, instrument);
+          const source = mergeRests(forThisStaff, exercise.timeSignature);
+          const notes = source.map((notated) => {
             const note = buildNote(notated, writtenKey, instrument, clef);
             const colour = colourFor(notated.sourceIndex, results, activeIndex, colours);
             note.setStyle({ fillStyle: colour, strokeStyle: colour });
             // Only sounding notes are tied; a stand-in rest on the other staff
             // shares a source index but is not the same note.
-            if (notated.midi !== null && bar.notes[i].midi !== null) {
+            if (notated.midi !== null) {
               const existing = drawn.get(notated.sourceIndex) ?? [];
               existing.push({ note, system: systemIndex });
               drawn.set(notated.sourceIndex, existing);
