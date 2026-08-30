@@ -25,7 +25,7 @@ import {
   type PositionDefinition,
 } from '../config/instruments';
 import { transposeKey } from '../lib/key';
-import type { Exercise, NoteResult } from '../lib/types';
+import type { Exercise, Midi, NoteResult } from '../lib/types';
 import type { MusicalKey } from '../lib/key';
 
 /**
@@ -94,6 +94,39 @@ function leadingModifierWidth(accidentals: number, withTimeSignature: boolean): 
 }
 
 /**
+ * Which hand a tuplet group is written in: wherever most of it sounds, and the
+ * first note's hand when it is even.
+ *
+ * A group divided at middle C would otherwise be printed twice, a bracket over
+ * the two notes in one hand and another over the one in the other. It is one
+ * triplet, so it gets one bracket, and a note or two crosses onto the other
+ * staff with a ledger line — which is what a printed part does.
+ */
+function tupletStaves(
+  notes: readonly NotatedNote[],
+  instrument: InstrumentDefinition,
+): Map<number, 'treble' | 'bass'> {
+  const counts = new Map<number, { treble: number; bass: number; first: 'treble' | 'bass' }>();
+  for (const notated of notes) {
+    if (notated.tuplet === undefined || notated.midi === null) continue;
+    const side = handFor(notated.midi, instrument);
+    const entry = counts.get(notated.tuplet.group) ?? { treble: 0, bass: 0, first: side };
+    entry[side]++;
+    counts.set(notated.tuplet.group, entry);
+  }
+  return new Map(
+    [...counts].map(([group, { treble, bass, first }]) => [
+      group,
+      treble === bass ? first : treble > bass ? 'treble' : 'bass',
+    ]),
+  );
+}
+
+function handFor(midi: Midi, instrument: InstrumentDefinition): 'treble' | 'bass' {
+  return soundingToWritten(midi, instrument) >= MIDDLE_C ? 'treble' : 'bass';
+}
+
+/**
  * One staff's view of a bar: the notes that belong to it, with the other
  * staff's notes standing in as rests so both voices span the same bar.
  */
@@ -102,10 +135,11 @@ function notesForStaff(
   side: 'treble' | 'bass',
   instrument: InstrumentDefinition,
 ): NotatedNote[] {
+  const tuplets = tupletStaves(notes, instrument);
   return notes.map((notated) => {
     if (notated.midi === null) return notated; // a rest is a rest in both hands
-    const written = soundingToWritten(notated.midi, instrument);
-    const belongs = written >= MIDDLE_C ? 'treble' : 'bass';
+    const belongs =
+      (notated.tuplet && tuplets.get(notated.tuplet.group)) ?? handFor(notated.midi, instrument);
     // Not this staff's note at all, so it answers to no result and no cursor —
     // it is only here so both voices count the same ticks.
     return belongs === side
