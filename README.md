@@ -94,6 +94,22 @@ is, so range is chosen independently of level. Guitar positions are named for
 the fret the index finger sits on and span four frets; open position is the
 exception, being open strings plus the first four.
 
+**A note nobody could score is never written.** Three things can put one out of
+reach, and all three are properties of the note rather than of the instrument
+or the tempo: its frequency can sit under what the detector resolves at all, it
+can hold too few cycles of itself to be named, or it can yield too few detector
+frames to be judged. The generator checks all three against the sounding pitch,
+the note value and the tempo, as a third constraint beside the pool and the
+movement limit — a whole phrase is rejected rather than one note quietly swapped
+out of it.
+
+So neither the tempo nor the instrument is ever withheld. A double bass is
+playable at 240bpm; what changes down there is that the semiquavers stop
+appearing and the quavers stay. The one thing no note length can buy back is
+frequency: under about 43Hz a 2048-sample frame no longer holds enough of a
+cycle, which costs a bass its open E and a tuba its bottom three semitones until
+the detector reads low registers with a longer frame.
+
 **Scoring is windowed occupancy, not onset-exact.** Each note is judged over
 its expected rhythmic duration window: skip the attack transient, collect
 high-confidence samples, and pass if enough of them match the target. Binary
@@ -132,10 +148,9 @@ control; everything else has one fixed range. Piano's positions vary which
 staves are in play as well as the range, and it is the one instrument drawn on
 a grand staff.
 
-Eight instruments are listed but disabled: their sounding range dips below E2,
-where pitch detection is not yet proven. That is applied as a rule, not a list
-— a test asserts no available instrument sounds lower — and it is a holding
-pattern until a note-level viability check replaces it.
+No instrument is held back for being low. The question that flag stood in for —
+can the microphone score this? — is asked of each note instead, as it is
+written.
 
 ## What you see
 
@@ -231,12 +246,10 @@ should be expected to need tuning:
 - `ONSET_PRESETS` thresholds, per instrument. Defaults come from synthetic
   plucks, not real playing. Recall degrades when several notes sustain and beat
   together, because the constant flux inflates the adaptive median.
-- `DEFAULT_VIABILITY` — the pitch/value/tempo gate that keeps notes the
-  microphone could not score out of exercises. Built and tested, but shipped
-  **off**: its three constants are placeholders, and gating real exercises on a
-  guessed margin is either needlessly restrictive or not restrictive enough
-  with no way to tell which. Switching it on is one flag once the constants are
-  measured.
+- `DEFAULT_VIABILITY` — the four constants deciding which notes are worth
+  writing. They are conservative placeholders pending measurement, so the gate
+  errs towards leaving out notes that might have been fine rather than writing
+  notes that cannot be scored.
 - `DEFAULT_SCORING.passThreshold` and `confidenceGate`
 
 `docs/spec.md` holds the original design spec, including the parts not built.

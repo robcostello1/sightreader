@@ -1,5 +1,5 @@
 import { OPEN_POSITION, regionPool } from '../config/regions';
-import { levelConfig, type LevelConfig } from '../config/levels';
+import { levelConfig, type LevelConfig, type ScoringConfig } from '../config/levels';
 import { DEFAULT_VIABILITY, isViable, type ViabilityConfig } from '../config/viability';
 import { IDIOM_LIBRARY, idiomDuration, instantiateIdiom, placementPitches } from '../idioms';
 import type { IdiomPlacement } from '../idioms';
@@ -163,7 +163,7 @@ export function generateExercise(options: GenerateOptions): Exercise {
   // is known: the same quaver lasts twice as long in 6/8 as in 4/4.
   const withViability = (signature: [number, number]) => ({
     ...baseConstraints,
-    viability: { config: viability, bpm, beatUnit: signature[1] },
+    viability: { config: viability, scoring: config.scoring, bpm, beatUnit: signature[1] },
   });
   let constraints = withViability(timeSignature);
 
@@ -244,6 +244,7 @@ export function generateExercise(options: GenerateOptions): Exercise {
       if (
         applyTuplet(rng, rendered, candidate, instance, ratio, used, barSize, {
           config: viability,
+          scoring: config.scoring,
           bpm,
           beatUnit: timeSignature[1],
         })
@@ -429,7 +430,12 @@ function applyTuplet(
   ratio: { num: number; inSpaceOf: number },
   offset: NoteValue,
   barSize: NoteValue,
-  viability: { config: ViabilityConfig; bpm: number; beatUnit: number },
+  viability: {
+    config: ViabilityConfig;
+    scoring: ScoringConfig;
+    bpm: number;
+    beatUnit: number;
+  },
 ): boolean {
   const events = candidate.idiom.events;
   const span = ratio.inSpaceOf * candidate.unitValue;
@@ -469,7 +475,14 @@ function applyTuplet(
       .every(
         (note) =>
           note.midi === null ||
-          isViable(midiToHz(note.midi), scaled, viability.beatUnit, viability.bpm, viability.config),
+          isViable(
+            midiToHz(note.midi),
+            scaled,
+            viability.beatUnit,
+            viability.bpm,
+            viability.config,
+            viability.scoring,
+          ),
       );
     if (viable) starts.push(i);
   }

@@ -1,36 +1,32 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_VIABILITY,
-  fastestViableBpm,
-  fastestViableBpmForPool,
   isViable,
   noteDurationMs,
   periodsAvailable,
   requiredPeriods,
+  shortestViableValue,
   type ViabilityConfig,
 } from './viability';
 import { DEFAULT_SCORING } from './levels';
 import { midiToHz, nameToMidi } from '../lib/pitch';
 import { NOTE_VALUES } from '../lib/types';
 
-/** The placeholders, but switched on, which is what the logic is tested at. */
-const CONFIG: ViabilityConfig = { ...DEFAULT_VIABILITY, enabled: true };
+const CONFIG = DEFAULT_VIABILITY;
+const OFF: ViabilityConfig = { ...DEFAULT_VIABILITY, enabled: false };
 const hz = (name: string) => midiToHz(nameToMidi(name));
 
 describe('the configuration', () => {
-  it('ships off, since the numbers are still guesses', () => {
-    // Gating real exercises on a placeholder margin is either needlessly
-    // restrictive or not restrictive enough, and there is no way to know which.
-    expect(DEFAULT_VIABILITY.enabled).toBe(false);
+  it('is on, because nothing else is protecting the player now', () => {
+    // The blunt limits it replaced — a tempo cap and six disabled instruments —
+    // are gone, so this is the only thing between a player and a note nothing
+    // can score.
+    expect(DEFAULT_VIABILITY.enabled).toBe(true);
   });
 
-  it('lets everything through while it is off', () => {
-    // A semiquaver on the lowest note of a piano at a tempo nothing could
-    // score: still allowed, because the gate is not live.
-    expect(isViable(hz('A0'), NOTE_VALUES.sixteenth, 4, 240, DEFAULT_VIABILITY)).toBe(true);
-    expect(fastestViableBpm(hz('A0'), NOTE_VALUES.sixteenth, 4, DEFAULT_VIABILITY)).toBe(
-      Number.POSITIVE_INFINITY,
-    );
+  it('can still be switched off in one place', () => {
+    expect(isViable(hz('A0'), NOTE_VALUES.sixteenth, 4, 240, OFF)).toBe(true);
+    expect(shortestViableValue([nameToMidi('C4')], 4, 240, OFF)).toBe(NOTE_VALUES.sixteenth);
   });
 
   it('skips the same window head the scorer does', () => {
@@ -67,93 +63,81 @@ describe('the formula', () => {
   });
 });
 
-describe('what the gate actually rejects', () => {
-  it('bites in the bass, where cycles are long', () => {
-    // E1 is 41Hz: a period is 24ms, so 4.5 of them need 110ms of note on top
-    // of the 40ms attack. A semiquaver at 200bpm in 4/4 lasts 75ms.
-    expect(isViable(hz('E1'), NOTE_VALUES.sixteenth, 4, 200, CONFIG)).toBe(false);
-    // The same note held for a crotchet is fine.
-    expect(isViable(hz('E1'), NOTE_VALUES.quarter, 4, 200, CONFIG)).toBe(true);
+describe('the three ways a note can be unscoreable', () => {
+  it('rejects a frequency the detector cannot resolve, however long it is held', () => {
+    // A 2048-sample frame at 44.1kHz spans 46ms, so under about 43Hz it stops
+    // holding the cycles the detector needs — and holding the note longer puts
+    // no more of it inside one frame. A tuba's D1 and a bass guitar's open E
+    // are both under it.
+    for (const name of ['D1', 'E1']) {
+      expect(hz(name)).toBeLessThan(CONFIG.resolutionFloorHz);
+      expect(isViable(hz(name), NOTE_VALUES.whole, 4, 60, CONFIG)).toBe(false);
+    }
+    // A tone higher and the same whole note is fine.
+    expect(isViable(hz('F1'), NOTE_VALUES.whole, 4, 60, CONFIG)).toBe(true);
   });
 
-  it('barely troubles the treble, where they are short', () => {
-    // A5 is 880Hz: 4.5 cycles take 5ms, so anything with 5ms left after its
-    // attack passes — which at these values is anything at all.
-    expect(isViable(hz('A5'), NOTE_VALUES.sixteenth, 4, 200, CONFIG)).toBe(true);
-    expect(isViable(hz('A5'), NOTE_VALUES.sixteenth, 4, 300, CONFIG)).toBe(true);
+  it('rejects a note with too few cycles of itself, which bites in the bass', () => {
+    // A2 is 110Hz: 4.5 cycles need 41ms on top of the 40ms attack.
+    expect(isViable(hz('A2'), NOTE_VALUES.quarter, 4, 200, CONFIG)).toBe(true);
+    expect(isViable(hz('A2'), NOTE_VALUES.sixteenth, 4, 200, CONFIG)).toBe(false);
   });
 
-  it('runs out for every pitch once the note is shorter than its own attack', () => {
-    // A semiquaver at 400bpm lasts 37.5ms and the attack alone is 40. Nothing
-    // is left to count, however high the note — this is the pitch-independent
-    // floor underneath the pitch-dependent one.
-    for (const name of ['E1', 'E2', 'A5', 'C7']) {
-      expect(isViable(hz(name), NOTE_VALUES.sixteenth, 4, 400, CONFIG)).toBe(false);
+  it('rejects a note with too few detector frames, whatever its pitch', () => {
+    // The rule the tempo cap used to enforce, applied per note instead. The
+    // detector reports once per hop however high the note, so this one is
+    // pitch-independent: a semiquaver at 240bpm is 62ms, and four frames need
+    // 46ms on top of the attack.
+    for (const name of ['A2', 'A5', 'C7']) {
+      expect(isViable(hz(name), NOTE_VALUES.sixteenth, 4, 240, CONFIG, DEFAULT_SCORING)).toBe(false);
+      // The same note at a longer value passes.
+      expect(isViable(hz(name), NOTE_VALUES.quarter, 4, 240, CONFIG, DEFAULT_SCORING)).toBe(true);
     }
   });
 
-  it('is a ceiling on tempo, pitch and note value together', () => {
-    // The same pitch and value, only faster, is where a passing note fails.
-    const value = NOTE_VALUES.eighth;
-    expect(isViable(hz('E2'), value, 4, 100, CONFIG)).toBe(true);
-    expect(isViable(hz('E2'), value, 4, 400, CONFIG)).toBe(false);
+  it('leaves the treble alone at ordinary tempos', () => {
+    expect(isViable(hz('A5'), NOTE_VALUES.sixteenth, 4, 120, CONFIG, DEFAULT_SCORING)).toBe(true);
   });
 });
 
-describe('fastestViableBpm', () => {
-  it('is the tempo where the note stops passing', () => {
-    for (const name of ['E1', 'E2', 'A3', 'A5']) {
-      for (const value of [NOTE_VALUES.sixteenth, NOTE_VALUES.eighth, NOTE_VALUES.quarter]) {
-        const limit = fastestViableBpm(hz(name), value, 4, CONFIG);
-        expect(isViable(hz(name), value, 4, limit - 0.01, CONFIG)).toBe(true);
-        expect(isViable(hz(name), value, 4, limit + 0.01, CONFIG)).toBe(false);
-      }
-    }
-  });
-
-  it('rises with the register', () => {
-    const at = (name: string) => fastestViableBpm(hz(name), NOTE_VALUES.eighth, 4, CONFIG);
-    expect(at('E2')).toBeGreaterThan(at('E1'));
-    expect(at('E4')).toBeGreaterThan(at('E2'));
-  });
-});
-
-describe('fastestViableBpmForPool', () => {
+describe('shortestViableValue', () => {
   const pool = (low: string, high: string) => {
     const from = nameToMidi(low);
     return Array.from({ length: nameToMidi(high) - from + 1 }, (_, i) => from + i);
   };
 
-  it('is set by the lowest note, whose cycles are longest', () => {
-    const cello = pool('C2', 'C5');
-    expect(fastestViableBpmForPool(cello, NOTE_VALUES.eighth, 4, CONFIG)).toBeCloseTo(
-      fastestViableBpm(hz('C2'), NOTE_VALUES.eighth, 4, CONFIG),
-      9,
-    );
+  it('answers with a note length rather than a tempo', () => {
+    // The per-range question is "how short can a note be down here", not "how
+    // fast may you play" — nothing stops the player choosing 240bpm.
+    const value = shortestViableValue(pool('E1', 'G3'), 4, 240, CONFIG, DEFAULT_SCORING);
+    expect(value).toBeGreaterThan(NOTE_VALUES.sixteenth);
   });
 
-  it('separates the instruments it is meant to, rather than capping them alike', () => {
-    // The whole point of doing this per register: a flute's ceiling sits well
-    // above a cello's.
-    const value = NOTE_VALUES.eighth;
-    const flute = fastestViableBpmForPool(pool('C4', 'C7'), value, 4, CONFIG);
-    const cello = fastestViableBpmForPool(pool('C2', 'C5'), value, 4, CONFIG);
-    expect(flute).toBeGreaterThan(cello * 1.5);
-
-    // But not without limit. The attack exclusion is a fixed cost the pitch
-    // cannot buy its way out of, so the ceiling flattens as the register rises:
-    // even an infinitely high note only reaches the attack-only tempo.
-    const attackOnly = (value * 4 * 60_000) / CONFIG.attackExclusionMs;
-    expect(flute).toBeLessThan(attackOnly);
-    expect(fastestViableBpmForPool(pool('C7', 'C8'), value, 4, CONFIG)).toBeLessThan(attackOnly);
+  it('answers from the lowest note it could write, not the lowest note there is', () => {
+    // A bass guitar's open E is under the resolution floor, so it is absent
+    // from every exercise whatever its length. Letting it set the range's
+    // shortest value would report null for an instrument that plays perfectly
+    // well an octave up.
+    const bass = pool('E1', 'G3');
+    expect(shortestViableValue(bass, 4, 120, CONFIG, DEFAULT_SCORING)).not.toBeNull();
+    // A range that is entirely below the floor has nothing to say.
+    expect(shortestViableValue(pool('A0', 'D1'), 4, 120, CONFIG, DEFAULT_SCORING)).toBeNull();
   });
 
-  it('imposes no ceiling while the gate is off', () => {
-    expect(fastestViableBpmForPool(pool('C2', 'C5'), NOTE_VALUES.eighth, 4, DEFAULT_VIABILITY)).toBe(
-      Number.POSITIVE_INFINITY,
-    );
-    expect(fastestViableBpmForPool([], NOTE_VALUES.eighth, 4, CONFIG)).toBe(
-      Number.POSITIVE_INFINITY,
-    );
+  it('asks less of a high range than a low one', () => {
+    const flute = shortestViableValue(pool('C4', 'C7'), 4, 120, CONFIG, DEFAULT_SCORING)!;
+    const cello = shortestViableValue(pool('C2', 'C5'), 4, 120, CONFIG, DEFAULT_SCORING)!;
+    expect(flute).toBeLessThanOrEqual(cello);
+  });
+
+  it('gets shorter as the tempo drops', () => {
+    const bass = pool('C2', 'C4');
+    const fast = shortestViableValue(bass, 4, 240, CONFIG, DEFAULT_SCORING)!;
+    const slow = shortestViableValue(bass, 4, 60, CONFIG, DEFAULT_SCORING)!;
+    expect(slow).toBeLessThan(fast);
+  });
+
+  it('has nothing to say about an empty range', () => {
+    expect(shortestViableValue([], 4, 120, CONFIG)).toBeNull();
   });
 });

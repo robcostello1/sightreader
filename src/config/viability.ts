@@ -1,5 +1,7 @@
+import { NOMINAL_HOP_MS } from '../audio/constants';
 import { midiToHz } from '../lib/pitch';
-import type { Midi, NoteValue } from '../lib/types';
+import type { ScoringConfig } from './levels';
+import { NOTE_VALUES, type Midi, type NoteValue } from '../lib/types';
 
 /**
  * Whether a note is long enough, at its own frequency, to be worth generating.
@@ -13,10 +15,11 @@ import type { Midi, NoteValue } from '../lib/types';
  */
 export interface ViabilityConfig {
   /**
-   * Off until the pitch-detection spike measures the constants below. The
-   * placeholders are a guess, and a guess that gates real exercises is either
-   * needlessly restrictive or not restrictive enough — neither is worth
-   * shipping to find out.
+   * On, and the only thing standing between a player and a note nothing can
+   * score — the blunt instrument-level and tempo-level limits it replaced are
+   * gone. The constants below are still the spike's to calibrate, but they err
+   * conservatively, so running live can only leave out notes that might have
+   * been fine. That is the safe direction to be wrong in.
    */
   enabled: boolean;
   /** Theoretical floor: cycles a detector needs before it can name a pitch. */
@@ -29,6 +32,17 @@ export interface ViabilityConfig {
    * together.
    */
   attackExclusionMs: number;
+  /**
+   * Lowest frequency the detector can resolve at all, in Hz.
+   *
+   * Not a matter of note length: a 2048-sample frame at 44.1kHz spans 46ms, so
+   * around 43Hz it stops holding the two cycles the detector needs, and holding
+   * the note longer does not put more of it inside one frame. A tuba's D1 is
+   * 37Hz and the open E of a bass is 41Hz — both under it, however long they
+   * ring. Raising this means a longer frame for low registers, which is a
+   * detector change rather than a constant.
+   */
+  resolutionFloorHz: number;
 }
 
 /**
@@ -38,10 +52,11 @@ export interface ViabilityConfig {
  * without anything else being touched.
  */
 export const DEFAULT_VIABILITY: ViabilityConfig = {
-  enabled: false,
+  enabled: true,
   basePeriods: 3,
   marginMultiplier: 1.5,
   attackExclusionMs: 40,
+  resolutionFloorHz: 43,
 };
 
 /** Cycles a note must contain to be scoreable, margin included. */
@@ -76,6 +91,17 @@ export function periodsAvailable(
 /**
  * Whether this pitch, at this value and tempo, is worth putting on the page.
  *
+ * Three ways a note can be unscoreable, and all three are properties of the
+ * note rather than of the instrument or the tempo:
+ *
+ *  - its frequency is under what the detector can resolve at all;
+ *  - it holds too few cycles of itself to be named;
+ *  - it yields too few detector frames to be judged.
+ *
+ * The third is the scorer's own rule, applied here as well: the generator has
+ * to know it, because it is the one deciding what to write. Nothing else limits
+ * tempo or instrument any more, so all of it lives in this one test.
+ *
  * `hz` is *sounding* frequency, always. A transposing instrument's written note
  * names a different frequency from the one that reaches the microphone, and it
  * is the physical one that decides whether detection is feasible.
@@ -86,43 +112,52 @@ export function isViable(
   beatUnit: number,
   bpm: number,
   config: ViabilityConfig,
+  scoring?: ScoringConfig,
+  hopMs: number = NOMINAL_HOP_MS,
 ): boolean {
   if (!config.enabled) return true;
-  return periodsAvailable(hz, value, beatUnit, bpm, config) >= requiredPeriods(config) - 1e-9;
+  if (hz < config.resolutionFloorHz) return false;
+  if (periodsAvailable(hz, value, beatUnit, bpm, config) < requiredPeriods(config) - 1e-9) {
+    return false;
+  }
+  if (!scoring) return true;
+  // The window has to yield enough frames to judge, which the detector delivers
+  // at a fixed rate whatever the pitch. This is what used to cap the tempo
+  // control; per note, it costs the level its shortest values at high tempo
+  // instead of costing the player the tempo.
+  const usableMs = noteDurationMs(value, beatUnit, bpm) - scoring.attackGuardMs;
+  return Math.floor(usableMs / hopMs) >= scoring.minSamples;
 }
 
 /**
- * Fastest tempo at which this pitch still holds enough cycles at this value.
+ * Shortest note value the whole range can sustain at this tempo, or null if
+ * even the longest cannot.
  *
- * Inverts isViable, so the tempo control can stop where the register does
- * rather than handing the player notes that were never going to be scoreable.
+ * This is the per-range answer, and it is a note length rather than a tempo:
+ * nothing stops the player choosing 240bpm on a double bass, it is just that
+ * down there the semiquavers drop out and the quavers stay. The lowest pitch
+ * is the binding one, since its cycles are the longest.
+ *
+ * `pool` is sounding pitches, as the generator holds them.
  */
-export function fastestViableBpm(
-  hz: number,
-  value: NoteValue,
-  beatUnit: number,
-  config: ViabilityConfig,
-): number {
-  if (!config.enabled) return Number.POSITIVE_INFINITY;
-  const neededMs = config.attackExclusionMs + (requiredPeriods(config) * 1000) / hz;
-  return (value * beatUnit * 60_000) / neededMs;
-}
-
-/**
- * Fastest tempo the whole register can sustain at this note value.
- *
- * The lowest pitch is the binding one: its cycles are the longest, so it fails
- * first. Per instrument and range rather than globally, which is the point —
- * a flute's ceiling and a cello's are nowhere near each other.
- *
- * `pool` is sounding pitches, ascending, as the generator holds them.
- */
-export function fastestViableBpmForPool(
+export function shortestViableValue(
   pool: readonly Midi[],
-  value: NoteValue,
   beatUnit: number,
+  bpm: number,
   config: ViabilityConfig,
-): number {
-  if (!config.enabled || pool.length === 0) return Number.POSITIVE_INFINITY;
-  return fastestViableBpm(midiToHz(Math.min(...pool)), value, beatUnit, config);
+  scoring?: ScoringConfig,
+  hopMs: number = NOMINAL_HOP_MS,
+): NoteValue | null {
+  // The lowest pitch that can be resolved at all, not simply the lowest: below
+  // the floor no note length helps, so those are not what the range's shortest
+  // value is about — they are absent from every exercise regardless.
+  const resolvable = pool.filter((midi) => midiToHz(midi) >= config.resolutionFloorHz);
+  if (resolvable.length === 0) return null;
+  const hz = midiToHz(Math.min(...resolvable));
+  // Shortest first: the answer is the first that survives. Only the values the
+  // generator actually writes, so the answer is one the player could meet.
+  const ascending = Object.values(NOTE_VALUES).sort((a, b) => a - b);
+  return (
+    ascending.find((value) => isViable(hz, value, beatUnit, bpm, config, scoring, hopMs)) ?? null
+  );
 }

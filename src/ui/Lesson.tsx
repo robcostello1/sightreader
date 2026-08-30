@@ -5,11 +5,11 @@ import {
   conceptsIntroducedAt,
   levelBrief,
   levelConfig,
+  noteValueLabel,
   shortestNoteValue,
 } from '../config/levels';
-import { maxScorableBpm } from '../scoring';
+import { DEFAULT_VIABILITY, shortestViableValue } from '../config/viability';
 import {
-  NOMINAL_HOP_MS,
   loadMicPermission,
   queryMicPermission,
   saveMicPermission,
@@ -26,7 +26,6 @@ import {
 import { fretRangeLabel } from '../config/regions';
 import { DEFAULT_PROGRESSION, UNSCORED_WINDOW, progressionState } from '../config/progression';
 import { BPM_STEP, MAX_BPM, MIN_BPM, clampBpm } from '../config/tempo';
-import { DEFAULT_VIABILITY, fastestViableBpmForPool } from '../config/viability';
 import { loadSetting, saveSetting } from '../lib/storage';
 import { applyTheme, loadTheme, type ThemePreference } from '../lib/theme';
 import { midiToName } from '../lib/pitch';
@@ -102,30 +101,27 @@ export function Lesson() {
   const config = levelConfig(level);
   const brief = levelBrief(level);
   const pool = soundingPool(instrument, position);
-  // The detector reports once per hop and the attack guard eats the head of
-  // every window, so past a certain tempo this level's shortest note cannot be
-  // judged at all. Cap the control there rather than offering settings that
-  // return nothing but "too short to score". The tightest signature is the
-  // limiting one, since a smaller beat unit makes the same value briefer.
+  // Tempo is not capped, and neither is any instrument. What a fast tempo costs
+  // is the shortest note values, which the generator leaves out of an exercise
+  // it cannot score — per note, rather than by withholding the tempo.
+  //
+  // The per-range answer is therefore a note length, not a tempo: how short a
+  // note this instrument's lowest pitch can still hold at this speed. The
+  // tightest signature is the limiting one, since a smaller beat unit makes the
+  // same value briefer.
   const tightestBeatUnit = Math.min(...config.timeSignatures.map((entry) => entry.value[1]));
-  const shortest = shortestNoteValue(config);
-  // Two ceilings, and the lower wins. One counts detector frames, which arrive
-  // at a fixed rate whatever is played; the other counts cycles of the note
-  // itself, which is why it moves with the instrument's lowest pitch. A cello
-  // runs out of the second long before a flute does.
-  const tempoCeiling = clampBpm(
-    Math.min(
-      MAX_BPM,
-      maxScorableBpm(shortest, tightestBeatUnit, config.scoring, NOMINAL_HOP_MS),
-      fastestViableBpmForPool(pool, shortest, tightestBeatUnit, DEFAULT_VIABILITY),
-    ),
+  const shortestHere = shortestViableValue(
+    pool,
+    tightestBeatUnit,
+    bpm,
+    DEFAULT_VIABILITY,
+    config.scoring,
   );
-  const effectiveBpm = Math.min(bpm, tempoCeiling);
-  // Which of the two ceilings is doing the capping, so the reason given is the
-  // real one: the register's limit and the level's are different sentences.
-  const registerBound =
-    fastestViableBpmForPool(pool, shortest, tightestBeatUnit, DEFAULT_VIABILITY) <
-    maxScorableBpm(shortest, tightestBeatUnit, config.scoring, NOMINAL_HOP_MS);
+  const shortestLabel =
+    shortestHere !== null && shortestHere > shortestNoteValue(config)
+      ? noteValueLabel(shortestHere)
+      : null;
+  const effectiveBpm = bpm;
 
   // Advancement is gated on the same pass/fail scores used for feedback — no
   // separate mastery signal (spec §7).
@@ -361,18 +357,17 @@ export function Lesson() {
             <input
               type="range"
               min={MIN_BPM}
-              max={tempoCeiling}
+              max={MAX_BPM}
               step={BPM_STEP}
               value={effectiveBpm}
               onChange={(event) => setBpm(Number(event.target.value))}
               disabled={running}
             />
           </label>
-          {tempoCeiling < MAX_BPM && (
+          {shortestLabel !== null && (
             <p className="muted small">
-              Capped at {tempoCeiling} bpm — faster than this and the shortest notes
-              {registerBound ? ' in this register' : ' at this level'} are too brief to
-              score.
+              Shortest note in this range at this tempo: a {shortestLabel.replace(/s$/, '')}.
+              Anything briefer could not be scored down there.
             </p>
           )}
 

@@ -1,6 +1,7 @@
 import { instantiateIdiom, maxLocalInterval, placementPitches } from '../idioms';
 import type { IdiomPlacement } from '../idioms';
 import { isViable, type ViabilityConfig } from '../config/viability';
+import type { ScoringConfig } from '../config/levels';
 import { midiToHz } from '../lib/pitch';
 import type { Idiom, Midi, NoteValue } from '../lib/types';
 
@@ -25,7 +26,13 @@ export interface PlacementConstraints {
    * What the microphone could actually score, given the tempo. Omitted, or
    * disabled, and every placement passes.
    */
-  viability?: { config: ViabilityConfig; bpm: number; beatUnit: number };
+  viability?: {
+    config: ViabilityConfig;
+    /** The scorer's own frame rule, applied per note rather than as a tempo cap. */
+    scoring: ScoringConfig;
+    bpm: number;
+    beatUnit: number;
+  };
 }
 
 /**
@@ -47,7 +54,14 @@ function viablePlacement(placement: IdiomPlacement, constraints: PlacementConstr
   return instantiateIdiom(placement).every(
     (note) =>
       note.midi === null ||
-      isViable(midiToHz(note.midi), note.value, check.beatUnit, check.bpm, check.config),
+      isViable(
+        midiToHz(note.midi),
+        note.value,
+        check.beatUnit,
+        check.bpm,
+        check.config,
+        check.scoring,
+      ),
   );
 }
 

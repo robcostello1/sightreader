@@ -1,67 +1,81 @@
 import { describe, expect, it } from 'vitest';
 import { INSTRUMENTS, positionById, soundingPool } from './instruments';
-import { DEFAULT_VIABILITY, fastestViableBpmForPool, isViable, type ViabilityConfig } from './viability';
-import { midiToHz } from '../lib/pitch';
+import { DEFAULT_SCORING } from './levels';
+import { DEFAULT_VIABILITY, isViable, shortestViableValue } from './viability';
+import { midiToHz, midiToName } from '../lib/pitch';
 import { NOTE_VALUES } from '../lib/types';
 
-const CONFIG: ViabilityConfig = { ...DEFAULT_VIABILITY, enabled: true };
-const gated = INSTRUMENTS.filter((instrument) => instrument.status === 'comingSoon');
-const lowestOf = (id: string) => {
+const CONFIG = DEFAULT_VIABILITY;
+const poolFor = (id: string) => {
   const instrument = INSTRUMENTS.find((i) => i.id === id)!;
-  return Math.min(...soundingPool(instrument, positionById(instrument, null)));
+  return soundingPool(instrument, positionById(instrument, null));
 };
 
 /**
- * Evidence for the question the spec leaves to the spike: does any instrument
- * fail this check across its *whole* range, at any tempo and value the
- * generator would reasonably produce?
- *
- * On the placeholder constants the answer is no, for all eight. Recorded as a
- * test rather than a claim, so the calibrated numbers either confirm it or
- * fail here and force the conversation.
+ * What replaced the blanket instrument flag, checked against the instruments
+ * that used to carry it.
  */
-describe('what the check says about the blanket instrument gate', () => {
-  it('lets every gated instrument play its lowest note at a moderate tempo', () => {
-    // Even the tuba's D1, at 37Hz the lowest note in the catalogue.
-    for (const instrument of gated) {
-      const low = midiToHz(lowestOf(instrument.id));
-      expect(isViable(low, NOTE_VALUES.quarter, 4, 120, CONFIG)).toBe(true);
-      expect(isViable(low, NOTE_VALUES.eighth, 4, 120, CONFIG)).toBe(true);
+describe('the low instruments, now that none of them is held back', () => {
+  const formerlyGated = [
+    'cello',
+    'double-bass',
+    'bass-clarinet-bb',
+    'bassoon',
+    'baritone-sax',
+    'french-horn',
+    'tuba',
+    'bass-guitar',
+  ];
+
+  it('every one of them is playable', () => {
+    for (const id of formerlyGated) {
+      expect(INSTRUMENTS.find((i) => i.id === id)!.status).toBe('available');
     }
   });
 
-  it('finds no instrument whose whole range fails, which is what the flag implies', () => {
-    // The flag disables an instrument outright. This check would only justify
-    // that for one that cannot be scored anywhere, at any value — and none of
-    // the eight is that.
-    for (const instrument of gated) {
-      const pool = soundingPool(instrument, positionById(instrument, null));
-      expect(fastestViableBpmForPool(pool, NOTE_VALUES.quarter, 4, CONFIG)).toBeGreaterThan(120);
+  it('every one of them has notes worth writing at a walking tempo', () => {
+    // Which is what makes the blanket flag the wrong shape: none of these
+    // failed everywhere, they failed in a corner.
+    for (const id of formerlyGated) {
+      expect(shortestViableValue(poolFor(id), 4, 120, CONFIG, DEFAULT_SCORING)).not.toBeNull();
     }
   });
 
-  it('only bites at short values in the bottom of a low range', () => {
-    // Which is the narrow thing it is for. Semiquavers on a tuba's lowest
-    // notes fail at 120bpm; nothing else here does.
-    const failing = gated.filter(
-      (instrument) => !isViable(midiToHz(lowestOf(instrument.id)), NOTE_VALUES.sixteenth, 4, 120, CONFIG),
+  it('loses only the bottom of the bottom, to the resolution floor', () => {
+    // Under about 43Hz the detector cannot resolve a pitch at all, so those
+    // notes are absent however long they are held. It costs the four
+    // instruments that reach that low a few semitones each, not a range.
+    const lost: Record<string, string[]> = {};
+    for (const id of formerlyGated) {
+      const unresolvable = poolFor(id).filter((midi) => midiToHz(midi) < CONFIG.resolutionFloorHz);
+      if (unresolvable.length > 0) lost[id] = unresolvable.map(midiToName);
+    }
+    expect(lost).toEqual({
+      'double-bass': ['E1'],
+      'french-horn': ['E1'],
+      tuba: ['D1', 'D#1', 'E1'],
+      'bass-guitar': ['E1'],
+    });
+    // One semitone off a bass, three off a tuba. Recovering them means a longer
+    // detector frame for low registers, which is a detector change rather than
+    // a constant — see ViabilityConfig.resolutionFloorHz.
+  });
+
+  it('keeps the short values away from the low register, which is the point', () => {
+    // A tuba may be played at any tempo; at speed it is given longer notes.
+    const tuba = poolFor('tuba');
+    expect(shortestViableValue(tuba, 4, 60, CONFIG, DEFAULT_SCORING)).toBeLessThan(
+      shortestViableValue(tuba, 4, 240, CONFIG, DEFAULT_SCORING)!,
     );
-    expect(failing.map((i) => i.id)).toEqual([
-      'double-bass',
-      'french-horn',
-      'tuba',
-      'bass-guitar',
-    ]);
   });
 
-  it('does not answer the question the flag was actually asking', () => {
-    // §6a holds these back because detection is unproven below the guitar's
-    // low E — octave errors and microphone roll-off, not cycle count. A note
-    // can hold a thousand cycles and still be heard an octave out. Un-gating
-    // on the strength of this check alone would be answering a different
-    // question, so the flag stays until the spike speaks to that one.
-    for (const instrument of gated) {
-      expect(instrument.status).toBe('comingSoon');
-    }
+  it('leaves a high instrument free of all of it', () => {
+    const piccolo = poolFor('piccolo');
+    expect(shortestViableValue(piccolo, 4, 120, CONFIG, DEFAULT_SCORING)).toBe(
+      NOTE_VALUES.sixteenth,
+    );
+    expect(
+      isViable(midiToHz(Math.min(...piccolo)), NOTE_VALUES.sixteenth, 4, 120, CONFIG, DEFAULT_SCORING),
+    ).toBe(true);
   });
 });

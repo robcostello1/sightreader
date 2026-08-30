@@ -6,12 +6,8 @@ import { OPEN_POSITION, POSITIONS, regionPool } from '../config/regions';
 import { MAX_LEVEL, levelConfig } from '../config/levels';
 import { DEFAULT_VIABILITY, isViable, type ViabilityConfig } from '../config/viability';
 import { midiToHz, nameToMidi } from '../lib/pitch';
-import { fastestViableBpmForPool } from '../config/viability';
 import { INSTRUMENTS, instrumentById, positionById, soundingPool } from '../config/instruments';
-import { shortestNoteValue } from '../config/levels';
-import { MAX_BPM } from '../config/tempo';
-import { maxScorableBpm } from '../scoring';
-import { NOMINAL_HOP_MS } from '../audio/constants';
+import { MAX_BPM, MIN_BPM } from '../config/tempo';
 import { idiomById } from '../idioms';
 import { isInKey, keyByName } from '../lib/key';
 import { NOTE_VALUES } from '../lib/types';
@@ -398,32 +394,42 @@ describe('generateExercise', () => {
 });
 
 describe('viability gating', () => {
-  const ON: ViabilityConfig = { ...DEFAULT_VIABILITY, enabled: true };
+  const ON = DEFAULT_VIABILITY;
+  const OFF: ViabilityConfig = { ...DEFAULT_VIABILITY, enabled: false };
   // A bass register, where long cycles make the gate bite at all.
   const BASS = Array.from({ length: 25 }, (_, i) => nameToMidi('E1') + i);
 
-  it('changes nothing while it is switched off', () => {
-    // The default has to be inert: the constants are still placeholders.
-    const before = generateExercise({ level: 9, pool: BASS, bpm: 240, rng: mulberry32(7) });
-    const after = generateExercise({
-      level: 9,
-      pool: BASS,
-      bpm: 240,
-      viability: DEFAULT_VIABILITY,
-      rng: mulberry32(7),
-    });
-    expect(after.notes).toEqual(before.notes);
+  it('is what stands between the player and an unscoreable note', () => {
+    // Switched off, the same seed writes notes the microphone could not judge;
+    // switched on — which is the default — it does not.
+    const off = generateExercise({ level: 9, pool: BASS, bpm: 240, viability: OFF, rng: mulberry32(7) });
+    const on = generateExercise({ level: 9, pool: BASS, bpm: 240, rng: mulberry32(7) });
+    const unscoreable = (exercise: typeof off) =>
+      exercise.notes.some(
+        (note) =>
+          note.midi !== null &&
+          !isViable(
+            midiToHz(note.midi),
+            note.value,
+            exercise.timeSignature[1],
+            240,
+            ON,
+            levelConfig(9).scoring,
+          ),
+      );
+    expect(unscoreable(off)).toBe(true);
+    expect(unscoreable(on)).toBe(false);
   });
 
   it('keeps every note it does generate scoreable', () => {
     for (const bpm of [60, 120, 200]) {
       for (const seed of SEEDS) {
-        const exercise = generateExercise({ level: 9, pool: BASS, bpm, viability: ON, rng: mulberry32(seed) });
+        const exercise = generateExercise({ level: 9, pool: BASS, bpm, rng: mulberry32(seed) });
         const beatUnit = exercise.timeSignature[1];
         for (const note of exercise.notes) {
           if (note.midi === null) continue;
           expect(
-            isViable(midiToHz(note.midi), note.value, beatUnit, bpm, ON),
+            isViable(midiToHz(note.midi), note.value, beatUnit, bpm, ON, levelConfig(9).scoring),
           ).toBe(true);
         }
       }
@@ -449,7 +455,9 @@ describe('viability gating', () => {
       for (const note of exercise.notes) {
         if (!note.tuplet || note.midi === null) continue;
         seen++;
-        expect(isViable(midiToHz(note.midi), note.value, beatUnit, BPM, ON)).toBe(true);
+        expect(
+          isViable(midiToHz(note.midi), note.value, beatUnit, BPM, ON, levelConfig(9).scoring),
+        ).toBe(true);
       }
     }
     // A guard on the guard: level 9 in this register must actually produce
@@ -461,7 +469,7 @@ describe('viability gating', () => {
     // Every note of an idiom instance shares its fate: an instance is never
     // returned with one pitch quietly swapped, which would leave a run that no
     // longer says anything. Instances are whole or absent.
-    const exercise = generateExercise({ level: 8, pool: BASS, bpm: 150, viability: ON, rng: mulberry32(3) });
+    const exercise = generateExercise({ level: 8, pool: BASS, bpm: 150, rng: mulberry32(3) });
     const byInstance = new Map<string, number>();
     for (const note of exercise.notes) {
       const key = `${note.idiomId}:${note.instance}`;
@@ -474,13 +482,13 @@ describe('viability gating', () => {
     }
   });
 
-  it('leaves the treble alone, where the gate never bites', () => {
+  it('leaves the treble alone at ordinary tempos, where it never bites', () => {
     // Same seeds, same everything, in a register whose cycles are short enough
-    // that nothing is ever rejected.
+    // and at a tempo whose notes are long enough that nothing is rejected.
     const treble = Array.from({ length: 25 }, (_, i) => nameToMidi('A4') + i);
     for (const seed of SEEDS) {
-      const off = generateExercise({ level: 6, pool: treble, bpm: 120, rng: mulberry32(seed) });
-      const on = generateExercise({ level: 6, pool: treble, bpm: 120, viability: ON, rng: mulberry32(seed) });
+      const off = generateExercise({ level: 6, pool: treble, bpm: 120, viability: OFF, rng: mulberry32(seed) });
+      const on = generateExercise({ level: 6, pool: treble, bpm: 120, rng: mulberry32(seed) });
       expect(on.notes).toEqual(off.notes);
     }
   });
@@ -489,50 +497,56 @@ describe('viability gating', () => {
     // The fallback has to land somewhere: a longer note, a higher pitch, or a
     // different idiom. Emitting nothing at all would be a worse answer.
     for (const seed of SEEDS) {
-      const exercise = generateExercise({ level: 10, pool: BASS, bpm: 200, viability: ON, rng: mulberry32(seed) });
+      const exercise = generateExercise({ level: 10, pool: BASS, bpm: 200, rng: mulberry32(seed) });
       expect(exercise.notes.length).toBeGreaterThan(0);
     }
   });
 });
 
-describe('switching the gate on', () => {
-  const ON: ViabilityConfig = { ...DEFAULT_VIABILITY, enabled: true };
+describe('with no tempo cap and no instrument gate', () => {
   const instruments = INSTRUMENTS.filter((instrument) => instrument.status === 'available');
 
-  /** What the tempo control would allow for this instrument at this level. */
-  function ceilingFor(pool: readonly number[], level: number) {
-    const config = levelConfig(level);
-    const beatUnit = Math.min(...config.timeSignatures.map((entry) => entry.value[1]));
-    const shortest = shortestNoteValue(config);
-    return Math.min(
-      MAX_BPM,
-      maxScorableBpm(shortest, beatUnit, config.scoring, NOMINAL_HOP_MS),
-      fastestViableBpmForPool(pool, shortest, beatUnit, ON),
-    );
-  }
-
   it.each(instruments.map((instrument) => [instrument.name, instrument.id] as const))(
-    'still produces exercises for %s at the tempo the control would allow',
+    'still produces exercises for %s at any tempo it can be set to',
     (_name, id) => {
-      // The flip is one flag, so what happens on the other side of it is worth
-      // knowing before anyone throws it. The generator fails loudly when a
-      // constraint combination leaves it nothing — this is the check that the
-      // clamped tempo never puts it there.
+      // Nothing clamps the tempo and nothing disables an instrument any more,
+      // so the generator is asked for combinations that used to be prevented.
+      // It fails loudly when a constraint leaves it nothing — this is the check
+      // that a long note value is always left to fall back on.
       const instrument = instrumentById(id);
       const pool = soundingPool(instrument, positionById(instrument, null));
       for (const level of [1, 5, 10]) {
-        const bpm = ceilingFor(pool, level);
-        for (const seed of SEEDS.slice(0, 8)) {
-          const exercise = generateExercise({
-            level,
-            pool,
-            bpm,
-            viability: ON,
-            rng: mulberry32(seed),
-          });
-          expect(exercise.notes.length).toBeGreaterThan(0);
+        for (const bpm of [MIN_BPM, 150, MAX_BPM]) {
+          for (const seed of SEEDS.slice(0, 6)) {
+            const exercise = generateExercise({ level, pool, bpm, rng: mulberry32(seed) });
+            expect(exercise.notes.length).toBeGreaterThan(0);
+          }
         }
       }
     },
   );
+
+  it('drops the short values rather than the tempo', () => {
+    // In 4/4 at 240bpm a semiquaver is 62ms, which leaves too few detector
+    // frames to judge whatever the instrument — so level 10 stops writing them
+    // and the player keeps the tempo. (In 6/8 the same symbol lasts twice as
+    // long and survives, which is why this looks at one signature.)
+    const flute = soundingPool(instrumentById('flute'), null);
+    const common = SEEDS.map((seed) =>
+      generateExercise({ level: 10, pool: flute, bpm: MAX_BPM, rng: mulberry32(seed) }),
+    ).filter((exercise) => exercise.timeSignature[1] === 4);
+
+    expect(common.length).toBeGreaterThan(0);
+    for (const exercise of common) {
+      expect(exercise.notes.every((note) => note.value > NOTE_VALUES.sixteenth)).toBe(true);
+    }
+
+    // And the same level at a walking tempo still writes them.
+    const slow = SEEDS.flatMap((seed) =>
+      generateExercise({ level: 10, pool: flute, bpm: MIN_BPM, rng: mulberry32(seed) }).notes.map(
+        (note) => note.value,
+      ),
+    );
+    expect(Math.min(...slow)).toBeLessThanOrEqual(NOTE_VALUES.sixteenth);
+  });
 });
