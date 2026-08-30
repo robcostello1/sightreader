@@ -8,7 +8,13 @@ import {
   shortestNoteValue,
 } from '../config/levels';
 import { maxScorableBpm } from '../scoring';
-import { NOMINAL_HOP_MS } from '../audio';
+import {
+  NOMINAL_HOP_MS,
+  loadMicPermission,
+  queryMicPermission,
+  saveMicPermission,
+  type MicPermission,
+} from '../audio';
 import {
   DEFAULT_INSTRUMENT_ID,
   INSTRUMENTS,
@@ -23,6 +29,7 @@ import { loadSetting, saveSetting } from '../lib/storage';
 import { midiToName } from '../lib/pitch';
 import { keyByName, transposeKey } from '../lib/key';
 import { LivePitch } from './LivePitch';
+import { Onboarding } from './Onboarding';
 import { Waveform } from './Waveform';
 import { useLesson } from './useLesson';
 
@@ -53,12 +60,26 @@ export function Lesson() {
   const [positionId, setPositionId] = useState(() => loadSetting('position', readPositionId, null));
   const [autoAdvance, setAutoAdvance] = useState(() => loadSetting('autoAdvance', readFlag, true));
   const [bpm, setBpm] = useState(() => loadSetting('bpm', readBpm, MIN_BPM));
+  const [micPermission, setMicPermission] = useState<MicPermission>(loadMicPermission);
 
   useEffect(() => saveSetting('level', level), [level]);
   useEffect(() => saveSetting('instrument', instrumentId), [instrumentId]);
   useEffect(() => saveSetting('position', positionId), [positionId]);
   useEffect(() => saveSetting('autoAdvance', autoAdvance), [autoAdvance]);
   useEffect(() => saveSetting('bpm', bpm), [bpm]);
+  useEffect(() => saveMicPermission(micPermission), [micPermission]);
+
+  // The browser outranks anything stored: access granted last week can have
+  // been withdrawn from the address bar since, and asking it costs nothing.
+  useEffect(() => {
+    let live = true;
+    void queryMicPermission().then((actual) => {
+      if (live && actual !== null) setMicPermission(actual);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const instrument = instrumentById(instrumentId);
   const position = positionById(instrument, positionId);
@@ -106,9 +127,25 @@ export function Lesson() {
     void import('../notation');
   }, []);
 
-  // Listen from the start, so the readout works before and between exercises.
+  // Listen from the start, so the readout works before and between exercises —
+  // but only once access is known to be granted. Calling getUserMedia on load
+  // is what fires an unexplained permission dialog, which is what the
+  // explainer exists to prevent.
   const { listen } = lesson;
-  useEffect(() => listen(), [listen]);
+  useEffect(() => {
+    if (micPermission !== 'granted') return;
+    listen();
+  }, [listen, micPermission]);
+
+  if (micPermission !== 'granted') {
+    return (
+      <div className="layout">
+        <div className="stage">
+          <Onboarding request={lesson.requestMicrophone} onDone={setMicPermission} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="layout">

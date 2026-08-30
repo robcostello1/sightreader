@@ -496,6 +496,37 @@ input[type='range'] {
  * Fitting everything into one screen only works while there are two columns to
  * put it in; stacked, it just clips.
  */
+/* Onboarding: one thing to read and one thing to press, so the ask lands
+   before the browser's own dialog does. */
+.onboarding {
+  padding: 2rem 0;
+  max-width: 34rem;
+}
+
+.onboarding h2 {
+  font-size: 1.75rem;
+  text-transform: none;
+  letter-spacing: normal;
+  opacity: 1;
+  margin-bottom: 0.75rem;
+}
+
+.reassurance {
+  padding-left: 1.25rem;
+  margin: 0 0 1.5rem;
+  color: var(--fg-muted);
+}
+
+.reassurance li {
+  margin-bottom: 0.25rem;
+}
+
+.warning {
+  color: var(--fail);
+  margin-bottom: 1.25rem;
+}
+
+
 @media (max-width: 900px) {
   main {
     height: auto;

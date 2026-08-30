@@ -16,6 +16,9 @@ import type { Exercise, NoteResult, OnsetEvent, PitchSample } from '../lib/types
 
 export type LessonPhase = 'idle' | 'arming' | 'count-in' | 'playing' | 'results' | 'error';
 
+/** What the browser made of a microphone request. */
+export type MicRequest = { granted: true } | { granted: false; cause: unknown };
+
 export interface SessionStats {
   /** Exercises played to completion since the microphone was opened. */
   completed: number;
@@ -430,6 +433,22 @@ export function useLesson(options: UseLessonOptions) {
   /** Starts monitoring only; used on load so the readout is live immediately. */
   const listen = useCallback(() => openSession(), [openSession]);
 
+  /**
+   * Opens the microphone and reports what the browser decided, so the caller
+   * can tell a refusal from a missing device. Call it from the click itself:
+   * browsers refuse the prompt outside a user gesture.
+   */
+  const requestMicrophone = useCallback(
+    () =>
+      new Promise<MicRequest>((resolve) => {
+        openSession(
+          () => resolve({ granted: true }),
+          (cause) => resolve({ granted: false, cause }),
+        );
+      }),
+    [openSession],
+  );
+
   const start = useCallback(() => {
     const existing = sessionRef.current;
     if (existing) {
@@ -464,5 +483,15 @@ export function useLesson(options: UseLessonOptions) {
 
   useEffect(() => closeSession, [closeSession]);
 
-  return { ...state, start, stop, listen, pause, resume, clearHistory, acknowledgeMilestone };
+  return {
+    ...state,
+    start,
+    stop,
+    listen,
+    requestMicrophone,
+    pause,
+    resume,
+    clearHistory,
+    acknowledgeMilestone,
+  };
 }
