@@ -496,6 +496,113 @@ input[type='range'] {
  * Fitting everything into one screen only works while there are two columns to
  * put it in; stacked, it just clips.
  */
+/* Onboarding: one dialog over the app, so what is being set up stays visible
+   behind the questions. */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 0.7);
+}
+
+.modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(30rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 1.5rem;
+  border-radius: 0.75rem;
+  background: var(--bg);
+}
+
+.modal h2 {
+  font-size: 1.25rem;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--fg);
+  margin-bottom: 0.25rem;
+}
+
+.checklist {
+  list-style: none;
+  padding: 0;
+  margin: 1.25rem 0 0;
+}
+
+.checklist > li {
+  padding: 1rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.checklist > li > :last-child {
+  margin-bottom: 0;
+}
+
+.checklist h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+  margin: 0 0 0.35rem;
+}
+
+/* Fixed width so the heading does not shift as the mark changes. */
+.check-mark {
+  display: inline-flex;
+  justify-content: center;
+  width: 1.1rem;
+  color: var(--fg-muted);
+}
+
+.is-done .check-mark {
+  color: var(--pass);
+}
+
+.is-warned .check-mark {
+  color: var(--unclear);
+}
+
+.check-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.steps {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.steps li {
+  margin-bottom: 0.2rem;
+}
+
+.warning {
+  color: var(--fail);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1.25rem;
+}
+
+.modal-actions button:disabled {
+  color: var(--fg-muted);
+  border-color: var(--line);
+  cursor: not-allowed;
+}
+
+/* Exercises read, when there is no accuracy to fill the slot with. */
+.window-fill.is-played {
+  width: 100%;
+  background: var(--fg-muted);
+}
+
+
 @media (max-width: 900px) {
   main {
     height: auto;

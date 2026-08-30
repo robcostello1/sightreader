@@ -178,6 +178,19 @@ export const INSTRUMENTS: InstrumentDefinition[] = [
   { id: 'banjo', name: 'Banjo', family: 'fretted', clef: 'treble', transposition: AT_PITCH, hasPositions: false, writtenRange: { low: 'D3', high: 'D6' }, status: 'available' },
 ];
 
+/**
+ * Families in the order every list shows them. Keyboard and fretted lead
+ * because piano and guitar are what most people arrive holding; the rest keep
+ * the conventional score order.
+ */
+export const INSTRUMENT_FAMILIES: { id: InstrumentFamily; label: string }[] = [
+  { id: 'keyboard', label: 'Keyboard' },
+  { id: 'fretted', label: 'Fretted' },
+  { id: 'bowed_string', label: 'Bowed strings' },
+  { id: 'woodwind', label: 'Woodwind' },
+  { id: 'brass', label: 'Brass' },
+];
+
 export const DEFAULT_INSTRUMENT_ID = 'guitar';
 
 export function instrumentById(id: string): InstrumentDefinition {

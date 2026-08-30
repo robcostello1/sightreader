@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { startMicCapture, type MicSession } from '../audio';
+import { startMicCapture, startSilentSession, type MicSession } from '../audio';
 import { generateExercise } from '../generator';
 import { buildSchedule, scheduleClicks, windowAt } from '../scheduler';
 import type { Schedule, ScheduledClicks } from '../scheduler';
 import { scoreWindow, summarise, type ExerciseSummary } from '../scoring';
 import { levelConfig } from '../config/levels';
-import { DEFAULT_PROGRESSION, advanceLevel } from '../config/progression';
+import { DEFAULT_PROGRESSION, advanceLevel, advanceUnscored } from '../config/progression';
 import {
   instrumentById,
   positionById,
@@ -15,6 +15,9 @@ import {
 import type { Exercise, NoteResult, OnsetEvent, PitchSample } from '../lib/types';
 
 export type LessonPhase = 'idle' | 'arming' | 'count-in' | 'playing' | 'results' | 'error';
+
+/** What the browser made of a microphone request. */
+export type MicRequest = { granted: true } | { granted: false; cause: unknown };
 
 export interface SessionStats {
   /** Exercises played to completion since the microphone was opened. */
@@ -46,6 +49,9 @@ export interface LessonState {
   onsetCount: number;
   beatsUntilStart: number | null;
   stats: SessionStats;
+  /** Exercises finished since the last level change. Drives progress when
+   *  there is no accuracy to gate on. */
+  unscoredCompleted: number;
   error: string | null;
 }
 
@@ -59,6 +65,12 @@ export interface UseLessonOptions {
   bpm?: number;
   /** Grace period before the count-in, so the worklet can fill its first frame. */
   leadInMs?: number;
+  /**
+   * Whether the microphone is available to score against. With it off the
+   * exercise still runs — count-in, notation, tempo — but nothing is judged,
+   * and the level advances on exercises played rather than on accuracy.
+   */
+  scoring?: boolean;
   /** Roll straight into another exercise once results are in. */
   autoAdvance?: boolean;
   /** How long results stay up before the next exercise starts. */
@@ -88,6 +100,7 @@ const INITIAL: LessonState = {
   onsetCount: 0,
   beatsUntilStart: null,
   stats: EMPTY_STATS,
+  unscoredCompleted: 0,
   error: null,
 };
 
@@ -111,6 +124,7 @@ export function useLesson(options: UseLessonOptions) {
     instrumentId = DEFAULT_INSTRUMENT_ID,
     positionId = null,
     bpm = 60,
+    scoring: scoringEnabled = true,
     leadInMs = 300,
     autoAdvance = false,
     advanceDelayMs = 2500,
@@ -134,6 +148,10 @@ export function useLesson(options: UseLessonOptions) {
   // Mirrored outside React state so completion can act on them immediately.
   const resultsRef = useRef<NoteResult[]>([]);
   const historyRef = useRef<number[]>([]);
+  /** Exercises finished since the last step, when there is nothing to score. */
+  const unscoredRef = useRef(0);
+  /** Whether the open session is the silent one, with a clock but no ear. */
+  const silentRef = useRef(false);
 
   // Read through refs inside the animation loop so it never restarts mid-exercise.
   const settingsRef = useRef({
@@ -141,6 +159,7 @@ export function useLesson(options: UseLessonOptions) {
     instrumentId,
     positionId,
     bpm,
+    scoringEnabled,
     leadInMs,
     autoAdvance,
     advanceDelayMs,
@@ -152,12 +171,23 @@ export function useLesson(options: UseLessonOptions) {
       instrumentId,
       positionId,
       bpm,
+      scoringEnabled,
       leadInMs,
       autoAdvance,
       advanceDelayMs,
       onAdvance,
     };
-  }, [level, instrumentId, positionId, bpm, leadInMs, autoAdvance, advanceDelayMs, onAdvance]);
+  }, [
+    level,
+    instrumentId,
+    positionId,
+    bpm,
+    scoringEnabled,
+    leadInMs,
+    autoAdvance,
+    advanceDelayMs,
+    onAdvance,
+  ]);
 
   // Lets the loop queue the next exercise without beginExercise capturing itself.
   const beginExerciseRef = useRef<((session: MicSession) => void) | null>(null);
@@ -188,6 +218,7 @@ export function useLesson(options: UseLessonOptions) {
     haltExercise();
     void sessionRef.current?.stop();
     sessionRef.current = null;
+    silentRef.current = false;
     scheduleRef.current = null;
     samplesRef.current = [];
     onsetsRef.current = [];
@@ -269,14 +300,19 @@ export function useLesson(options: UseLessonOptions) {
 
       const now = current.context.currentTime * 1000;
       const samples = samplesRef.current;
+      const judging = settingsRef.current.scoringEnabled;
       const scoring = levelConfig(settingsRef.current.level).scoring;
 
-      // Score every window that has closed since the last frame.
+      // Score every window that has closed since the last frame. With no
+      // microphone there is nothing to score against, and marking every note
+      // as silence would be a verdict rather than the absence of one.
       const closed: NoteResult[] = [];
-      for (const window of scheduleRef.current.windows) {
-        if (now < window.endMs || scoredRef.current.has(window.index)) continue;
-        scoredRef.current.add(window.index);
-        closed.push(scoreWindow(window, samples, scoring));
+      if (judging) {
+        for (const window of scheduleRef.current.windows) {
+          if (now < window.endMs || scoredRef.current.has(window.index)) continue;
+          scoredRef.current.add(window.index);
+          closed.push(scoreWindow(window, samples, scoring));
+        }
       }
 
       const active = scheduleRef.current;
@@ -286,7 +322,8 @@ export function useLesson(options: UseLessonOptions) {
 
       if (closed.length > 0) resultsRef.current = [...resultsRef.current, ...closed];
       const results = resultsRef.current;
-      const summary = finished ? summarise(results) : null;
+      const summary = finished && judging ? summarise(results) : null;
+      if (finished && !judging) unscoredRef.current += 1;
       if (summary) {
         // Only the most recent exercises count towards the next step; the
         // window is cleared outright when one is earned.
@@ -304,26 +341,33 @@ export function useLesson(options: UseLessonOptions) {
         onsetCount: onsetsRef.current.length,
         beatsUntilStart: beatsLeft,
         history: historyRef.current,
+        unscoredCompleted: unscoredRef.current,
         stats: summary
           ? {
               completed: prev.stats.completed + 1,
               passed: prev.stats.passed + summary.passed,
               scorable: prev.stats.scorable + (summary.total - summary.unscorable),
             }
-          : prev.stats,
+          : finished && !judging
+            ? { ...prev.stats, completed: prev.stats.completed + 1 }
+            : prev.stats,
       }));
 
       if (finished) {
         haltExercise();
 
-        // Decide progression here, at the completion that caused it.
+        // Decide progression here, at the completion that caused it. With
+        // nothing scored, exercises played is the only signal left.
         const { level: playedAt, onAdvance: notify } = settingsRef.current;
-        const next = advanceLevel(playedAt, historyRef.current);
+        const next = judging
+          ? advanceLevel(playedAt, historyRef.current)
+          : advanceUnscored(playedAt, unscoredRef.current);
         if (next !== playedAt) {
           // Start the count again, so the next step is earned at the new level
           // rather than on results from the old one.
           historyRef.current = [];
-          setState((prev) => ({ ...prev, history: [] }));
+          unscoredRef.current = 0;
+          setState((prev) => ({ ...prev, history: [], unscoredCompleted: 0 }));
           notify?.(next);
           // Crossing into a new whole level pauses here, so what is arriving can
           // be read before it starts turning up mid-exercise.
@@ -384,11 +428,41 @@ export function useLesson(options: UseLessonOptions) {
    * Start surfaces it properly.
    */
   const openSession = useCallback(
-    (onReady?: (session: MicSession) => void, onFailure?: (cause: unknown) => void) => {
+    (
+      onReady?: (session: MicSession) => void,
+      onFailure?: (cause: unknown) => void,
+      options?: { microphone?: boolean },
+    ) => {
+      // Asking for the microphone specifically overrides the current setting:
+      // it is how a player in degraded mode turns scoring back on.
+      const wantsMicrophone = options?.microphone ?? settingsRef.current.scoringEnabled;
+
       if (sessionRef.current) {
-        onReady?.(sessionRef.current);
+        // A silent session cannot become a listening one; swap it out.
+        if (!wantsMicrophone || !silentRef.current) {
+          onReady?.(sessionRef.current);
+          return;
+        }
+        void sessionRef.current.stop();
+        sessionRef.current = null;
+        silentRef.current = false;
+      }
+
+      // No microphone to open: the lesson still needs a clock for the count-in
+      // and the note windows, and that is all a silent session is.
+      if (!wantsMicrophone) {
+        startSilentSession().then(
+          (session) => {
+            sessionRef.current = session;
+            silentRef.current = true;
+            setState((prev) => ({ ...prev, analyser: session.analyser }));
+            onReady?.(session);
+          },
+          (cause: unknown) => onFailure?.(cause),
+        );
         return;
       }
+
       startMicCapture({
         onSample: (sample) => {
         // Always the newest reading, so the readout works before an exercise and
@@ -405,6 +479,7 @@ export function useLesson(options: UseLessonOptions) {
       }).then(
         (session) => {
           sessionRef.current = session;
+          silentRef.current = false;
           setState((prev) => ({ ...prev, analyser: session.analyser }));
 
           // Opened without a gesture, the context can come up suspended. Pick it
@@ -429,6 +504,23 @@ export function useLesson(options: UseLessonOptions) {
 
   /** Starts monitoring only; used on load so the readout is live immediately. */
   const listen = useCallback(() => openSession(), [openSession]);
+
+  /**
+   * Opens the microphone and reports what the browser decided, so the caller
+   * can tell a refusal from a missing device. Call it from the click itself:
+   * browsers refuse the prompt outside a user gesture.
+   */
+  const requestMicrophone = useCallback(
+    () =>
+      new Promise<MicRequest>((resolve) => {
+        openSession(
+          () => resolve({ granted: true }),
+          (cause) => resolve({ granted: false, cause }),
+          { microphone: true },
+        );
+      }),
+    [openSession],
+  );
 
   const start = useCallback(() => {
     const existing = sessionRef.current;
@@ -464,5 +556,15 @@ export function useLesson(options: UseLessonOptions) {
 
   useEffect(() => closeSession, [closeSession]);
 
-  return { ...state, start, stop, listen, pause, resume, clearHistory, acknowledgeMilestone };
+  return {
+    ...state,
+    start,
+    stop,
+    listen,
+    requestMicrophone,
+    pause,
+    resume,
+    clearHistory,
+    acknowledgeMilestone,
+  };
 }

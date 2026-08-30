@@ -2,7 +2,14 @@
  * Build order steps 1-2: mic capture -> AudioWorklet -> pitch stream with
  * confidence values, plus spectral-flux onset detection on the same frames.
  */
-export { startMicCapture, isMicCaptureSupported } from './capture';
+export { startMicCapture, startSilentSession, isMicCaptureSupported } from './capture';
+export {
+  isPermissionDenial,
+  loadMicPermission,
+  queryMicPermission,
+  saveMicPermission,
+} from './permission';
+export type { MicPermission } from './permission';
 export type { MicCaptureOptions, MicSession } from './capture';
 export { PitchyDetector, computeRms, DEFAULT_FRAME_SIZE, DEFAULT_HOP_SIZE } from './detector';
 export type { PitchyDetectorOptions } from './detector';
