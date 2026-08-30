@@ -42,6 +42,31 @@ function barDuration([beatsPerBar, beatUnit]: [number, number]): NoteValue {
 }
 
 /**
+ * The widest span one exercise may range over, in semitones.
+ *
+ * Matched to the guitar's open position, the widest region the app already
+ * treated as one readable unit — so a fretted position is unaffected and a
+ * five-octave keyboard range is not read as an invitation to leap across it.
+ */
+const MAX_EXERCISE_SPAN = 28;
+
+/**
+ * Narrows a wide pool to the register this exercise lives in.
+ *
+ * Idioms are compact by construction, but nothing constrains the gap between
+ * one and the next, so a pool spanning a whole piano produces a line that
+ * lurches between octaves. Drawing a window per exercise keeps each one
+ * readable while coverage still spreads over the full range across a session.
+ */
+function registerWindow(pool: readonly Midi[], rng: Rng): readonly Midi[] {
+  const low = pool[0];
+  const high = pool[pool.length - 1];
+  if (high - low <= MAX_EXERCISE_SPAN) return pool;
+  const start = low + Math.floor(rng() * (high - low - MAX_EXERCISE_SPAN + 1));
+  return pool.filter((midi) => midi >= start && midi <= start + MAX_EXERCISE_SPAN);
+}
+
+/**
  * Places the tonic at or below the region's lowest pitch, so scale degrees
  * ascend into the pool rather than starting above it.
  */
@@ -96,7 +121,7 @@ export function generateExercise(options: GenerateOptions): Exercise {
   const { bpm = 60, extremeBias = 3 } = options;
   const rng = options.rng ?? mulberry32(options.seed ?? 1);
 
-  const poolList = options.pool ?? regionPool(OPEN_POSITION);
+  const poolList = registerWindow(options.pool ?? regionPool(OPEN_POSITION), rng);
   const pool = new Set(poolList);
   const low = poolList[0];
   const high = poolList[poolList.length - 1];
@@ -107,7 +132,7 @@ export function generateExercise(options: GenerateOptions): Exercise {
   const accidentals = rng() < config.maxKeyAccidentals - keyTier ? keyTier + 1 : keyTier;
   const key = options.key ?? pick(rng, keysUpTo(accidentals));
   const keyCenter = keyCentreFor(key, low);
-  const constraints = { keyCenter, pool, maxInterval: config.maxLocalInterval };
+  const constraints = { keyCenter, pool, low, high, maxInterval: config.maxLocalInterval };
 
   // Categories are rolled per exercise, so a newly introduced one shows up in
   // some exercises before all of them.

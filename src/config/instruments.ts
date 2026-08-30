@@ -96,6 +96,11 @@ function nameOf(midi: Midi): string {
  * Piano has no transposition but 88 keys is far too much for one session, so it
  * gets a position control of its own — one that varies which staves are in play
  * as well as the range.
+ *
+ * The wide positions stop at E2 rather than at the bottom of the keyboard: the
+ * same detector floor that gates the low instruments applies to a piano's
+ * bottom two octaves, and generating notes the microphone cannot score is worse
+ * than not offering them. Raise it when the note-level viability check lands.
  */
 const pianoPositions: PositionDefinition[] = [
   { id: 'rh-5-finger', label: 'Middle C 5-finger (right hand)', writtenLow: 'C4', writtenHigh: 'G4', staffMode: 'treble' },
@@ -103,8 +108,8 @@ const pianoPositions: PositionDefinition[] = [
   { id: 'treble-staff', label: 'Treble staff', writtenLow: 'C4', writtenHigh: 'C6', staffMode: 'treble' },
   { id: 'bass-staff', label: 'Bass staff', writtenLow: 'E2', writtenHigh: 'E4', staffMode: 'bass' },
   { id: 'grand-close', label: 'Grand staff, close', writtenLow: 'C3', writtenHigh: 'C6', staffMode: 'grand' },
-  { id: 'grand-wide', label: 'Grand staff, wide', writtenLow: 'C2', writtenHigh: 'C7', staffMode: 'grand' },
-  { id: 'full-range', label: 'Full range', writtenLow: 'A0', writtenHigh: 'C8', staffMode: 'grand' },
+  { id: 'grand-wide', label: 'Grand staff, wide', writtenLow: 'E2', writtenHigh: 'C7', staffMode: 'grand' },
+  { id: 'full-range', label: 'Full range', writtenLow: 'E2', writtenHigh: 'C8', staffMode: 'grand' },
 ];
 
 export const INSTRUMENTS: InstrumentDefinition[] = [

@@ -46,6 +46,22 @@ describe('instrument catalogue', () => {
     }
   });
 
+  it('applies the same floor to every position, not just the default one', () => {
+    // Checking only the default position let piano's wide positions through:
+    // "Full range" reached down to A0, four octaves under the floor the rule
+    // holds every other instrument to.
+    const guitarLow = nameToMidi('E2');
+    for (const instrument of INSTRUMENTS) {
+      if (instrument.status !== 'available') continue;
+      for (const position of instrument.positions ?? []) {
+        const low = Math.min(...soundingPool(instrument, position));
+        expect(`${instrument.id}/${position.id}: ${low}`).toBe(
+          `${instrument.id}/${position.id}: ${Math.max(low, guitarLow)}`,
+        );
+      }
+    }
+  });
+
   it('gates every low-register instrument, including the two the spec missed', () => {
     // Bass clarinet sounds D2 and baritone sax D flat 2 — both under the
     // guitar's low E, so both are held back by the same rule even though the
