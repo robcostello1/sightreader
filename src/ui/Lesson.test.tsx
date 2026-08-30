@@ -175,3 +175,22 @@ describe('changing instrument later', () => {
     expect(JSON.parse(localStorage.getItem('sightreader.instrument') ?? '""')).toBe('flute');
   });
 });
+
+describe('appearance', () => {
+  it('overrides the system scheme, and remembers which', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    fireEvent.change(screen.getByLabelText(/appearance/i), { target: { value: 'light' } });
+    await settle();
+
+    // The stylesheet keys color-scheme off this, and light-dark() follows it.
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+    expect(JSON.parse(localStorage.getItem('sightreader.theme') ?? '""')).toBe('light');
+
+    fireEvent.change(screen.getByLabelText(/appearance/i), { target: { value: 'system' } });
+    await settle();
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
+  });
+});

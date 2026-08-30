@@ -27,6 +27,7 @@ import { fretRangeLabel } from '../config/regions';
 import { DEFAULT_PROGRESSION, UNSCORED_WINDOW, progressionState } from '../config/progression';
 import { BPM_STEP, MAX_BPM, MIN_BPM, clampBpm } from '../config/tempo';
 import { loadSetting, saveSetting } from '../lib/storage';
+import { applyTheme, loadTheme, type ThemePreference } from '../lib/theme';
 import { midiToName } from '../lib/pitch';
 import { keyByName, transposeKey } from '../lib/key';
 import { LivePitch } from './LivePitch';
@@ -69,6 +70,7 @@ export function Lesson() {
    * likeliest reason to return is having gone and fixed the permission.
    */
   const [micAsked, setMicAsked] = useState(false);
+  const [theme, setTheme] = useState<ThemePreference>(loadTheme);
 
   useEffect(() => saveSetting('level', level), [level]);
   useEffect(() => saveSetting('instrument', instrumentId), [instrumentId]);
@@ -77,6 +79,10 @@ export function Lesson() {
   useEffect(() => saveSetting('bpm', bpm), [bpm]);
   useEffect(() => saveMicPermission(micPermission), [micPermission]);
   useEffect(() => saveSetting('onboarded', onboarded), [onboarded]);
+  useEffect(() => {
+    applyTheme(theme);
+    saveSetting('theme', theme);
+  }, [theme]);
 
   // The browser outranks anything stored: access granted last week can have
   // been withdrawn from the address bar since, and asking it costs nothing.
@@ -415,6 +421,18 @@ export function Lesson() {
             {instrument.transposition.semitones !== 0 &&
               ` · ${instrument.transposition.label.toLowerCase()}`}
           </p>
+
+          <label className="field">
+            <span className="field-label">Appearance</span>
+            <select
+              value={theme}
+              onChange={(event) => setTheme(event.target.value as ThemePreference)}
+            >
+              <option value="system">Match system</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
 
           <label className="toggle">
             <input

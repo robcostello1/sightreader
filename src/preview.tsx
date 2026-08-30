@@ -5,7 +5,13 @@ import { generateExercise } from './generator';
 import { levelConfig, levelSummary } from './config/levels';
 import { OPEN_POSITION, regionPool } from './config/regions';
 import { instrumentById, positionById, soundingPool } from './config/instruments';
+import { applyTheme } from './lib/theme';
 import './index.css';
+
+// ?theme=light|dark, so both schemes can be eyeballed without changing the
+// machine's own setting.
+const requested = new URLSearchParams(location.search).get('theme');
+if (requested === 'light' || requested === 'dark') applyTheme(requested);
 
 /**
  * Dev-only page for eyeballing notation across tiers and seeds without playing
