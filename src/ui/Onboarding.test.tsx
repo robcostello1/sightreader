@@ -43,7 +43,7 @@ function setup(overrides: Partial<OnboardingProps> = {}) {
 
 const button = (name: RegExp) => screen.getByRole('button', { name });
 const instrumentSelect = () => screen.getByLabelText(/what are you playing/i);
-const startButton = () => button(/start reading/i);
+const startButton = () => button(/^go$/i);
 
 describe('the checklist', () => {
   it('stays out of the way when there is nothing to ask', () => {

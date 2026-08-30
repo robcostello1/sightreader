@@ -217,7 +217,7 @@ export function Onboarding({
 
           <div className="modal-actions">
             <button type="button" className="primary" onClick={onDone} disabled={!ready}>
-              Start reading
+              Go
             </button>
           </div>
         </Dialog.Content>

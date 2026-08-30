@@ -82,7 +82,7 @@ describe('the checklist', () => {
     expect(startMicCapture).toHaveBeenCalledTimes(1);
 
     chooseInstrument('flute');
-    await click(/start reading/i);
+    await click(/^go$/i);
 
     expect(modalShown()).toBe(false);
     expect(screen.getByRole('button', { name: /^start$/i })).toBeTruthy();
@@ -99,7 +99,7 @@ describe('the checklist', () => {
     expect(startMicCapture).not.toHaveBeenCalled();
 
     chooseInstrument('flute');
-    await click(/start reading/i);
+    await click(/^go$/i);
     await settle();
     expect(startMicCapture).toHaveBeenCalledTimes(1);
   });
@@ -134,7 +134,7 @@ describe('without a microphone', () => {
 
     await click(/^skip$/i);
     chooseInstrument('flute');
-    await click(/start reading/i);
+    await click(/^go$/i);
 
     expect(modalShown()).toBe(false);
     expect(startMicCapture).not.toHaveBeenCalled();
@@ -153,7 +153,7 @@ describe('without a microphone', () => {
     await settle();
 
     await click(/enable microphone/i);
-    await click(/start reading/i);
+    await click(/^go$/i);
     expect(modalShown()).toBe(false);
 
     // Changing something unrelated must not drag the checklist back up.
