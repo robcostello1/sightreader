@@ -28,6 +28,7 @@ import { BPM_STEP, MAX_BPM, MIN_BPM, clampBpm } from '../config/tempo';
 import { loadSetting, saveSetting } from '../lib/storage';
 import { midiToName } from '../lib/pitch';
 import { keyByName, transposeKey } from '../lib/key';
+import { InstrumentPicker } from './InstrumentPicker';
 import { LivePitch } from './LivePitch';
 import { Onboarding } from './Onboarding';
 import { Waveform } from './Waveform';
@@ -61,6 +62,9 @@ export function Lesson() {
   const [autoAdvance, setAutoAdvance] = useState(() => loadSetting('autoAdvance', readFlag, true));
   const [bpm, setBpm] = useState(() => loadSetting('bpm', readBpm, MIN_BPM));
   const [micPermission, setMicPermission] = useState<MicPermission>(loadMicPermission);
+  const [onboarded, setOnboarded] = useState(() => loadSetting('onboarded', readFlag, false));
+  /** Reopening the picker from settings, once onboarding is behind us. */
+  const [picking, setPicking] = useState(false);
 
   useEffect(() => saveSetting('level', level), [level]);
   useEffect(() => saveSetting('instrument', instrumentId), [instrumentId]);
@@ -68,6 +72,7 @@ export function Lesson() {
   useEffect(() => saveSetting('autoAdvance', autoAdvance), [autoAdvance]);
   useEffect(() => saveSetting('bpm', bpm), [bpm]);
   useEffect(() => saveMicPermission(micPermission), [micPermission]);
+  useEffect(() => saveSetting('onboarded', onboarded), [onboarded]);
 
   // The browser outranks anything stored: access granted last week can have
   // been withdrawn from the address bar since, and asking it costs nothing.
@@ -137,11 +142,43 @@ export function Lesson() {
     listen();
   }, [listen, micPermission]);
 
-  if (micPermission !== 'granted') {
+  // Onboarding runs when a step is still owed — and again when access lapses,
+  // since a revoked microphone deserves the same explanation as a new one.
+  if (!onboarded || micPermission === 'unknown') {
     return (
       <div className="layout">
         <div className="stage">
-          <Onboarding request={lesson.requestMicrophone} onDone={setMicPermission} />
+          <Onboarding
+            request={lesson.requestMicrophone}
+            onPermission={setMicPermission}
+            needsInstrument={!onboarded}
+            instrumentId={instrumentId}
+            positionId={positionId}
+            onInstrument={setInstrumentId}
+            onPosition={setPositionId}
+            onDone={() => setOnboarded(true)}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (picking) {
+    return (
+      <div className="layout">
+        <div className="stage">
+          <section className="onboarding onboarding-wide">
+            <h2>What are you playing?</h2>
+            <InstrumentPicker
+              instrumentId={instrumentId}
+              positionId={positionId}
+              onInstrument={setInstrumentId}
+              onPosition={setPositionId}
+            />
+            <button type="button" className="primary" onClick={() => setPicking(false)}>
+              Done
+            </button>
+          </section>
         </div>
       </div>
     );
@@ -312,29 +349,18 @@ export function Lesson() {
             </p>
           )}
 
-          <label className="field">
+          <div className="field">
             <span className="field-label">Instrument</span>
-            <select
-              value={instrumentId}
-              onChange={(event) => {
-                setInstrumentId(event.target.value);
-                // Positions belong to an instrument; the old one means nothing here.
-                setPositionId(null);
-              }}
-              disabled={running}
-            >
-              {INSTRUMENTS.map((option) => (
-                <option
-                  key={option.id}
-                  value={option.id}
-                  disabled={option.status === 'comingSoon'}
-                >
-                  {option.name}
-                  {option.status === 'comingSoon' ? ' — coming soon' : ''}
-                </option>
-              ))}
-            </select>
-          </label>
+            {/* The grid is the one place all twenty-five are legible, so
+                changing instrument reopens it rather than duplicating it as a
+                dropdown that would drift out of step. */}
+            <div className="field-inline">
+              <strong>{instrument.name}</strong>
+              <button type="button" onClick={() => setPicking(true)} disabled={running}>
+                Change
+              </button>
+            </div>
+          </div>
 
           {instrument.hasPositions && instrument.positions && (
             <label className="field">

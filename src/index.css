@@ -527,6 +527,78 @@ input[type='range'] {
 }
 
 
+/* The instrument grid is wider than a column of prose wants to be. */
+.onboarding-wide {
+  max-width: 52rem;
+}
+
+.picker {
+  margin-bottom: 1.5rem;
+}
+
+.picker-family {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-muted);
+  margin: 1.25rem 0 0.5rem;
+}
+
+.picker-grid {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  /* Tiles size themselves; the grid decides how many fit. */
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: 0.5rem;
+}
+
+.picker-choice {
+  width: 100%;
+  text-align: left;
+  border-color: var(--line);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.picker-choice[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.picker-choice:disabled {
+  color: var(--fg-muted);
+  cursor: not-allowed;
+}
+
+.picker-note {
+  font-size: 0.8rem;
+}
+
+/* The range control belongs to the tile above it, so it sits inside the cell
+   rather than pushing the grid around. */
+.picker-range {
+  display: block;
+  margin-top: 0.5rem;
+}
+
+.picker-range .field-label {
+  font-size: 0.8rem;
+  color: var(--fg-muted);
+}
+
+.field-inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+
 @media (max-width: 900px) {
   main {
     height: auto;

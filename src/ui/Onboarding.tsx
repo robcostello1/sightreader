@@ -1,42 +1,90 @@
 import { useState } from 'react';
 import { isPermissionDenial, type MicPermission } from '../audio';
+import { InstrumentPicker } from './InstrumentPicker';
 import type { MicRequest } from './useLesson';
 
 export interface OnboardingProps {
   /** Opens the microphone. Must be called from the click, not from an effect. */
   request: () => Promise<MicRequest>;
-  /** Called once the player is through, with what the browser decided. */
-  onDone: (permission: MicPermission) => void;
+  /** Records what the browser decided, as soon as it decides. */
+  onPermission: (permission: MicPermission) => void;
+  /** Whether the instrument step is still owed; false when only access lapsed. */
+  needsInstrument: boolean;
+  instrumentId: string;
+  positionId: string | null;
+  onInstrument: (id: string) => void;
+  onPosition: (id: string | null) => void;
+  /** Every step done; the lesson can run. */
+  onDone: () => void;
 }
 
-type Stage = 'explainer' | 'blocked';
+type Stage = 'explainer' | 'blocked' | 'instrument';
 
 /**
- * The screen before the microphone prompt.
+ * The steps before the first exercise.
  *
  * A native permission dialog with no preamble gets a reflexive Block — it
  * arrives unasked, in the browser's words rather than the app's, and refusing
  * is the safe move. So the ask is explained first, in the app's own voice, and
  * the browser is only reached through a button the player pressed on purpose.
+ *
+ * Instrument comes after, not before: it is the question you can only answer
+ * once you know the app is going to listen to you play.
  */
-export function Onboarding({ request, onDone }: OnboardingProps) {
+export function Onboarding({
+  request,
+  onPermission,
+  needsInstrument,
+  instrumentId,
+  positionId,
+  onInstrument,
+  onPosition,
+  onDone,
+}: OnboardingProps) {
   const [stage, setStage] = useState<Stage>('explainer');
   const [busy, setBusy] = useState(false);
+
+  const settled = () => {
+    if (needsInstrument) setStage('instrument');
+    else onDone();
+  };
 
   const enable = () => {
     setBusy(true);
     void request().then((result) => {
       setBusy(false);
       if (result.granted) {
-        onDone('granted');
+        onPermission('granted');
+        settled();
         return;
       }
       // Only a refusal is worth remembering; no device, or a device held by
       // something else, is worth trying again.
       setStage('blocked');
-      if (isPermissionDenial(result.cause)) onDone('denied');
+      if (isPermissionDenial(result.cause)) onPermission('denied');
     });
   };
+
+  if (stage === 'instrument') {
+    return (
+      <section className="onboarding onboarding-wide">
+        <h2>What are you playing?</h2>
+        <p className="muted">
+          It sets the clef, the octave and — for a transposing instrument — the key you read in.
+          You can change it later.
+        </p>
+        <InstrumentPicker
+          instrumentId={instrumentId}
+          positionId={positionId}
+          onInstrument={onInstrument}
+          onPosition={onPosition}
+        />
+        <button type="button" className="primary" onClick={onDone}>
+          Start reading
+        </button>
+      </section>
+    );
+  }
 
   return (
     <section className="onboarding">

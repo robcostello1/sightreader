@@ -17,7 +17,9 @@ beforeEach(() => {
     async () =>
       ({
         context: { currentTime: 0, state: 'running' },
-        analyser: { fftSize: 1024 },
+        // The waveform reads this every frame; without it the rAF loop throws
+        // after the test has moved on.
+        analyser: { fftSize: 1024, getFloatTimeDomainData: () => {} },
         sampleRate: 44100,
         stop: async () => {},
       }) as never,
@@ -34,37 +36,82 @@ async function settle() {
   });
 }
 
+async function click(name: RegExp) {
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name }));
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+/** As a player who has already been through onboarding would arrive. */
+function asReturning(permission = 'granted') {
+  localStorage.setItem('sightreader.micPermission', JSON.stringify(permission));
+  localStorage.setItem('sightreader.onboarded', JSON.stringify(true));
+}
+
+const explainerShown = () => screen.queryByRole('button', { name: /enable microphone/i }) !== null;
+const pickerShown = () => screen.queryByText(/what are you playing/i) !== null;
+
 describe('permission signposting', () => {
   it('does not touch the microphone before the player has been told why', async () => {
     render(<Lesson />);
     await settle();
 
     expect(startMicCapture).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: /enable microphone/i })).toBeTruthy();
+    expect(explainerShown()).toBe(true);
   });
 
-  it('opens it on the button, and lets the lesson through', async () => {
+  it('opens it on the button, then asks what is being played', async () => {
     render(<Lesson />);
     await settle();
+    await click(/enable microphone/i);
+
+    expect(startMicCapture).toHaveBeenCalledTimes(1);
+    expect(pickerShown()).toBe(true);
+  });
+
+  it('remembers both answers, so a returning player lands in the lesson', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    expect(explainerShown()).toBe(false);
+    expect(pickerShown()).toBe(false);
+    // Listening from load, as it did before there was an explainer.
+    expect(startMicCapture).toHaveBeenCalledTimes(1);
+  });
+
+  it('explains again when access has lapsed, without asking for the instrument again', async () => {
+    localStorage.setItem('sightreader.onboarded', JSON.stringify(true));
+    render(<Lesson />);
+    await settle();
+
+    expect(explainerShown()).toBe(true);
+    await click(/enable microphone/i);
+    // Straight back to the lesson: the instrument was never in question.
+    expect(pickerShown()).toBe(false);
+    expect(explainerShown()).toBe(false);
+  });
+});
+
+describe('changing instrument later', () => {
+  it('reopens the picker from the settings, and takes the choice', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    await click(/^change$/i);
+    expect(pickerShown()).toBe(true);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /enable microphone/i }));
-      await Promise.resolve();
+      fireEvent.click(screen.getByText('Flute'));
       await Promise.resolve();
     });
+    await click(/^done$/i);
 
-    expect(startMicCapture).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole('button', { name: /enable microphone/i })).toBeNull();
-  });
-
-  it('remembers a grant, so a returning player is not asked again', async () => {
-    localStorage.setItem('sightreader.micPermission', JSON.stringify('granted'));
-
-    render(<Lesson />);
-    await settle();
-
-    // Straight past the explainer, and listening from load as it did before.
-    expect(screen.queryByRole('button', { name: /enable microphone/i })).toBeNull();
-    expect(startMicCapture).toHaveBeenCalledTimes(1);
+    expect(pickerShown()).toBe(false);
+    expect(screen.getByText('Flute')).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem('sightreader.instrument') ?? '""')).toBe('flute');
   });
 });
