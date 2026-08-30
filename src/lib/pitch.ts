@@ -38,6 +38,19 @@ export function nearestMidi(hz: number, a4 = A4_HZ): Midi {
   return Math.round(hzToMidi(hz, a4));
 }
 
+/**
+ * Parses a scientific pitch name such as "Bb3" or "F#5". Accepts flats and
+ * sharps so instrument ranges can be written the way they are spoken.
+ */
+export function nameToMidi(name: string): Midi {
+  const parsed = /^([A-Ga-g])([#b]*)(-?\d+)$/.exec(name.trim());
+  if (!parsed) throw new Error(`unparseable pitch name: ${name}`);
+  const [, letter, accidentals, octave] = parsed;
+  const natural = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[letter.toUpperCase()]!;
+  const alter = [...accidentals].reduce((sum, c) => sum + (c === '#' ? 1 : -1), 0);
+  return (Number(octave) + 1) * 12 + natural + alter;
+}
+
 export function midiToName(midi: Midi): string {
   const name = SHARP_NAMES[((midi % 12) + 12) % 12];
   const octave = Math.floor(midi / 12) - 1;
