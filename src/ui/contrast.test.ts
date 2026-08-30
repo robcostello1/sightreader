@@ -10,17 +10,25 @@ import { describe, expect, it } from 'vitest';
  */
 const css = readFileSync(fileURLToPath(new URL('../index.css', import.meta.url)), 'utf8');
 
-function tokensIn(block: string): Record<string, string> {
-  const tokens: Record<string, string> = {};
-  for (const [, name, value] of block.matchAll(/--([\w-]+):\s*(#[0-9a-f]{6})\s*;/gi)) {
-    tokens[name] = value;
+/**
+ * Both palettes, read from the light-dark() pairs the stylesheet declares.
+ *
+ * Taking them from the same declaration is what makes "defines the same tokens
+ * for both schemes" true by construction rather than by a test — a colour
+ * cannot be changed in one scheme and forgotten in the other.
+ */
+function palettes(): { light: Record<string, string>; dark: Record<string, string> } {
+  const light: Record<string, string> = {};
+  const dark: Record<string, string> = {};
+  const pair = /--([\w-]+):\s*light-dark\(\s*(#[0-9a-f]{6})\s*,\s*(#[0-9a-f]{6})\s*\)/gi;
+  for (const [, name, lightValue, darkValue] of css.matchAll(pair)) {
+    light[name] = lightValue;
+    dark[name] = darkValue;
   }
-  return tokens;
+  return { light, dark };
 }
 
-const [lightBlock, darkBlock] = css.split('@media (prefers-color-scheme: dark)');
-const light = tokensIn(lightBlock);
-const dark = tokensIn(darkBlock ?? '');
+const { light, dark } = palettes();
 
 function channel(value: number): number {
   const c = value / 255;
@@ -42,11 +50,25 @@ function contrast(a: string, b: string): number {
 }
 
 describe('palette contrast', () => {
-  it('defines the same tokens for both schemes', () => {
-    expect(Object.keys(light).sort()).toEqual(Object.keys(dark).sort());
-    expect(light.bg).toBeDefined();
-    expect(light.surface).toBeDefined();
-    expect(light['fg-muted']).toBeDefined();
+  it('finds the palette it is meant to be checking', () => {
+    // A stylesheet rewrite that stopped matching would otherwise leave this
+    // whole file passing vacuously.
+    for (const name of ['bg', 'surface', 'fg', 'fg-muted', 'accent', 'pass', 'fail', 'unclear']) {
+      expect(light[name]).toBeDefined();
+      expect(dark[name]).toBeDefined();
+    }
+  });
+
+  it('keeps light off white and warm', () => {
+    // Paper is never pure white, and a page of notation on #fff glares under a
+    // lamp — but only just off, so it still reads as white.
+    const [r, g, b] = [1, 3, 5].map((i) => Number.parseInt(light.bg.slice(i, i + 2), 16));
+    expect(r).toBeLessThan(255);
+    expect(r).toBeGreaterThan(248);
+    // Warm: more red than blue, by a little.
+    expect(r).toBeGreaterThan(b);
+    expect(g).toBeGreaterThan(b);
+    expect(r - b).toBeLessThan(16);
   });
 
   it.each([

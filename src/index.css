@@ -1,4 +1,9 @@
 :root {
+  /*
+   * Both palettes on one line each, resolved by light-dark() from the
+   * color-scheme below — so a colour cannot be changed in one scheme and
+   * forgotten in the other, which a second @media block invites.
+   */
   color-scheme: light dark;
   /* Loaded with display=swap, so the fallback shows immediately and the page
      still reads if Google Fonts is unreachable. */
@@ -10,14 +15,17 @@
    * makes contrast depend on whatever is behind, and the secondary text was
    * landing below the 4.5:1 WCAG AA threshold for body copy. Every pair here
    * clears it against both the page and the card surface — muted text measures
-   * 6.7:1 on light and 7.8:1 on dark — and contrast.test.ts checks every pair
+   * 6.6:1 on light and 7.8:1 on dark — and contrast.test.ts checks every pair
    * against this file.
+   *
+   * Light is a warm off-white rather than #fff: paper is never pure white, and
+   * a page of notation on white glares under a lamp.
    */
-  --bg: #ffffff;
-  --surface: #f4f4f5;
-  --fg: #1a1a1a;
-  --fg-muted: #5c5c5c;
-  --line: rgb(0 0 0 / 0.16);
+  --bg: light-dark(#fcfaf6, #141414);
+  --surface: light-dark(#f4f0e8, #1e1e1e);
+  --fg: light-dark(#1c1a17, #f2f2f2);
+  --fg-muted: light-dark(#5a544b, #a9a9a9);
+  --line: light-dark(rgb(40 32 20 / 0.16), rgb(255 255 255 / 0.22));
 
   /* One spacing step, used for every gap so nothing looks arbitrary. */
   --gap: 1rem;
@@ -28,24 +36,23 @@
    * towards violet, success towards cyan, failure towards magenta — which keeps
    * them distinguishable without reading as traffic lights.
    */
-  --accent: #4b45c9;
-  --pass: #0b7469;
-  --fail: #b01e52;
-  --unclear: #855800;
+  --accent: light-dark(#4b45c9, #9a8cff);
+  --pass: light-dark(#0b7469, #3fd6bb);
+  --fail: light-dark(#b01e52, #f27aab);
+  --unclear: light-dark(#855800, #e0a648);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #141414;
-    --surface: #1e1e1e;
-    --fg: #f2f2f2;
-    --fg-muted: #a9a9a9;
-    --line: rgb(255 255 255 / 0.22);
-    --accent: #9a8cff;
-    --pass: #3fd6bb;
-    --fail: #f27aab;
-    --unclear: #e0a648;
-  }
+/*
+ * An explicit choice overrides the system in both directions. Setting
+ * color-scheme rather than the tokens is what makes it one line: light-dark()
+ * follows it, and so do the native controls — selects, sliders, scrollbars.
+ */
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
 }
 
 body {
