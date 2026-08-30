@@ -1,5 +1,7 @@
-import { maxLocalInterval, placementPitches } from '../idioms';
+import { instantiateIdiom, maxLocalInterval, placementPitches } from '../idioms';
 import type { IdiomPlacement } from '../idioms';
+import { isViable, type ViabilityConfig } from '../config/viability';
+import { midiToHz } from '../lib/pitch';
 import type { Idiom, Midi, NoteValue } from '../lib/types';
 
 /**
@@ -19,6 +21,34 @@ export interface PlacementConstraints {
   high: Midi;
   /** Largest permitted leap between consecutive notes, in semitones. */
   maxInterval: number;
+  /**
+   * What the microphone could actually score, given the tempo. Omitted, or
+   * disabled, and every placement passes.
+   */
+  viability?: { config: ViabilityConfig; bpm: number; beatUnit: number };
+}
+
+/**
+ * Whether every note of this placement is long enough, at its own frequency,
+ * to be worth putting on the page.
+ *
+ * Checked on *sounding* pitch, which is what a placement holds: the generator
+ * works in concert pitch throughout and transposition happens only at the page.
+ * Gating on the written note would ask whether a frequency nobody produces is
+ * detectable.
+ *
+ * The whole placement stands or falls together. Swapping one note out of a
+ * scalar run leaves a phrase that no longer says anything; rejecting the run
+ * and picking another idiom is the honest repair.
+ */
+function viablePlacement(placement: IdiomPlacement, constraints: PlacementConstraints): boolean {
+  const check = constraints.viability;
+  if (!check || !check.config.enabled) return true;
+  return instantiateIdiom(placement).every(
+    (note) =>
+      note.midi === null ||
+      isViable(midiToHz(note.midi), note.value, check.beatUnit, check.bpm, check.config),
+  );
 }
 
 /**
@@ -38,10 +68,19 @@ function degreeSearch(constraints: PlacementConstraints): { min: number; max: nu
 }
 
 /**
- * Every degree at which an idiom fits both constraints from spec §3: the pool
- * (which pitches the region can reach at all) and the local movement limit
- * (how far consecutive notes may jump). The two are independent — a wide pool
- * stays readable because the second constraint keeps each idiom compact.
+ * Every degree at which an idiom fits all three constraints: the pool (which
+ * pitches the region can reach at all), the local movement limit (how far
+ * consecutive notes may jump), and viability (whether the microphone could
+ * score the result at this tempo).
+ *
+ * They are independent of each other — a wide pool stays readable because the
+ * movement limit keeps each idiom compact, and viability cuts across both,
+ * since it depends on the note value and the tempo as much as the pitch.
+ *
+ * Being a filter is what gives the fallback its shape. A pitch that fails at
+ * this note value simply leaves the list, so the caller's existing choice falls
+ * on a different pitch, or on the same idiom at a longer value, or — if nothing
+ * survives — on a different idiom altogether. No note is ever patched in place.
  */
 export function validPlacements(
   idiom: Idiom,
@@ -61,6 +100,7 @@ export function validPlacements(
     if (pitches.length === 0) continue;
     if (!pitches.every((midi) => constraints.pool.has(midi))) continue;
     if (maxLocalInterval(placement) > constraints.maxInterval) continue;
+    if (!viablePlacement(placement, constraints)) continue;
     placements.push(placement);
   }
   return placements;

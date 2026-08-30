@@ -4,6 +4,8 @@ import { startPitchWeight, validPlacements } from './placement';
 import { mulberry32 } from './rng';
 import { OPEN_POSITION, POSITIONS, regionPool } from '../config/regions';
 import { MAX_LEVEL, levelConfig } from '../config/levels';
+import { DEFAULT_VIABILITY, isViable, type ViabilityConfig } from '../config/viability';
+import { midiToHz, nameToMidi } from '../lib/pitch';
 import { idiomById } from '../idioms';
 import { isInKey, keyByName } from '../lib/key';
 import { NOTE_VALUES } from '../lib/types';
@@ -386,5 +388,103 @@ describe('generateExercise', () => {
     };
     // Moving up the neck moves the music, which is the point of the position axis.
     expect(lowestIn('pos-9')).toBeGreaterThan(lowestIn('open'));
+  });
+});
+
+describe('viability gating', () => {
+  const ON: ViabilityConfig = { ...DEFAULT_VIABILITY, enabled: true };
+  // A bass register, where long cycles make the gate bite at all.
+  const BASS = Array.from({ length: 25 }, (_, i) => nameToMidi('E1') + i);
+
+  it('changes nothing while it is switched off', () => {
+    // The default has to be inert: the constants are still placeholders.
+    const before = generateExercise({ level: 9, pool: BASS, bpm: 240, rng: mulberry32(7) });
+    const after = generateExercise({
+      level: 9,
+      pool: BASS,
+      bpm: 240,
+      viability: DEFAULT_VIABILITY,
+      rng: mulberry32(7),
+    });
+    expect(after.notes).toEqual(before.notes);
+  });
+
+  it('keeps every note it does generate scoreable', () => {
+    for (const bpm of [60, 120, 200]) {
+      for (const seed of SEEDS) {
+        const exercise = generateExercise({ level: 9, pool: BASS, bpm, viability: ON, rng: mulberry32(seed) });
+        const beatUnit = exercise.timeSignature[1];
+        for (const note of exercise.notes) {
+          if (note.midi === null) continue;
+          expect(
+            isViable(midiToHz(note.midi), note.value, beatUnit, bpm, ON),
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('catches the tuplet, which is shorter than the value it is drawn at', () => {
+    // Triplet quavers are drawn as quavers but last two thirds as long, so a
+    // group can pass at placement and fail once it is squeezed. Checking the
+    // notes as generated covers the squeezed value, since that is what they
+    // carry.
+    const BPM = 160;
+    let seen = 0;
+    for (const seed of SEEDS) {
+      const exercise = generateExercise({
+        level: 9,
+        pool: BASS,
+        bpm: BPM,
+        viability: ON,
+        rng: mulberry32(seed),
+      });
+      const beatUnit = exercise.timeSignature[1];
+      for (const note of exercise.notes) {
+        if (!note.tuplet || note.midi === null) continue;
+        seen++;
+        expect(isViable(midiToHz(note.midi), note.value, beatUnit, BPM, ON)).toBe(true);
+      }
+    }
+    // A guard on the guard: level 9 in this register must actually produce
+    // some, or the assertion above never runs.
+    expect(seen).toBeGreaterThan(0);
+  });
+
+  it('rejects the phrase rather than patching a note out of it', () => {
+    // Every note of an idiom instance shares its fate: an instance is never
+    // returned with one pitch quietly swapped, which would leave a run that no
+    // longer says anything. Instances are whole or absent.
+    const exercise = generateExercise({ level: 8, pool: BASS, bpm: 150, viability: ON, rng: mulberry32(3) });
+    const byInstance = new Map<string, number>();
+    for (const note of exercise.notes) {
+      const key = `${note.idiomId}:${note.instance}`;
+      byInstance.set(key, (byInstance.get(key) ?? 0) + 1);
+    }
+    for (const [key, count] of byInstance) {
+      if (key.startsWith(PADDING_IDIOM_ID)) continue;
+      const idiom = idiomById(key.split(':')[0]);
+      if (idiom) expect(count).toBe(idiom.events.length);
+    }
+  });
+
+  it('leaves the treble alone, where the gate never bites', () => {
+    // Same seeds, same everything, in a register whose cycles are short enough
+    // that nothing is ever rejected.
+    const treble = Array.from({ length: 25 }, (_, i) => nameToMidi('A4') + i);
+    for (const seed of SEEDS) {
+      const off = generateExercise({ level: 6, pool: treble, bpm: 120, rng: mulberry32(seed) });
+      const on = generateExercise({ level: 6, pool: treble, bpm: 120, viability: ON, rng: mulberry32(seed) });
+      expect(on.notes).toEqual(off.notes);
+    }
+  });
+
+  it('still produces an exercise where it bites hardest', () => {
+    // The fallback has to land somewhere: a longer note, a higher pitch, or a
+    // different idiom. Emitting nothing at all would be a worse answer.
+    for (const seed of SEEDS) {
+      const exercise = generateExercise({ level: 10, pool: BASS, bpm: 200, viability: ON, rng: mulberry32(seed) });
+      expect(exercise.notes.length).toBeGreaterThan(0);
+    }
   });
 });
