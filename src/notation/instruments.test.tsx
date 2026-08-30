@@ -69,9 +69,16 @@ describe('notation across instruments', () => {
     ).not.toThrow();
   });
 
-  it.each(['grand-close', 'grand-wide', 'full-range', 'lh-5-finger', 'bass-staff'])(
+  // Every position a player can actually choose — naming them by hand let
+  // "full-range" stay in the list after it was gated, testing the fallback
+  // rather than the position.
+  const pianoPositions = (instrumentById('piano').positions ?? []).filter(
+    (position) => position.status !== 'comingSoon',
+  );
+
+  it.each(pianoPositions.map((position) => [position.label, position.id] as const))(
     'renders the %s piano position across levels',
-    (positionId) => {
+    (_label, positionId) => {
       const piano = instrumentById('piano');
       const position = positionById(piano, positionId);
       for (const level of [2, 6, 10]) {
