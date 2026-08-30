@@ -88,6 +88,22 @@ describe('the checklist', () => {
     expect(screen.getByRole('button', { name: /^start$/i })).toBeTruthy();
   });
 
+  it('does not switch the microphone on just because a previous visit allowed it', async () => {
+    // Permission granted, but the checklist has not been answered: turning the
+    // microphone on the moment the page loads is the player's call, not ours.
+    localStorage.setItem('sightreader.micPermission', JSON.stringify('granted'));
+    render(<Lesson />);
+    await settle();
+
+    expect(modalShown()).toBe(true);
+    expect(startMicCapture).not.toHaveBeenCalled();
+
+    chooseInstrument('flute');
+    await click(/start reading/i);
+    await settle();
+    expect(startMicCapture).toHaveBeenCalledTimes(1);
+  });
+
   it('remembers both answers, so a returning player lands in the lesson', async () => {
     asReturning();
     render(<Lesson />);

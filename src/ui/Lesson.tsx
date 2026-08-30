@@ -139,21 +139,21 @@ export function Lesson() {
     void import('../notation');
   }, []);
 
-  // Listen from the start, so the readout works before and between exercises —
-  // but only once access is known to be granted. Calling getUserMedia on load
-  // is what fires an unexplained permission dialog, which is what the
-  // explainer exists to prevent.
-  const { listen } = lesson;
-  useEffect(() => {
-    if (micPermission !== 'granted') return;
-    listen();
-  }, [listen, micPermission]);
-
   // The microphone is asked for once a session until it is granted — a refusal
   // is usually followed by going and fixing it, and the app has to notice.
   // The instrument is asked once ever, and changed from the sidebar after that.
   const needsMicrophone = micPermission !== 'granted' && !micAsked;
   const onboarding = needsMicrophone || !onboarded;
+
+  // Listen from the start, so the readout works before and between exercises —
+  // but not while the checklist is still up. Access granted on a previous visit
+  // is not permission to switch the microphone on the moment the page loads:
+  // that is for the player to do, from the checklist.
+  const { listen } = lesson;
+  useEffect(() => {
+    if (onboarding || micPermission !== 'granted') return;
+    listen();
+  }, [listen, micPermission, onboarding]);
 
   return (
     <div className="layout">
