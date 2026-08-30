@@ -21,7 +21,7 @@ import { DEFAULT_PROGRESSION, progressionState } from '../config/progression';
 import { BPM_STEP, MAX_BPM, MIN_BPM, clampBpm } from '../config/tempo';
 import { loadSetting, saveSetting } from '../lib/storage';
 import { midiToName } from '../lib/pitch';
-import { keyByName } from '../lib/key';
+import { keyByName, transposeKey } from '../lib/key';
 import { LivePitch } from './LivePitch';
 import { Waveform } from './Waveform';
 import { useLesson } from './useLesson';
@@ -90,6 +90,13 @@ export function Lesson() {
     onAdvance: setLevel,
   });
   const progress = progressionState(level, lesson.history);
+
+  // What the player reads, which is what the readout must name.
+  const writtenKey = transposeKey(
+    lesson.exercise?.key ?? C_MAJOR,
+    -instrument.transposition.semitones,
+    -instrument.transposition.letters,
+  );
 
   const threshold = Math.round(DEFAULT_PROGRESSION.threshold * 100);
   const running = lesson.phase === 'count-in' || lesson.phase === 'playing';
@@ -172,7 +179,8 @@ export function Lesson() {
                     hz={lesson.livePitch?.hz ?? null}
                     confidence={lesson.livePitch?.confidence ?? 0}
                     gate={config.scoring.confidenceGate}
-                    musicalKey={lesson.exercise?.key ?? C_MAJOR}
+                    musicalKey={writtenKey}
+                    writtenOffset={-instrument.transposition.semitones}
                   />
                   <Waveform analyser={lesson.analyser} />
                 </div>

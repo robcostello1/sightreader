@@ -177,6 +177,23 @@ single exercise: reopening it would cost a fresh `getUserMedia` round trip each
 time, and a newly created `AudioContext` can only be resumed from a user
 gesture — which an automatic advance, by definition, does not have.
 
+## Instruments
+
+Twenty-five instruments across five families. Sounding pitch and written pitch
+are separated throughout: the generator, the scorer and the microphone all work
+in concert pitch, and transposition is applied only when notes reach the page —
+along with the key signature, so a B flat clarinet reading concert C gets D
+major and its accidentals agree with the notes beside them. The live readout
+names the *written* note too, since a player thinks in their own part.
+
+Guitar and piano offer a position control; everything else has one fixed range.
+Piano's positions vary which staves are in play as well as the range.
+
+Eight instruments are listed but disabled: their sounding range dips below the
+guitar's low E, where pitch detection is not yet proven. That is applied as a
+rule, not a list — a test asserts no available instrument sounds lower — and it
+is a holding pattern until a note-level viability check replaces it.
+
 ## Key design decisions
 
 - **Sequences are diatonic, not transposed.** An idiom repeats on a new scale
