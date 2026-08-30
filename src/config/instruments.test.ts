@@ -54,12 +54,22 @@ describe('instrument catalogue', () => {
     for (const instrument of INSTRUMENTS) {
       if (instrument.status !== 'available') continue;
       for (const position of instrument.positions ?? []) {
+        if (position.status === 'comingSoon') continue;
         const low = Math.min(...soundingPool(instrument, position));
         expect(`${instrument.id}/${position.id}: ${low}`).toBe(
           `${instrument.id}/${position.id}: ${Math.max(low, guitarLow)}`,
         );
       }
     }
+  });
+
+  it('never resolves to a gated position, even when one is asked for by name', () => {
+    // A setting saved before "Full range" was held back must not put the app
+    // into a range it cannot draw.
+    const piano = instrumentById('piano');
+    expect(piano.positions?.find((p) => p.id === 'full-range')?.status).toBe('comingSoon');
+    expect(positionById(piano, 'full-range')?.id).not.toBe('full-range');
+    expect(positionById(piano, null)?.status).toBeUndefined();
   });
 
   it('gates every low-register instrument, including the two the spec missed', () => {

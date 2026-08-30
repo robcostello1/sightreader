@@ -41,6 +41,9 @@ export interface PositionDefinition {
   staffMode?: StaffMode;
   /** Guitar only: the fretboard this position covers, which sets the pool. */
   region?: FretboardRegion;
+  /** Defaults to available; a gated position is listed but not selectable. */
+  status?: InstrumentStatus;
+  comingSoonReason?: string;
 }
 
 export interface InstrumentDefinition {
@@ -97,7 +100,7 @@ function nameOf(midi: Midi): string {
  * gets a position control of its own — one that varies which staves are in play
  * as well as the range.
  *
- * The wide positions stop at E2 rather than at the bottom of the keyboard: the
+ * Grand staff, wide stops at E2 rather than at the bottom of the keyboard: the
  * same detector floor that gates the low instruments applies to a piano's
  * bottom two octaves, and generating notes the microphone cannot score is worse
  * than not offering them. Raise it when the note-level viability check lands.
@@ -109,7 +112,19 @@ const pianoPositions: PositionDefinition[] = [
   { id: 'bass-staff', label: 'Bass staff', writtenLow: 'E2', writtenHigh: 'E4', staffMode: 'bass' },
   { id: 'grand-close', label: 'Grand staff, close', writtenLow: 'C3', writtenHigh: 'C6', staffMode: 'grand' },
   { id: 'grand-wide', label: 'Grand staff, wide', writtenLow: 'E2', writtenHigh: 'C7', staffMode: 'grand' },
-  { id: 'full-range', label: 'Full range', writtenLow: 'E2', writtenHigh: 'C8', staffMode: 'grand' },
+  // The outer octaves are unreadable without 8va and 8vb: five ledger lines
+  // either side of the staff is not notation anyone sight-reads. Held back
+  // until octave signs are drawn — and its bottom two octaves sit under the
+  // detector floor besides.
+  {
+    id: 'full-range',
+    label: 'Full range',
+    writtenLow: 'A0',
+    writtenHigh: 'C8',
+    staffMode: 'grand',
+    status: 'comingSoon',
+    comingSoonReason: 'Needs octave signs before the outer octaves are readable.',
+  },
 ];
 
 export const INSTRUMENTS: InstrumentDefinition[] = [
@@ -171,12 +186,19 @@ export function instrumentById(id: string): InstrumentDefinition {
   return found;
 }
 
+/**
+ * Resolves a position id, falling back to the first playable one — which also
+ * catches a gated position named by a setting saved before it was held back.
+ */
 export function positionById(
   instrument: InstrumentDefinition,
   id: string | null,
 ): PositionDefinition | null {
   if (!instrument.positions) return null;
-  return instrument.positions.find((position) => position.id === id) ?? instrument.positions[0];
+  const playable = instrument.positions.filter((position) => position.status !== 'comingSoon');
+  const named = instrument.positions.find((position) => position.id === id);
+  if (named && named.status !== 'comingSoon') return named;
+  return playable[0] ?? instrument.positions[0];
 }
 
 export function writtenToSounding(midi: Midi, instrument: InstrumentDefinition): Midi {

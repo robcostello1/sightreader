@@ -310,8 +310,13 @@ export function Lesson() {
                 disabled={running}
               >
                 {instrument.positions.map((option) => (
-                  <option key={option.id} value={option.id}>
+                  <option
+                    key={option.id}
+                    value={option.id}
+                    disabled={option.status === 'comingSoon'}
+                  >
                     {option.label}
+                    {option.status === 'comingSoon' ? ' — coming soon' : ''}
                   </option>
                 ))}
               </select>
