@@ -1,9 +1,11 @@
 import { OPEN_POSITION, regionPool } from '../config/regions';
-import { levelConfig, type LevelConfig } from '../config/levels';
+import { levelConfig, type LevelConfig, type ScoringConfig } from '../config/levels';
+import { DEFAULT_VIABILITY, isViable, type ViabilityConfig } from '../config/viability';
 import { IDIOM_LIBRARY, idiomDuration, instantiateIdiom, placementPitches } from '../idioms';
 import type { IdiomPlacement } from '../idioms';
 import { decompose } from '../lib/duration';
 import { keysUpTo, type MusicalKey } from '../lib/key';
+import { midiToHz } from '../lib/pitch';
 import { mulberry32, pick, weightedPick, type Rng } from './rng';
 import { startPitchWeight, validPlacements } from './placement';
 import type { Exercise, ExerciseNote, Idiom, IdiomCategory, Midi, NoteValue } from '../lib/types';
@@ -27,6 +29,11 @@ export interface GenerateOptions {
   rng?: Rng;
   /** How strongly to favour the extremes of the region. */
   extremeBias?: number;
+  /**
+   * Keeps notes the microphone could not score off the page. Off by default
+   * until the pitch-detection spike calibrates it.
+   */
+  viability?: ViabilityConfig;
 }
 
 interface Candidate {
@@ -118,7 +125,7 @@ function choosePlacement(
 
 export function generateExercise(options: GenerateOptions): Exercise {
   const config = typeof options.level === 'number' ? levelConfig(options.level) : options.level;
-  const { bpm = 60, extremeBias = 3 } = options;
+  const { bpm = 60, extremeBias = 3, viability = DEFAULT_VIABILITY } = options;
   const rng = options.rng ?? mulberry32(options.seed ?? 1);
 
   const poolList = registerWindow(options.pool ?? regionPool(OPEN_POSITION), rng);
@@ -132,7 +139,7 @@ export function generateExercise(options: GenerateOptions): Exercise {
   const accidentals = rng() < config.maxKeyAccidentals - keyTier ? keyTier + 1 : keyTier;
   const key = options.key ?? pick(rng, keysUpTo(accidentals));
   const keyCenter = keyCentreFor(key, low);
-  const constraints = { keyCenter, pool, low, high, maxInterval: config.maxLocalInterval };
+  const baseConstraints = { keyCenter, pool, low, high, maxInterval: config.maxLocalInterval };
 
   // Categories are rolled per exercise, so a newly introduced one shows up in
   // some exercises before all of them.
@@ -152,6 +159,14 @@ export function generateExercise(options: GenerateOptions): Exercise {
   let timeSignature = weightedPick(rng, config.timeSignatures, (entry) => entry.weight).value;
   let barSize = barDuration(timeSignature);
 
+  // Viability is measured in beats, so it cannot be settled until the beat unit
+  // is known: the same quaver lasts twice as long in 6/8 as in 4/4.
+  const withViability = (signature: [number, number]) => ({
+    ...baseConstraints,
+    viability: { config: viability, scoring: config.scoring, bpm, beatUnit: signature[1] },
+  });
+  let constraints = withViability(timeSignature);
+
   let phraseCandidates = buildCandidates(phrase, noteValues, constraints, barSize);
   // A shorter bar can rule out every idiom when the exercise happens to admit
   // only long note values. Common time always leaves a candidate, so fall back
@@ -159,6 +174,7 @@ export function generateExercise(options: GenerateOptions): Exercise {
   if (phraseCandidates.length === 0 && barSize !== barDuration([4, 4])) {
     timeSignature = [4, 4];
     barSize = barDuration(timeSignature);
+    constraints = withViability(timeSignature);
     phraseCandidates = buildCandidates(phrase, noteValues, constraints, barSize);
   }
 
@@ -225,7 +241,14 @@ export function generateExercise(options: GenerateOptions): Exercise {
       // A tuplet of `num` notes takes the space of `inSpaceOf`, so the instance
       // loses the difference. Scaling a whole idiom instead would yield
       // durations no combination of symbols can draw.
-      if (applyTuplet(rng, rendered, candidate, instance, ratio, used, barSize)) {
+      if (
+        applyTuplet(rng, rendered, candidate, instance, ratio, used, barSize, {
+          config: viability,
+          scoring: config.scoring,
+          bpm,
+          beatUnit: timeSignature[1],
+        })
+      ) {
         duration -= (ratio.num - ratio.inSpaceOf) * candidate.unitValue;
       }
     }
@@ -407,6 +430,12 @@ function applyTuplet(
   ratio: { num: number; inSpaceOf: number },
   offset: NoteValue,
   barSize: NoteValue,
+  viability: {
+    config: ViabilityConfig;
+    scoring: ScoringConfig;
+    bpm: number;
+    beatUnit: number;
+  },
 ): boolean {
   const events = candidate.idiom.events;
   const span = ratio.inSpaceOf * candidate.unitValue;
@@ -435,7 +464,27 @@ function applyTuplet(
     // readable only as a puzzle, and is not how anyone writes one.
     const withinBar = start % barSize;
     const onBeat = Math.abs(withinBar / span - Math.round(withinBar / span)) < 1e-9;
-    if (onBeat) starts.push(i);
+    if (!onBeat) continue;
+
+    // A tuplet squeezes its notes shorter than the value they are drawn at, so
+    // a group that was viable as plain quavers need not be as triplet quavers.
+    // Checked here rather than at placement, since the group is chosen later.
+    const scaled = (candidate.unitValue * ratio.inSpaceOf) / ratio.num;
+    const viable = rendered
+      .slice(i, i + ratio.num)
+      .every(
+        (note) =>
+          note.midi === null ||
+          isViable(
+            midiToHz(note.midi),
+            scaled,
+            viability.beatUnit,
+            viability.bpm,
+            viability.config,
+            viability.scoring,
+          ),
+      );
+    if (viable) starts.push(i);
   }
   if (starts.length === 0) return false;
 

@@ -82,6 +82,12 @@ Crossing a **whole** level pauses the session and names what is about to start
 appearing, so a new idea is read about before it turns up mid-exercise. Tenth
 steps pass without interruption.
 
+One of those is the metronome: it clicks through every exercise to level 5,
+none from 7, and a diminishing share between, on the grounds that holding the
+pulse is part of reading. It is the only change a player meets by ear rather
+than by eye, so it is announced like the rest — unannounced it reads as the app
+breaking. `METRONOME_FADES_OUT` turns the whole idea off in one place.
+
 Gating uses the pass/fail scores directly — there is no separate mastery
 signal. The threshold is short of perfect on purpose: sight-reading is meant to
 be attempted at the edge of fluency, and demanding a clean run would stall
@@ -94,6 +100,27 @@ is, so range is chosen independently of level. Guitar positions are named for
 the fret the index finger sits on and span four frets; open position is the
 exception, being open strings plus the first four.
 
+**A note nobody could score is never written.** Three things can put one out of
+reach, and all three are properties of the note rather than of the instrument
+or the tempo: its frequency can sit under what the detector resolves at all, it
+can hold too few cycles of itself to be named, or it can yield too few detector
+frames to be judged. The generator checks all three against the sounding pitch,
+the note value and the tempo, as a third constraint beside the pool and the
+movement limit — a whole phrase is rejected rather than one note quietly swapped
+out of it.
+
+So neither the tempo nor the instrument is ever withheld, and none of it is
+announced: a double bass is playable at any tempo, and what changes down there
+is that its lowest few semitones stop taking the shortest values. Low notes
+being longer is how the music goes anyway.
+
+Two limits are worth knowing about. Under about 43Hz a 2048-sample frame no
+longer holds enough of a cycle, which no note length buys back — it costs a bass
+its open E and a tuba its bottom three semitones until the detector reads low
+registers with a longer frame. And the frame rule is not about register at all:
+past roughly 180bpm a semiquaver is too brief to yield the frames the scorer
+needs, at any pitch, so above that they stop appearing for everyone.
+
 **Scoring is windowed occupancy, not onset-exact.** Each note is judged over
 its expected rhythmic duration window: skip the attack transient, collect
 high-confidence samples, and pass if enough of them match the target. Binary
@@ -101,6 +128,12 @@ pass/fail — no partial credit. Windows are scored as they close rather than in
 one pass at the end: a verdict cannot exist before its window is over, but
 waiting for the whole exercise would feel laggy, so the live pitch shows
 immediately and pass/fail lands a note later.
+
+**The count-in grows with the tempo.** Four pulses is plenty at 60bpm and
+nothing at 240, where a bar of common time goes by in a second — so it takes as
+many bars as it needs to run longer than a second and a half, which is a second
+bar of 4/4 from 150bpm. 3/4 and 6/8 already took two, being fewer pulses to the
+bar.
 
 **The count-in is not part of the performance.** Audio during it is ignored
 entirely — not scored, not classified, not even retained. Samples timestamped
@@ -132,10 +165,9 @@ control; everything else has one fixed range. Piano's positions vary which
 staves are in play as well as the range, and it is the one instrument drawn on
 a grand staff.
 
-Eight instruments are listed but disabled: their sounding range dips below E2,
-where pitch detection is not yet proven. That is applied as a rule, not a list
-— a test asserts no available instrument sounds lower — and it is a holding
-pattern until a note-level viability check replaces it.
+No instrument is held back for being low. The question that flag stood in for —
+can the microphone score this? — is asked of each note instead, as it is
+written.
 
 ## What you see
 
@@ -231,6 +263,10 @@ should be expected to need tuning:
 - `ONSET_PRESETS` thresholds, per instrument. Defaults come from synthetic
   plucks, not real playing. Recall degrades when several notes sustain and beat
   together, because the constant flux inflates the adaptive median.
+- `DEFAULT_VIABILITY` — the four constants deciding which notes are worth
+  writing. They are conservative placeholders pending measurement, so the gate
+  errs towards leaving out notes that might have been fine rather than writing
+  notes that cannot be scored.
 - `DEFAULT_SCORING.passThreshold` and `confidenceGate`
 
 `docs/spec.md` holds the original design spec, including the parts not built.

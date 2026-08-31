@@ -5,11 +5,8 @@ import {
   conceptsIntroducedAt,
   levelBrief,
   levelConfig,
-  shortestNoteValue,
 } from '../config/levels';
-import { maxScorableBpm } from '../scoring';
 import {
-  NOMINAL_HOP_MS,
   loadMicPermission,
   queryMicPermission,
   saveMicPermission,
@@ -101,19 +98,11 @@ export function Lesson() {
   const config = levelConfig(level);
   const brief = levelBrief(level);
   const pool = soundingPool(instrument, position);
-  // The detector reports once per hop and the attack guard eats the head of
-  // every window, so past a certain tempo this level's shortest note cannot be
-  // judged at all. Cap the control there rather than offering settings that
-  // return nothing but "too short to score". The tightest signature is the
-  // limiting one, since a smaller beat unit makes the same value briefer.
-  const tightestBeatUnit = Math.min(...config.timeSignatures.map((entry) => entry.value[1]));
-  const tempoCeiling = clampBpm(
-    Math.min(
-      MAX_BPM,
-      maxScorableBpm(shortestNoteValue(config), tightestBeatUnit, config.scoring, NOMINAL_HOP_MS),
-    ),
-  );
-  const effectiveBpm = Math.min(bpm, tempoCeiling);
+  // Tempo is not capped and no instrument is withheld. What a fast tempo costs
+  // is the shortest note values, and what a low register costs is the shortest
+  // values down there — both per note, inside generation, and neither worth
+  // saying out loud: low notes being longer is how the music goes anyway.
+  const effectiveBpm = bpm;
 
   // Advancement is gated on the same pass/fail scores used for feedback — no
   // separate mastery signal (spec §7).
@@ -349,20 +338,13 @@ export function Lesson() {
             <input
               type="range"
               min={MIN_BPM}
-              max={tempoCeiling}
+              max={MAX_BPM}
               step={BPM_STEP}
               value={effectiveBpm}
               onChange={(event) => setBpm(Number(event.target.value))}
               disabled={running}
             />
           </label>
-          {tempoCeiling < MAX_BPM && (
-            <p className="muted small">
-              Capped at {tempoCeiling} bpm — faster than this and the shortest notes
-              at this level are too brief to score.
-            </p>
-          )}
-
           <label className="field">
             <span className="field-label">Instrument</span>
             <select

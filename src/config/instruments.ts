@@ -66,17 +66,14 @@ export interface InstrumentDefinition {
 }
 
 /**
- * Sounding fundamentals below the guitar's low E (~82Hz) are not yet proven
- * against the detector: longer analysis windows, more octave-error risk, and
- * microphone roll-off all bite down there. These instruments are listed so the
- * picker is honest about scope, but disabled until a note-level viability check
- * replaces this blunt instrument-level gate.
+ * There is no longer a blanket hold on the low instruments.
  *
- * Applied as a rule rather than a fixed list: bass clarinet (D2) and baritone
- * saxophone (D flat 2) both fall under it, and a test asserts that no available
- * instrument sounds lower than the guitar's low E.
+ * They were held back because pitch detection is unproven under the guitar's
+ * low E, which was true of *some of their notes* and never of the instrument.
+ * The generator now asks that question of each note it is about to write —
+ * frequency, length and tempo together — so a double bass is playable and it is
+ * the semiquavers at the bottom of it that do not appear. See config/viability.
  */
-const LOW_REGISTER = 'Pitch detection is not yet proven below the guitar’s low E.';
 
 const guitarPositions: PositionDefinition[] = FRETBOARD_POSITIONS.map((region) => {
   const pool = regionPool(region);
@@ -150,27 +147,24 @@ export const INSTRUMENTS: InstrumentDefinition[] = [
   },
   { id: 'violin', name: 'Violin', family: 'bowed_string', clef: 'treble', transposition: AT_PITCH, hasPositions: false, writtenRange: { low: 'G3', high: 'A6' }, status: 'available' },
   { id: 'viola', name: 'Viola', family: 'bowed_string', clef: 'alto', transposition: AT_PITCH, hasPositions: false, writtenRange: { low: 'C3', high: 'E6' }, status: 'available' },
-  { id: 'cello', name: 'Cello', family: 'bowed_string', clef: 'bass', transposition: AT_PITCH, hasPositions: false, writtenRange: { low: 'C2', high: 'C5' }, status: 'comingSoon', comingSoonReason: LOW_REGISTER },
-  { id: 'double-bass', name: 'Double bass', family: 'bowed_string', clef: 'bass', transposition: DOWN_OCTAVE, hasPositions: false, writtenRange: { low: 'E2', high: 'G4' }, status: 'comingSoon', comingSoonReason: LOW_REGISTER },
+  { id: 'cello', name: 'Cello', family: 'bowed_string', clef: 'bass', transposition: AT_PITCH, hasPositions: false, writtenRange: { low: 'C2', high: 'C5' }, status: 'available' },
+  { id: 'double-bass', name: 'Double bass', family: 'bowed_string', clef: 'bass', transposition: DOWN_OCTAVE, hasPositions: false, writtenRange: { low: 'E2', high: 'G4' }, status: 'available' },
   { id: 'flute', name: 'Flute', family: 'woodwind', clef: 'treble', transposition: AT_PITCH, hasPositions: false, writtenRange: { low: 'C4', high: 'C7' }, status: 'available' },
   { id: 'piccolo', name: 'Piccolo', family: 'woodwind', clef: 'treble', transposition: UP_OCTAVE, hasPositions: false, writtenRange: { low: 'D4', high: 'C7' }, status: 'available' },
   { id: 'oboe', name: 'Oboe', family: 'woodwind', clef: 'treble', transposition: AT_PITCH, hasPositions: false, writtenRange: { low: 'Bb3', high: 'F6' }, status: 'available' },
   { id: 'recorder-soprano', name: 'Soprano recorder', family: 'woodwind', clef: 'treble', transposition: UP_OCTAVE, hasPositions: false, writtenRange: { low: 'C4', high: 'D6' }, status: 'available' },
   { id: 'clarinet-bb', name: 'Clarinet in B♭', family: 'woodwind', clef: 'treble', transposition: DOWN_M2, hasPositions: false, writtenRange: { low: 'E3', high: 'C7' }, status: 'available' },
-  // Sounds D2 (73Hz), under the guitar's low E — so it is gated by the same
-  // rule as the rest, though the source table marked it available.
-  { id: 'bass-clarinet-bb', name: 'Bass clarinet in B♭', family: 'woodwind', clef: 'treble', transposition: DOWN_M9, hasPositions: false, writtenRange: { low: 'E3', high: 'C6' }, status: 'comingSoon', comingSoonReason: LOW_REGISTER },
-  { id: 'bassoon', name: 'Bassoon', family: 'woodwind', clef: 'bass', transposition: AT_PITCH, hasPositions: false, writtenRange: { low: 'Bb1', high: 'D5' }, status: 'comingSoon', comingSoonReason: LOW_REGISTER },
+  { id: 'bass-clarinet-bb', name: 'Bass clarinet in B♭', family: 'woodwind', clef: 'treble', transposition: DOWN_M9, hasPositions: false, writtenRange: { low: 'E3', high: 'C6' }, status: 'available' },
+  { id: 'bassoon', name: 'Bassoon', family: 'woodwind', clef: 'bass', transposition: AT_PITCH, hasPositions: false, writtenRange: { low: 'Bb1', high: 'D5' }, status: 'available' },
   { id: 'alto-sax', name: 'Alto saxophone in E♭', family: 'woodwind', clef: 'treble', transposition: DOWN_M6, hasPositions: false, writtenRange: { low: 'Bb3', high: 'F6' }, status: 'available' },
   { id: 'tenor-sax', name: 'Tenor saxophone in B♭', family: 'woodwind', clef: 'treble', transposition: DOWN_M9, hasPositions: false, writtenRange: { low: 'Bb3', high: 'F6' }, status: 'available' },
   { id: 'soprano-sax', name: 'Soprano saxophone in B♭', family: 'woodwind', clef: 'treble', transposition: DOWN_M2, hasPositions: false, writtenRange: { low: 'Bb3', high: 'F#6' }, status: 'available' },
-  // Sounds D flat 2 (69Hz), likewise under the gate.
-  { id: 'baritone-sax', name: 'Baritone saxophone in E♭', family: 'woodwind', clef: 'treble', transposition: DOWN_M13, hasPositions: false, writtenRange: { low: 'Bb3', high: 'F6' }, status: 'comingSoon', comingSoonReason: LOW_REGISTER },
+  { id: 'baritone-sax', name: 'Baritone saxophone in E♭', family: 'woodwind', clef: 'treble', transposition: DOWN_M13, hasPositions: false, writtenRange: { low: 'Bb3', high: 'F6' }, status: 'available' },
   { id: 'trumpet-bb', name: 'Trumpet in B♭', family: 'brass', clef: 'treble', transposition: DOWN_M2, hasPositions: false, writtenRange: { low: 'F#3', high: 'D6' }, status: 'available' },
-  { id: 'french-horn', name: 'French horn in F', family: 'brass', clef: 'treble', transposition: DOWN_P5, hasPositions: false, writtenRange: { low: 'B1', high: 'F5' }, status: 'comingSoon', comingSoonReason: LOW_REGISTER },
+  { id: 'french-horn', name: 'French horn in F', family: 'brass', clef: 'treble', transposition: DOWN_P5, hasPositions: false, writtenRange: { low: 'B1', high: 'F5' }, status: 'available' },
   { id: 'trombone', name: 'Trombone', family: 'brass', clef: 'bass', transposition: AT_PITCH, hasPositions: false, writtenRange: { low: 'E2', high: 'Bb4' }, status: 'available' },
-  { id: 'tuba', name: 'Tuba', family: 'brass', clef: 'bass', transposition: AT_PITCH, hasPositions: false, writtenRange: { low: 'D1', high: 'F4' }, status: 'comingSoon', comingSoonReason: LOW_REGISTER },
-  { id: 'bass-guitar', name: 'Bass guitar', family: 'fretted', clef: 'bass', transposition: DOWN_OCTAVE, hasPositions: false, writtenRange: { low: 'E2', high: 'G4' }, status: 'comingSoon', comingSoonReason: LOW_REGISTER },
+  { id: 'tuba', name: 'Tuba', family: 'brass', clef: 'bass', transposition: AT_PITCH, hasPositions: false, writtenRange: { low: 'D1', high: 'F4' }, status: 'available' },
+  { id: 'bass-guitar', name: 'Bass guitar', family: 'fretted', clef: 'bass', transposition: DOWN_OCTAVE, hasPositions: false, writtenRange: { low: 'E2', high: 'G4' }, status: 'available' },
   // Notated at pitch, the standard treatment; the re-entrant high G is a
   // tuning quirk rather than a transposition.
   { id: 'ukulele', name: 'Ukulele', family: 'fretted', clef: 'treble', transposition: AT_PITCH, hasPositions: false, writtenRange: { low: 'C4', high: 'A5' }, status: 'available' },

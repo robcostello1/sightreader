@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   LEVELS,
   MAX_LEVEL,
+  METRONOME_FADES_OUT,
+  clickThroughChanceFor,
   clampLevel,
   conceptsIntroducedAt,
   levelBrief,
@@ -116,12 +118,6 @@ describe('adoption within a level', () => {
     expect(nine.weight).toBeLessThan(1);
   });
 
-  it('thins the click out rather than switching it off', () => {
-    expect(levelConfig(5).clickThroughChance).toBe(1);
-    expect(levelConfig(6).clickThroughChance).toBeCloseTo(0.5, 5);
-    expect(levelConfig(7).clickThroughChance).toBe(0);
-  });
-
   it('briefs as labelled facts rather than dense shorthand', () => {
     const facts = Object.fromEntries(levelBrief(1).facts.map((f) => [f.label, f.value]));
     expect(facts.Keys).toBe('C');
@@ -181,5 +177,54 @@ describe('adoption within a level', () => {
     const mid = levelSummary(levelConfig(3.5)).join(' ');
     expect(mid).toMatch(/rests \d+%/);
     expect(mid).toMatch(/arpeggios \d+%/);
+  });
+});
+
+describe('the metronome fading out', () => {
+  it('thins out rather than switching off, and carries the player early', () => {
+    // Stated against the fade itself, so it says the same thing whichever way
+    // the switch is set.
+    expect(clickThroughChanceFor(1, true)).toBe(1);
+    expect(clickThroughChanceFor(5, true)).toBe(1);
+    expect(clickThroughChanceFor(6, true)).toBeCloseTo(0.5, 6);
+    expect(clickThroughChanceFor(7, true)).toBe(0);
+    expect(clickThroughChanceFor(10, true)).toBe(0);
+  });
+
+  it('is announced at the level it starts, since it is heard rather than read', () => {
+    // Losing the click is the one change a player meets by ear. Unannounced, it
+    // reads as the app breaking — which is how this came up. Switched off there
+    // is nothing to announce, and saying so would be worse than silence.
+    const announced = conceptsIntroducedAt(5).includes('the metronome starting to drop out');
+    expect(announced).toBe(METRONOME_FADES_OUT);
+  });
+
+  it('says where it stands in the level facts', () => {
+    const value = (level: number) =>
+      levelBrief(level).facts.find((fact) => fact.label === 'Metronome')?.value;
+
+    if (!METRONOME_FADES_OUT) {
+      // Nothing varies, so a line that always reads the same is only noise.
+      expect(value(1)).toBeUndefined();
+      return;
+    }
+    expect(value(1)).toBe('through the exercise');
+    expect(value(6)).toBe('50% of exercises');
+    expect(value(8)).toBe('count-in only');
+  });
+
+  it('can be switched off in one place', () => {
+    // The switch is a constant rather than a setting: it is a question about
+    // the design, not a preference. Off, the click never stops at any level —
+    // and the milestone and the facts stop mentioning it, since there is then
+    // nothing to say. Flipping it leaves the suite green, which is the whole
+    // difference between a switch and a thing you have to go and fix.
+    for (const { level } of LEVELS) {
+      expect(clickThroughChanceFor(level, false)).toBe(1);
+      expect(clickThroughChanceFor(level, true)).toBeCloseTo(
+        1 - Math.min(1, Math.max(0, (level - 5) / 2)),
+        9,
+      );
+    }
   });
 });

@@ -32,35 +32,12 @@ describe('instrument catalogue', () => {
     }
   });
 
-  it('holds back exactly the instruments that sound below the guitar’s low E', () => {
-    const guitarLow = nameToMidi('E2');
-    for (const instrument of INSTRUMENTS) {
-      const pool = soundingPool(instrument, positionById(instrument, null));
-      const low = Math.min(...pool);
-      if (low < guitarLow) {
-        expect(instrument.status).toBe('comingSoon');
-        expect(instrument.comingSoonReason).toBeTruthy();
-      } else {
-        expect(instrument.status).toBe('available');
-      }
-    }
-  });
-
-  it('applies the same floor to every position, not just the default one', () => {
-    // Checking only the default position let piano's wide positions through:
-    // "Full range" reached down to A0, four octaves under the floor the rule
-    // holds every other instrument to.
-    const guitarLow = nameToMidi('E2');
-    for (const instrument of INSTRUMENTS) {
-      if (instrument.status !== 'available') continue;
-      for (const position of instrument.positions ?? []) {
-        if (position.status === 'comingSoon') continue;
-        const low = Math.min(...soundingPool(instrument, position));
-        expect(`${instrument.id}/${position.id}: ${low}`).toBe(
-          `${instrument.id}/${position.id}: ${Math.max(low, guitarLow)}`,
-        );
-      }
-    }
+  it('no longer holds an instrument back for being low', () => {
+    // The blanket flag was standing in for a question about individual notes —
+    // whether one is long enough, at its own frequency, to be scored — which
+    // the generator now asks of each note as it writes it. A double bass is
+    // playable; it is the semiquavers at the bottom of it that do not appear.
+    expect(INSTRUMENTS.filter((instrument) => instrument.status === 'comingSoon')).toEqual([]);
   });
 
   it('never resolves to a gated position, even when one is asked for by name', () => {
@@ -72,21 +49,6 @@ describe('instrument catalogue', () => {
     expect(positionById(piano, null)?.status).toBeUndefined();
   });
 
-  it('gates every low-register instrument, including the two the spec missed', () => {
-    // Bass clarinet sounds D2 and baritone sax D flat 2 — both under the
-    // guitar's low E, so both are held back by the same rule even though the
-    // source table listed them as available.
-    expect(INSTRUMENTS.filter((i) => i.status === 'comingSoon').map((i) => i.id)).toEqual([
-      'cello',
-      'double-bass',
-      'bass-clarinet-bb',
-      'bassoon',
-      'baritone-sax',
-      'french-horn',
-      'tuba',
-      'bass-guitar',
-    ]);
-  });
 });
 
 describe('transposition', () => {

@@ -91,6 +91,31 @@ export interface LevelConfig {
 }
 
 /** 0 below `from`, 1 at or above `to`, linear between. */
+/**
+ * Whether the metronome stops carrying the player through the exercise as the
+ * levels go up — clicking through every one at level 5, none at 7, and a
+ * diminishing share between.
+ *
+ * The argument for it is that holding the pulse yourself is part of reading.
+ * The argument against is that losing the click is the one change a player
+ * hears rather than reads, and it can feel like something breaking. Set false
+ * and the metronome clicks through every exercise at every level; the milestone
+ * and the level facts stop mentioning it, since there is then nothing to say.
+ */
+export const METRONOME_FADES_OUT = true;
+
+/** Level from which the click begins dropping out, and the one where it is gone. */
+const METRONOME_FADE = { from: 5, to: 7 } as const;
+
+/**
+ * Chance the click keeps going through the exercise at this level. Takes the
+ * switch as an argument so both sides of it are reachable from a test without
+ * anyone editing the constant.
+ */
+export function clickThroughChanceFor(level: number, fades: boolean = METRONOME_FADES_OUT): number {
+  return fades ? 1 - ramp(level, METRONOME_FADE.from, METRONOME_FADE.to) : 1;
+}
+
 function ramp(level: number, from: number, to: number): number {
   if (level <= from) return 0;
   if (level >= to) return 1;
@@ -201,7 +226,7 @@ export function levelConfig(rawLevel: number): LevelConfig {
     ].filter((entry) => entry.weight > 1e-6),
     // Thins out once the pulse should be internalised: some exercises keep the
     // click, more of them lose it, until none has it.
-    clickThroughChance: 1 - ramp(level, 5, 7),
+    clickThroughChance: clickThroughChanceFor(level),
     scoring: DEFAULT_SCORING,
   };
 }
@@ -297,6 +322,12 @@ export function levelBrief(rawLevel: number): LevelBrief {
     { label: 'Time', value: signatures },
   ];
 
+  // Only worth a line while it varies. Losing the click is the one change a
+  // player hears rather than reads, so it should never be a surprise.
+  if (METRONOME_FADES_OUT) {
+    facts.push({ label: 'Metronome', value: metronomeLabel(config.clickThroughChance) });
+  }
+
   const introducing: Introduction[] = [];
   const arriving = (label: string, from: number) => {
     const progress = adoption(level, from);
@@ -352,6 +383,9 @@ export function conceptsIntroducedAt(level: number): string[] {
       [4, 'phrases that land on the tonic'],
       [6, 'accidentals'],
       [7, '6/8 time'],
+      ...(METRONOME_FADES_OUT
+        ? ([[METRONOME_FADE.from, 'the metronome starting to drop out']] as [number, string][])
+        : []),
       [9, 'quintuplets'],
     ] as [number, string][]
   )
@@ -361,6 +395,12 @@ export function conceptsIntroducedAt(level: number): string[] {
   const introduced = [...values, ...others];
   // Some levels only widen what is already there.
   return introduced.length > 0 ? introduced : ['longer phrases and wider leaps'];
+}
+
+function metronomeLabel(chance: number): string {
+  if (chance > 0.999) return 'through the exercise';
+  if (chance < 0.001) return 'count-in only';
+  return `${percent(chance)} of exercises`;
 }
 
 function percent(value: number): string {

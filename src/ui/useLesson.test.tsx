@@ -198,6 +198,26 @@ describe('useLesson', () => {
     expect(result.current.summary!.accuracy).toBe(0);
   });
 
+  it('generates each exercise at the tempo in force when it starts', async () => {
+    // Viability depends on tempo, so an exercise built at one tempo and played
+    // at another would be gated against the wrong number. Nothing is generated
+    // ahead of time: every exercise is built at the moment it begins, which is
+    // what makes a mid-session tempo change safe without re-checking anything.
+    const { result, rerender } = renderHook(
+      ({ bpm }) => useLesson({ level: LEVEL, bpm, leadInMs: LEAD_IN }),
+      { initialProps: { bpm: 60 } },
+    );
+
+    act(() => result.current.start());
+    await flush();
+    expect(result.current.exercise!.bpm).toBe(60);
+
+    rerender({ bpm: 120 });
+    act(() => result.current.start());
+    await flush();
+    expect(result.current.exercise!.bpm).toBe(120);
+  });
+
   it('uses the requested tempo for the exercise and its count-in', async () => {
     const { result } = renderHook(() => useLesson({ level: 1, bpm: 120, leadInMs: LEAD_IN }));
     act(() => result.current.start());

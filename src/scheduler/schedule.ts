@@ -44,17 +44,30 @@ export function isCompound([beatsPerBar, beatUnit]: [number, number]): boolean {
 const MIN_COUNT_IN_CLICKS = 4;
 
 /**
- * Bars of count-in a signature needs.
- *
- * Counted in clicks rather than bars, because a bar is worth a different number
- * of pulses in each: one bar of 4/4 is four, of 3/4 three, and of 6/8 only two
- * once it is counted in dotted-crotchet beats. A single bar of 3/4 or 6/8 is too
- * short to settle into before playing.
+ * And how long it should take giving them, in ms. Four clicks at 240bpm is a
+ * second, which is over before it has established anything.
  */
-export function countInBarsFor(timeSignature: [number, number]): number {
+const MIN_COUNT_IN_MS = 1600;
+
+/**
+ * Bars of count-in a signature needs at this tempo.
+ *
+ * Two demands, and the larger wins. Enough pulses: a bar is worth a different
+ * number in each signature — one bar of 4/4 is four, of 3/4 three, and of 6/8
+ * only two once it is counted in dotted-crotchet beats — so a single bar of 3/4
+ * or 6/8 is too few to settle into.
+ *
+ * And enough time. Four pulses is plenty at 60bpm and nothing at 240, where the
+ * same bar goes by in a second. The count-in has to last *longer* than the
+ * minimum rather than merely reach it, so a bar of 4/4 at exactly 150bpm — 1.6
+ * seconds — already earns a second bar.
+ */
+export function countInBarsFor(timeSignature: [number, number], bpm: number): number {
   const [beatsPerBar] = timeSignature;
   const clicksPerBar = beatsPerBar / (isCompound(timeSignature) ? 3 : 1);
-  return Math.max(1, Math.ceil(MIN_COUNT_IN_CLICKS / clicksPerBar));
+  const byClicks = Math.max(1, Math.ceil(MIN_COUNT_IN_CLICKS / clicksPerBar));
+  const byTime = Math.floor(MIN_COUNT_IN_MS / (beatsPerBar * beatDurationMs(bpm))) + 1;
+  return Math.max(byClicks, byTime);
 }
 
 export interface Schedule {
@@ -76,7 +89,7 @@ export function buildSchedule(exercise: Exercise, options: ScheduleOptions): Sch
   const [beatsPerBar, beatUnit] = exercise.timeSignature;
   const beatMs = beatDurationMs(exercise.bpm);
   const { startMs, clickThroughExercise, attackGuardMs } = options;
-  const countInBars = options.countInBars ?? countInBarsFor(exercise.timeSignature);
+  const countInBars = options.countInBars ?? countInBarsFor(exercise.timeSignature, exercise.bpm);
 
   const countInBeats = countInBars * beatsPerBar;
   const t0 = startMs + countInBeats * beatMs;
