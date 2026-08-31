@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { barDuration, layoutExercise, midiToVexKey } from './layout';
+import { barDuration, explicitAccidental, layoutExercise, midiToVexKey } from './layout';
 import { instrumentById, soundingToWritten } from '../config/instruments';
 import { generateExercise } from '../generator';
 import { keyByName } from '../lib/key';
@@ -138,6 +138,49 @@ describe('layoutExercise', () => {
         expect(bars.map((b) => b.index)).toEqual(
           bars.map((_, i) => bars[0].index + i),
         );
+      }
+    }
+  });
+});
+
+
+describe('explicitAccidental', () => {
+  // What a note drawn on its own needs to read correctly. VexFlow works this
+  // out for notes inside a voice; the heard-note ghost belongs to none.
+  const G = keyByName('G');
+  const F = keyByName('F');
+  const C = keyByName('C');
+
+  it('asks for nothing when the signature already says it', () => {
+    expect(explicitAccidental(66, G)).toBeNull(); // F# in G major
+    expect(explicitAccidental(70, F)).toBeNull(); // Bb in F major
+    expect(explicitAccidental(60, C)).toBeNull(); // C in C major
+  });
+
+  it('gives a chromatic note the accidental its spelling needs', () => {
+    // spellInKey borrows the neighbouring letter — sharpened from below in a
+    // sharp key, flattened from above in a flat one — so a note outside the
+    // scale is never a bare natural. The heard F in G major is written E sharp,
+    // and the sign has to agree with the letter the notehead sits on.
+    expect(explicitAccidental(65, G)).toBe('#'); // E# on the E line
+    expect(explicitAccidental(71, F)).toBe('b'); // Cb on the C line
+  });
+
+  it('names an alteration the signature does not carry', () => {
+    expect(explicitAccidental(61, C)).toBe('#'); // C# in C major
+    expect(explicitAccidental(61, F)).toBe('b'); // Db in F major, a flat key
+  });
+
+  it('agrees with the spelling the same note is drawn with', () => {
+    // The glyph and the notehead have to come from one decision about the
+    // spelling, or a Db would arrive with a sharp in front of it.
+    for (const key of [C, G, F, keyByName('Eb'), keyByName('B')]) {
+      for (let midi = 55; midi < 79; midi++) {
+        const written = midiToVexKey(midi, key);
+        const accidental = explicitAccidental(midi, key);
+        if (accidental === '#') expect(written).toContain('#');
+        if (accidental === 'b') expect(written).toContain('b/');
+        if (accidental === 'n') expect(written).not.toMatch(/[#]|b\//);
       }
     }
   });

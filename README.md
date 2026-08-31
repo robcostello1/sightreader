@@ -182,15 +182,26 @@ appears in every exercise it stops being news and folds into the facts.
 Difficulty is the setting worth reading first, so it carries visibly more
 weight than the tempo or range beside it.
 
+The note being heard can also be laid over the note being played, as a faint
+stemless notehead in the page's own colour — the same shape as the note under
+it, at the pitch actually coming out, so the gap between the two is read off the
+staff rather than inferred from a name. It takes the steadied reading the
+readout shows, not the raw detector, and it is off by a checkbox for anyone who
+finds it distracting.
+
 Beside the heard note, a waveform shows the input, so it is visible that audio
 is arriving even when nothing is confident enough to name. Both run from page
 load rather than only during an exercise: the microphone session is opened
 independently of the lesson, so you can check your tuning or your input level
 before starting.
 
-Level, instrument, range and the auto-advance toggle persist in localStorage,
-validated on read — a level saved before the range changed, or a position id
-since renamed, falls back rather than breaking. With auto-advance on, finishing
+Only difficulty and tempo sit out in the open in the sidebar — they are the two
+worth reaching for mid-session, and everything else is set once and then only in
+the way, so the rest folds into a **Settings** accordion.
+
+Level, instrument, range and the auto-advance and heard-note toggles persist in
+localStorage, validated on read — a level saved before the range changed, or a
+position id since renamed, falls back rather than breaking. With auto-advance on, finishing
 an exercise rolls into the next after a short pause, count-in included. That
 gap can be held with **Pause** — and only that gap: an exercise is a continuous
 reading against a fixed tempo, so there is no coherent place to stop partway

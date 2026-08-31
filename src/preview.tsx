@@ -43,6 +43,17 @@ const PIANO = [
   { position: 'grand-wide', level: 9, seed: 5 },
 ];
 
+// The ghost note, at the distances from the written pitch that matter: dead on,
+// a semitone out, and far enough away to need ledger lines and an accidental.
+const HEARD: { heard: number | null; label: string }[] = [
+  { heard: null, label: 'nothing heard' },
+  { heard: 67, label: 'the written note' },
+  { heard: 66, label: 'a semitone flat' },
+  { heard: 69, label: 'a tone sharp' },
+  { heard: 55, label: 'an octave down' },
+  { heard: 84, label: 'well above the staff' },
+];
+
 // eslint-disable-next-line react/only-export-components -- dev-only entry point
 function Preview() {
   return (
@@ -59,6 +70,23 @@ function Preview() {
             </p>
             <p className="muted">{levelSummary(config).join(' · ')}</p>
             <Score exercise={exercise} />
+          </section>
+        );
+      })}
+
+      <h1>Heard note</h1>
+      <p className="muted">
+        The ghost laid over the note being played, at pitches a player might
+        actually produce against a written G4. Needs no microphone to look at.
+      </p>
+      {HEARD.map(({ heard, label }) => {
+        const exercise = generateExercise({ level: levelConfig(2), pool: regionPool(OPEN_POSITION), seed: 4 });
+        return (
+          <section key={label}>
+            <p className="muted">
+              <strong>{label}</strong>
+            </p>
+            <Score exercise={exercise} activeIndex={0} heardMidi={heard} />
           </section>
         );
       })}

@@ -28,6 +28,7 @@ import { applyTheme, loadTheme, type ThemePreference } from '../lib/theme';
 import { midiToName } from '../lib/pitch';
 import { keyByName, transposeKey } from '../lib/key';
 import { LivePitch } from './LivePitch';
+import { useSteadyPitch } from './useSteadyPitch';
 import { Onboarding } from './Onboarding';
 import { Waveform } from './Waveform';
 import { useLesson } from './useLesson';
@@ -58,6 +59,7 @@ export function Lesson() {
   );
   const [positionId, setPositionId] = useState(() => loadSetting('position', readPositionId, null));
   const [autoAdvance, setAutoAdvance] = useState(() => loadSetting('autoAdvance', readFlag, true));
+  const [showHeard, setShowHeard] = useState(() => loadSetting('showHeard', readFlag, true));
   const [bpm, setBpm] = useState(() => loadSetting('bpm', readBpm, MIN_BPM));
   const [micPermission, setMicPermission] = useState<MicPermission>(loadMicPermission);
   const [onboarded, setOnboarded] = useState(() => loadSetting('onboarded', readFlag, false));
@@ -73,6 +75,7 @@ export function Lesson() {
   useEffect(() => saveSetting('instrument', instrumentId), [instrumentId]);
   useEffect(() => saveSetting('position', positionId), [positionId]);
   useEffect(() => saveSetting('autoAdvance', autoAdvance), [autoAdvance]);
+  useEffect(() => saveSetting('showHeard', showHeard), [showHeard]);
   useEffect(() => saveSetting('bpm', bpm), [bpm]);
   useEffect(() => saveMicPermission(micPermission), [micPermission]);
   useEffect(() => saveSetting('onboarded', onboarded), [onboarded]);
@@ -124,6 +127,14 @@ export function Lesson() {
     lesson.exercise?.key ?? C_MAJOR,
     -instrument.transposition.semitones,
     -instrument.transposition.letters,
+  );
+
+  // The same steadied reading the note-name readout shows, so the ghost on the
+  // staff and the name under it never name different notes.
+  const heard = useSteadyPitch(
+    lesson.livePitch?.hz ?? null,
+    lesson.livePitch?.confidence ?? 0,
+    config.scoring.confidenceGate,
   );
 
   const threshold = Math.round(DEFAULT_PROGRESSION.threshold * 100);
@@ -225,6 +236,7 @@ export function Lesson() {
                     position={position}
                     results={lesson.results}
                     activeIndex={lesson.activeIndex ?? undefined}
+                    heardMidi={showHeard && scoring ? (heard?.midi ?? null) : null}
                   />
                 </Suspense>
               )}
@@ -345,85 +357,101 @@ export function Lesson() {
               disabled={running}
             />
           </label>
-          <label className="field">
-            <span className="field-label">Instrument</span>
-            <select
-              value={instrumentId}
-              onChange={(event) => {
-                setInstrumentId(event.target.value);
-                // Positions belong to an instrument; the old one means nothing here.
-                setPositionId(null);
-              }}
-              disabled={running}
-            >
-              {INSTRUMENT_FAMILIES.map((family) => (
-                <optgroup key={family.id} label={family.label}>
-                  {INSTRUMENTS.filter((option) => option.family === family.id).map((option) => (
+          {/* Everything but the two settings that change what an exercise is
+              like. They are the ones worth reaching for mid-session; the rest
+              are set once and then only get in the way. */}
+          <details className="accordion settings">
+            <summary>Settings</summary>
+
+            <label className="field">
+              <span className="field-label">Instrument</span>
+              <select
+                value={instrumentId}
+                onChange={(event) => {
+                  setInstrumentId(event.target.value);
+                  // Positions belong to an instrument; the old one means nothing here.
+                  setPositionId(null);
+                }}
+                disabled={running}
+              >
+                {INSTRUMENT_FAMILIES.map((family) => (
+                  <optgroup key={family.id} label={family.label}>
+                    {INSTRUMENTS.filter((option) => option.family === family.id).map((option) => (
+                      <option
+                        key={option.id}
+                        value={option.id}
+                        disabled={option.status === 'comingSoon'}
+                      >
+                        {option.name}
+                        {option.status === 'comingSoon' ? ' — coming soon' : ''}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </label>
+
+            {instrument.hasPositions && instrument.positions && (
+              <label className="field">
+                <span className="field-label">
+                  {instrument.id === 'guitar' ? 'Fretboard position' : 'Range'}
+                </span>
+                <select
+                  value={position?.id ?? ''}
+                  onChange={(event) => setPositionId(event.target.value)}
+                  disabled={running}
+                >
+                  {instrument.positions.map((option) => (
                     <option
                       key={option.id}
                       value={option.id}
                       disabled={option.status === 'comingSoon'}
                     >
-                      {option.name}
+                      {option.label}
                       {option.status === 'comingSoon' ? ' — coming soon' : ''}
                     </option>
                   ))}
-                </optgroup>
-              ))}
-            </select>
-          </label>
+                </select>
+              </label>
+            )}
 
-          {instrument.hasPositions && instrument.positions && (
+            <p className="muted small">
+              {position?.region && `${fretRangeLabel(position.region)} · `}
+              {pool.length} pitches, {midiToName(pool[0])}–{midiToName(pool[pool.length - 1])}
+              {instrument.transposition.semitones !== 0 &&
+                ` · ${instrument.transposition.label.toLowerCase()}`}
+            </p>
+
             <label className="field">
-              <span className="field-label">
-                {instrument.id === 'guitar' ? 'Fretboard position' : 'Range'}
-              </span>
+              <span className="field-label">Appearance</span>
               <select
-                value={position?.id ?? ''}
-                onChange={(event) => setPositionId(event.target.value)}
-                disabled={running}
+                value={theme}
+                onChange={(event) => setTheme(event.target.value as ThemePreference)}
               >
-                {instrument.positions.map((option) => (
-                  <option
-                    key={option.id}
-                    value={option.id}
-                    disabled={option.status === 'comingSoon'}
-                  >
-                    {option.label}
-                    {option.status === 'comingSoon' ? ' — coming soon' : ''}
-                  </option>
-                ))}
+                <option value="system">Match system</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
               </select>
             </label>
-          )}
 
-          <p className="muted small">
-            {position?.region && `${fretRangeLabel(position.region)} · `}
-            {pool.length} pitches, {midiToName(pool[0])}–{midiToName(pool[pool.length - 1])}
-            {instrument.transposition.semitones !== 0 &&
-              ` · ${instrument.transposition.label.toLowerCase()}`}
-          </p>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={autoAdvance}
+                onChange={(event) => setAutoAdvance(event.target.checked)}
+              />
+              Auto-advance
+            </label>
 
-          <label className="field">
-            <span className="field-label">Appearance</span>
-            <select
-              value={theme}
-              onChange={(event) => setTheme(event.target.value as ThemePreference)}
-            >
-              <option value="system">Match system</option>
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-            </select>
-          </label>
-
-          <label className="toggle">
-            <input
-              type="checkbox"
-              checked={autoAdvance}
-              onChange={(event) => setAutoAdvance(event.target.checked)}
-            />
-            Auto-advance
-          </label>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={showHeard}
+                onChange={(event) => setShowHeard(event.target.checked)}
+              />
+              Show the note you are playing
+            </label>
+          </details>
         </section>
 
         <section className="card">

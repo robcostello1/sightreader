@@ -8,6 +8,7 @@ import {
   StaveConnector,
   StaveNote,
   StaveTie,
+  TickContext,
   Tuplet,
   Voice,
   VoiceMode,
@@ -15,7 +16,7 @@ import {
 } from 'vexflow/bravura';
 import { beamBar } from './beaming';
 import { verdictColours, type VerdictColours } from './colours';
-import { layoutExercise, midiToVexKey, type NotatedNote } from './layout';
+import { explicitAccidental, layoutExercise, midiToVexKey, type NotatedNote } from './layout';
 import { NO_SOURCE, mergeRests } from './rests';
 import {
   instrumentById,
@@ -158,8 +159,36 @@ export interface ScoreProps {
   results?: readonly NoteResult[];
   /** Index of the note currently being played, for the live cursor. */
   activeIndex?: number;
+  /**
+   * Sounding pitch currently being heard, drawn faintly over the note being
+   * played so the gap between what is written and what is coming out is visible
+   * on the staff itself. Already steadied — see useSteadyPitch — because a
+   * ghost that flickers with the detector would be worse than none.
+   */
+  heardMidi?: Midi | null;
   /** Fixed width; when omitted the score fills its container. */
   width?: number;
+}
+
+/**
+ * How much of the page colour the ghost note keeps. Below the stave lines it is
+ * drawn over, so it never competes with the music, but not so faint that a note
+ * sitting out on ledger lines disappears.
+ */
+const HEARD_OPACITY = '0.4';
+
+/**
+ * Where a ghost note can be pinned: the note being played fixes the horizontal
+ * position, and the staves of its bar are what it might be drawn on. Both
+ * staves are kept because the heard pitch decides which one it belongs to,
+ * which need not be the staff the written note is on.
+ */
+interface HeardAnchor {
+  /** Tick position rather than absolute x, so it transfers between staves. */
+  tickX: number;
+  /** The played note's duration, so the ghost takes the same notehead shape. */
+  code: string;
+  staves: Map<'treble' | 'bass' | 'single', Stave>;
 }
 
 function colourFor(
@@ -211,6 +240,7 @@ export function Score({
   position = null,
   results,
   activeIndex,
+  heardMidi = null,
   width,
 }: ScoreProps) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -285,6 +315,8 @@ export function Score({
 
     /** Fragments of each source note, per system, so ties stay within a line. */
     const drawn = new Map<number, { note: StaveNote; system: number }[]>();
+    /** Where the heard-note ghost goes, once the note being played is formatted. */
+    let heardAnchor: HeardAnchor | null = null;
 
     systems.forEach((system, systemIndex) => {
       const leading = leadingModifierWidth(writtenKey.accidentals, systemIndex === 0);
@@ -308,6 +340,9 @@ export function Score({
 
         /** Builds and draws one staff of this bar; returns its voice for formatting. */
         const buildStaff = (clef: string, staveY: number, side: 'treble' | 'bass' | null) => {
+          // Boxed rather than a plain local: it is assigned inside the map
+          // below, which TypeScript's flow analysis does not follow.
+          const found: { active: StaveNote | null; code: string } = { active: null, code: 'q' };
           const stave = new Stave(x, staveY, width);
           // Every system restates the clef and key, as a printed score does.
           if (first) {
@@ -323,6 +358,10 @@ export function Score({
             const note = buildNote(notated, writtenKey, instrument, clef);
             const colour = colourFor(notated.sourceIndex, results, activeIndex, colours);
             note.setStyle({ fillStyle: colour, strokeStyle: colour });
+            if (notated.sourceIndex === activeIndex && found.active === null) {
+              found.active = note;
+              found.code = notated.code;
+            }
             // Only sounding notes are tied; a stand-in rest on the other staff
             // shares a source index but is not the same note.
             if (notated.midi !== null) {
@@ -369,7 +408,7 @@ export function Score({
             .filter((g) => g.sounds && g.notes.length === g.num)
             .map((g) => new Tuplet(g.notes, { numNotes: g.num, notesOccupied: g.inSpaceOf }));
 
-          return { stave, voice, beams, tuplets };
+          return { stave, voice, beams, tuplets, side, active: found.active, code: found.code };
         };
 
         const staves = grand
@@ -395,6 +434,18 @@ export function Score({
           entry.voice.draw(context, entry.stave);
           for (const beam of entry.beams) beam.setContext(context).draw();
           for (const tuplet of entry.tuplets) tuplet.setContext(context).draw();
+        }
+
+        // Formatting is what gives a note an x, so the ghost's position can only
+        // be taken now. A note split across a bar line has a fragment in more
+        // than one bar; the first is where the note is actually struck.
+        const activeEntry = built.find((entry) => entry.active !== null);
+        if (activeEntry?.active && heardAnchor === null) {
+          heardAnchor = {
+            tickX: activeEntry.active.getTickContext().getX(),
+            code: activeEntry.code,
+            staves: new Map(built.map((entry) => [entry.side ?? 'single', entry.stave])),
+          };
         }
 
         // The brace and the joined barlines are what make two staves read as one
@@ -430,6 +481,54 @@ export function Score({
       }
     }
 
+    // The heard note, laid over the one being played. Drawn last so it sits on
+    // top, and outside any voice — it is not part of the music, it is a reading
+    // of the room, so it takes no ticks and displaces nothing.
+    if (heardMidi !== null && heardAnchor !== null) {
+      const anchor: HeardAnchor = heardAnchor;
+      const written = soundingToWritten(heardMidi, instrument);
+      const side = grand ? handFor(heardMidi, instrument) : 'single';
+      const stave = anchor.staves.get(side) ?? anchor.staves.values().next().value;
+      if (stave) {
+        const clef = grand ? side : singleClef;
+        // The played note's own duration, so the ghost is the same notehead —
+        // filled against a crotchet, open against a minim — and reads as that
+        // note moved rather than as some other symbol. Its stem and flag are
+        // hidden: the rhythm is the page's to state, and a second stem beside
+        // the real one is clutter. The ledger lines stay, since without them a
+        // pitch well off the staff cannot be read at all.
+        const ghost = new StaveNote({
+          keys: [midiToVexKey(written, writtenKey)],
+          duration: anchor.code,
+          clef,
+        });
+        const accidental = explicitAccidental(written, writtenKey);
+        if (accidental) ghost.addModifier(new Accidental(accidental), 0);
+        // The page's own colour, not a verdict one. A ghost tinted like a
+        // scored note would read as a judgement, and one tinted like the active
+        // note would vanish into it at the moment it matters most — when the
+        // two agree and it is sitting exactly on top.
+        ghost.setStyle({ fillStyle: colours.idle, strokeStyle: colours.idle });
+        // After the note's own style, which a StaveNote hands down to its stem.
+        ghost.setStemStyle({ fillStyle: 'none', strokeStyle: 'none' });
+        ghost.setFlagStyle({ fillStyle: 'none', strokeStyle: 'none' });
+
+        // Its own tick context, positioned at the played note's: the two staves
+        // of a grand staff start their notes at slightly different x, so sharing
+        // the tick position lands the ghost under the note even when the heard
+        // pitch belongs to the other hand.
+        new TickContext().addTickable(ghost).preFormat().setX(anchor.tickX);
+        ghost.setStave(stave);
+
+        const group = context.openGroup('heard-note') as SVGGElement | undefined;
+        ghost.setContext(context).draw();
+        context.closeGroup();
+        // Opacity on the group rather than the colour, so the head, its stem
+        // and any ledger lines fade together.
+        group?.setAttribute('opacity', HEARD_OPACITY);
+      }
+    }
+
     followPageColour(host);
 
     // A long exercise scrolls inside its area. The line being played is put at
@@ -451,7 +550,10 @@ export function Score({
         scroller.scrollTo({ top: activeSystem * systemHeight, behavior: 'smooth' });
       }
     }
-  }, [exercise, instrument, position, results, activeIndex, renderWidth]);
+    // A redraw per heard note is the same order of cost as the redraw per note
+    // played that the cursor already causes, and the reading is steadied before
+    // it gets here, so this does not run at frame rate.
+  }, [exercise, instrument, position, results, activeIndex, heardMidi, renderWidth]);
 
   return <div ref={hostRef} className="score" aria-label="Notated exercise" />;
 }

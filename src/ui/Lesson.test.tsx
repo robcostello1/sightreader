@@ -194,3 +194,38 @@ describe('appearance', () => {
     expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
   });
 });
+
+describe('the settings panel', () => {
+  it('keeps difficulty and tempo out, and folds the rest away', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    const settings = screen.getByText('Settings').closest('details');
+    expect(settings).not.toBeNull();
+    // Closed on arrival: these are set once, not reached for mid-session.
+    expect(settings!.open).toBe(false);
+
+    // The two that change what an exercise is like stay in the open.
+    for (const label of [/^difficulty/i, /^tempo/i]) {
+      expect(screen.getByLabelText(label).closest('details')).toBeNull();
+    }
+    // Everything else is inside it.
+    for (const label of [/^instrument$/i, /appearance/i, /auto-advance/i]) {
+      expect(screen.getByLabelText(label).closest('details')).toBe(settings);
+    }
+  });
+
+  it('switches the heard note on the staff off, and remembers', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    const toggle = screen.getByLabelText(/note you are playing/i);
+    expect((toggle as HTMLInputElement).checked).toBe(true);
+
+    fireEvent.click(toggle);
+    await settle();
+    expect(JSON.parse(localStorage.getItem('sightreader.showHeard') ?? 'null')).toBe(false);
+  });
+});

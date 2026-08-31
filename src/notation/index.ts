@@ -6,5 +6,5 @@ export { Score } from './Score';
 export { beamBar } from './beaming';
 export { VERDICT_FALLBACKS, verdictColours } from './colours';
 export type { ScoreProps } from './Score';
-export { barDuration, layoutExercise, midiToVexKey } from './layout';
+export { barDuration, explicitAccidental, layoutExercise, midiToVexKey } from './layout';
 export type { NotatedBar, NotatedNote } from './layout';
