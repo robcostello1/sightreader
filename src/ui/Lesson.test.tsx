@@ -216,16 +216,18 @@ describe('the settings panel', () => {
     }
   });
 
-  it('switches the heard note on the staff off, and remembers', async () => {
+  it('leaves the guide note off until it is asked for, and remembers', async () => {
+    // The microphone hears the metronome as well as the player, and a guide
+    // note appearing on the click looks wrong even where it changes no verdict.
     asReturning();
     render(<Lesson />);
     await settle();
 
     const toggle = screen.getByLabelText(/guide note/i);
-    expect((toggle as HTMLInputElement).checked).toBe(true);
+    expect((toggle as HTMLInputElement).checked).toBe(false);
 
     fireEvent.click(toggle);
     await settle();
-    expect(JSON.parse(localStorage.getItem('sightreader.showHeard') ?? 'null')).toBe(false);
+    expect(JSON.parse(localStorage.getItem('sightreader.showHeard') ?? 'null')).toBe(true);
   });
 });

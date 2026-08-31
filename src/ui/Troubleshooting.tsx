@@ -83,8 +83,8 @@ export function Troubleshooting({ open, onOpenChange, instrument }: Troubleshoot
           <section className="trouble">
             <Heading level={3}>Fast Notes Are Not Scored</Heading>
             <Text tone="muted">
-              A short note at a high tempo doesn&rsquo;t last long enough for the system to judge
-              it. Try decreasing the tempo.
+              Depending on device, instrument and environment, a short note at a high tempo may not
+              last long enough for the system to judge it. Try decreasing the tempo.
             </Text>
           </section>
 

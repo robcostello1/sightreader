@@ -68,7 +68,10 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
   );
   const [positionId, setPositionId] = useState(() => loadSetting('position', readPositionId, null));
   const [autoAdvance, setAutoAdvance] = useState(() => loadSetting('autoAdvance', readFlag, true));
-  const [showHeard, setShowHeard] = useState(() => loadSetting('showHeard', readFlag, true));
+  // Off unless asked for. What the microphone hears is not only the player —
+  // the metronome comes back in through it, and a guide note appearing on the
+  // click looks wrong even where it changes no verdict.
+  const [showHeard, setShowHeard] = useState(() => loadSetting('showHeard', readFlag, false));
   const [bpm, setBpm] = useState(() => loadSetting('bpm', readBpm, MIN_BPM));
   const [micPermission, setMicPermission] = useState<MicPermission>(loadMicPermission);
   const [onboarded, setOnboarded] = useState(() => loadSetting('onboarded', readFlag, false));

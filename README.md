@@ -205,8 +205,9 @@ dropped rather than carried across and laid over a note the microphone has said
 nothing about yet — while a note held or struck again across the bar line keeps
 arriving, and so keeps its guide.
  It takes the steadied reading the
-readout shows, not the raw detector, and it is off by a checkbox for anyone who
-finds it distracting.
+readout shows, not the raw detector. It is off unless asked for: the microphone
+hears the metronome as well as the player, and a guide note appearing on the
+click looks wrong even where it changes no verdict.
 
 Beside the heard note, a waveform shows the input, so it is visible that audio
 is arriving even when nothing is confident enough to name. Both run from page

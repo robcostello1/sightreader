@@ -542,13 +542,24 @@ input[type='range'] {
   max-width: 100%;
 }
 
+/* Baseline, so the label sits on the same line the numeral stands on, and a gap
+   of its own: at this size difference the word and the number run together. */
 .count-in {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
   font-size: var(--text-size);
 }
 
 .count-in strong {
   font-size: var(--figure-lg);
   font-variant-numeric: tabular-nums;
+  /*
+   * A line box its own height. At the page's 1.5 this numeral was 45px inside a
+   * control row 44px tall, so the row grew by a pixel for the length of the
+   * count-in and the score below it moved when the count-in ended.
+   */
+  line-height: 1;
 }
 
 /* A column filling the card, so the meter can be pinned to the bottom while the
