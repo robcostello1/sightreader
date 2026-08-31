@@ -185,7 +185,10 @@ weight than the tempo or range beside it.
 The note being heard can also be laid over the note being played, as a faint
 stemless notehead in the page's own colour — the same shape as the note under
 it, at the pitch actually coming out, so the gap between the two is read off the
-staff rather than inferred from a name. It takes the steadied reading the
+staff rather than inferred from a name. Its head is always filled, even where
+the note it covers is hollow: translucent and hollow leaves a ring that is hard
+to place against a stave line, and the ghost states a pitch rather than a
+duration, which is the same reason it has no stem. It takes the steadied reading the
 readout shows, not the raw detector, and it is off by a checkbox for anyone who
 finds it distracting.
 

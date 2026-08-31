@@ -178,6 +178,25 @@ export interface ScoreProps {
 const HEARD_OPACITY = '0.4';
 
 /**
+ * Filled stand-ins for the hollow noteheads, by duration code.
+ *
+ * The ghost takes the shape of the note it covers but is always filled: hollow
+ * and translucent leaves a faint ring that is hard to place against a stave
+ * line, and the ghost is stating a pitch, not a duration — which is the same
+ * reason its stem and flag are hidden.
+ *
+ * SMuFL U+E0FA and U+E0FB, written out because VexFlow does not re-export its
+ * glyph table and a SMuFL codepoint is fixed by the standard. There is no
+ * filled breve in SMuFL, so a breve borrows the filled semibreve — the nearest
+ * head that exists, and the same width.
+ */
+const FILLED_HEAD: Record<string, string> = {
+  '1/2': '\uE0FA',
+  w: '\uE0FA',
+  h: '\uE0FB',
+};
+
+/**
  * Where a ghost note can be pinned: the note being played fixes the horizontal
  * position, and the staves of its bar are what it might be drawn on. Both
  * staves are kept because the heard pitch decides which one it belongs to,
@@ -491,17 +510,20 @@ export function Score({
       const stave = anchor.staves.get(side) ?? anchor.staves.values().next().value;
       if (stave) {
         const clef = grand ? side : singleClef;
-        // The played note's own duration, so the ghost is the same notehead —
-        // filled against a crotchet, open against a minim — and reads as that
-        // note moved rather than as some other symbol. Its stem and flag are
-        // hidden: the rhythm is the page's to state, and a second stem beside
-        // the real one is clutter. The ledger lines stay, since without them a
+        // The played note's own duration, so the ghost takes that note's
+        // notehead and reads as it moved rather than as some other symbol. Its
+        // stem and flag are hidden and its head is always filled: the rhythm is
+        // the page's to state. The ledger lines stay, since without them a
         // pitch well off the staff cannot be read at all.
         const ghost = new StaveNote({
           keys: [midiToVexKey(written, writtenKey)],
           duration: anchor.code,
           clef,
         });
+        // Before anything measures it: swapping the glyph changes the width.
+        const filled = FILLED_HEAD[anchor.code];
+        if (filled) for (const head of ghost.noteHeads) head.setText(filled);
+
         const accidental = explicitAccidental(written, writtenKey);
         if (accidental) ghost.addModifier(new Accidental(accidental), 0);
         // The page's own colour, not a verdict one. A ghost tinted like a

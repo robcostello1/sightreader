@@ -24,6 +24,12 @@ const simple: Exercise = {
   bpm: 60,
 };
 
+/** One note of a given length, so the ghost has a known head to copy. */
+const oneNote = (value: number): Exercise => ({
+  ...simple,
+  notes: [{ midi: 67, value, idiomId: 'test', instance: 0 }],
+});
+
 function svgOf(container: HTMLElement): SVGSVGElement {
   const svg = container.querySelector('svg');
   if (!svg) throw new Error('no svg rendered');
@@ -44,6 +50,14 @@ function playedHeads(container: HTMLElement): { x: number; y: number }[] {
 /** The glyphs of the heard-note ghost: its head, plus any accidental. */
 function ghostGlyphs(container: HTMLElement): Element[] {
   return [...container.querySelectorAll('.vf-heard-note .vf-notehead text')];
+}
+
+/** The notehead glyph the exercise itself was drawn with. */
+function playedGlyph(container: HTMLElement): string | null {
+  const note = [...container.querySelectorAll('.vf-stavenote')].find(
+    (candidate) => !candidate.closest('.vf-heard-note'),
+  );
+  return note!.querySelector('.vf-notehead text')!.textContent;
 }
 
 function ghostHead(container: HTMLElement): { x: number; y: number } {
@@ -131,20 +145,35 @@ describe('Score', () => {
   });
 
   it('shapes the ghost like the note being played, minus its stem', () => {
-    const minims: Exercise = {
-      ...simple,
-      notes: [{ midi: 67, value: NOTE_VALUES.half, idiomId: 't', instance: 0 }],
-    };
-    const { container } = render(<Score exercise={minims} activeIndex={0} heardMidi={64} />);
-    const ghost = container.querySelector('.vf-heard-note')!;
-
-    // The same notehead glyph, so a minim's open head stays an open head — the
-    // ghost reads as that note moved, not as a different symbol.
-    expect(ghostGlyphs(container)[0].textContent).toBe(
-      container.querySelector('.vf-stavenote:not(.vf-heard-note *) .vf-notehead text')!.textContent,
+    const { container } = render(
+      <Score exercise={oneNote(NOTE_VALUES.quarter)} activeIndex={0} heardMidi={64} />,
     );
+    // A crotchet's head is already filled, so the ghost is the same glyph —
+    // that note moved, not a different symbol.
+    expect(ghostGlyphs(container)[0].textContent).toBe(playedGlyph(container));
     // The stem is the page's to draw; a second one beside it is clutter.
-    expect(ghost.querySelector('.vf-stem')!.getAttribute('stroke')).toBe('none');
+    expect(container.querySelector('.vf-heard-note .vf-stem')!.getAttribute('stroke')).toBe('none');
+  });
+
+  it('fills a hollow notehead, keeping its shape', () => {
+    // Hollow and translucent leaves a ring that is hard to place against a
+    // stave line, so the ghost takes the filled cut of the same head. SMuFL
+    // gives one for the semibreve and the minim; a breve borrows the
+    // semibreve's, being the nearest filled head there is.
+    const filled: Record<string, string> = {
+      [NOTE_VALUES.whole]: '\uE0FA',
+      [NOTE_VALUES.half]: '\uE0FB',
+      [NOTE_VALUES.breve]: '\uE0FA',
+    };
+    for (const [value, glyph] of Object.entries(filled)) {
+      const { container } = render(
+        <Score exercise={oneNote(Number(value))} activeIndex={0} heardMidi={64} />,
+      );
+      expect(ghostGlyphs(container)[0].textContent).toBe(glyph);
+      // And the page itself still says the duration, hollow head and all.
+      expect(playedGlyph(container)).not.toBe(glyph);
+      cleanup();
+    }
   });
 
   it('gives the ghost no verdict colour, so it cannot read as a score', () => {
