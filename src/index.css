@@ -404,39 +404,31 @@ input[type='range'] {
   margin-bottom: 0.25rem;
 }
 
-/* Native accordion: what is arriving is worth having, but not worth the space
-   it takes when you are not asking. */
+/* Native accordion: what is behind one is worth having, but not worth the space
+   it takes when you are not asking. Every one of these is a section of the card
+   it sits in, so its summary reads as a card title — the same as the headings
+   it sits under — and a rule above it says where the section starts. */
+.accordion {
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
+}
+
 .accordion summary {
   cursor: pointer;
   font-size: 0.8125rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--fg-muted);
   padding: 0.25rem 0;
 }
 
 .accordion[open] summary {
-  margin-bottom: 0.25rem;
-}
-
-/* The settings accordion is a section of the panel rather than a footnote to
-   one, so its summary reads as a card title — the same as "This level" beside
-   it — while keeping the disclosure triangle that says it opens. */
-.accordion.settings {
-  border-top: 1px solid var(--line);
-  padding-top: 0.75rem;
-}
-
-.accordion.settings > summary {
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.accordion.settings[open] > summary {
   margin-bottom: 0.75rem;
 }
 
 /* Two checkboxes in a row would otherwise share a line, since a toggle is
    inline so it can sit beside text elsewhere. */
-.accordion.settings .toggle {
+.accordion .toggle {
   display: flex;
   margin-bottom: 0.5rem;
 }

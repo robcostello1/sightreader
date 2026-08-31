@@ -27,6 +27,7 @@ import { loadSetting, saveSetting } from '../lib/storage';
 import { applyTheme, loadTheme, type ThemePreference } from '../lib/theme';
 import { midiToName } from '../lib/pitch';
 import { keyByName, transposeKey } from '../lib/key';
+import { Accordion } from './Accordion';
 import { LivePitch } from './LivePitch';
 import { useSteadyPitch } from './useSteadyPitch';
 import { Onboarding } from './Onboarding';
@@ -360,9 +361,7 @@ export function Lesson() {
           {/* Everything but the two settings that change what an exercise is
               like. They are the ones worth reaching for mid-session; the rest
               are set once and then only get in the way. */}
-          <details className="accordion settings">
-            <summary>Settings</summary>
-
+          <Accordion title="Settings">
             <label className="field">
               <span className="field-label">Instrument</span>
               <select
@@ -449,9 +448,9 @@ export function Lesson() {
                 checked={showHeard}
                 onChange={(event) => setShowHeard(event.target.checked)}
               />
-              Show the note you are playing
+              Show guide note
             </label>
-          </details>
+          </Accordion>
         </section>
 
         <section className="card">
@@ -466,8 +465,7 @@ export function Lesson() {
           </ul>
 
           {brief.introducing.length > 0 && (
-            <details className="accordion">
-              <summary>Being introduced ({brief.introducing.length})</summary>
+            <Accordion title="Being introduced" count={brief.introducing.length}>
               <ul className="introducing">
                 {brief.introducing.map((item) => (
                   <li key={item.label}>
@@ -478,7 +476,7 @@ export function Lesson() {
                   </li>
                 ))}
               </ul>
-            </details>
+            </Accordion>
           )}
 
         </section>

@@ -221,7 +221,7 @@ describe('the settings panel', () => {
     render(<Lesson />);
     await settle();
 
-    const toggle = screen.getByLabelText(/note you are playing/i);
+    const toggle = screen.getByLabelText(/guide note/i);
     expect((toggle as HTMLInputElement).checked).toBe(true);
 
     fireEvent.click(toggle);

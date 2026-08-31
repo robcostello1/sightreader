@@ -197,7 +197,10 @@ before starting.
 
 Only difficulty and tempo sit out in the open in the sidebar — they are the two
 worth reaching for mid-session, and everything else is set once and then only in
-the way, so the rest folds into a **Settings** accordion.
+the way, so the rest folds into a **Settings** accordion. That and the
+introducing list are the same `Accordion`: both are sections of the card they
+sit in, and written out separately they had already drifted into looking like
+different kinds of thing.
 
 Level, instrument, range and the auto-advance and heard-note toggles persist in
 localStorage, validated on read — a level saved before the range changed, or a
