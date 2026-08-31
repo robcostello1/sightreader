@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Lesson } from './ui/Lesson';
+import { Heading } from './ui/Text';
 
 export default function App() {
   // The link is in the header and the dialog is rendered by the lesson, which
@@ -11,7 +12,7 @@ export default function App() {
     <main>
       {/* One link, so it needs no menu to fold into at any width. */}
       <header>
-        <h1>Sightreader</h1>
+        <Heading level={1}>Sightreader</Heading>
         <nav>
           <button type="button" className="link" onClick={() => setHelping(true)}>
             Troubleshooting

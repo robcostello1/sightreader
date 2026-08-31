@@ -4,6 +4,7 @@ import { isPermissionDenial, type MicPermission } from '../audio';
 import { INSTRUMENT_FAMILIES, INSTRUMENTS, instrumentById, positionById } from '../config/instruments';
 import { recoverySteps } from '../lib/browser';
 import type { MicRequest } from './useLesson';
+import { Heading, List, Text } from './Text';
 
 export interface OnboardingProps {
   open: boolean;
@@ -93,45 +94,47 @@ export function Onboarding({
           onEscapeKeyDown={(event) => event.preventDefault()}
           onInteractOutside={(event) => event.preventDefault()}
         >
-          <Dialog.Title>Before you start</Dialog.Title>
-          <Dialog.Description className="muted small">
-            Two things, then you are reading.
+          <Dialog.Title asChild>
+            <Heading level={2}>Before you start</Heading>
+          </Dialog.Title>
+          <Dialog.Description asChild>
+            <Text tone="muted">Two things, then you are reading.</Text>
           </Dialog.Description>
 
           <ol className="checklist">
             <li className={granted ? 'is-done' : skipped ? 'is-warned' : ''}>
-              <h3>
+              <Heading level={3}>
                 <span className="check-mark" aria-hidden="true">
                   {granted ? '✓' : skipped ? '!' : '○'}
                 </span>
                 Microphone
-              </h3>
+              </Heading>
 
               {granted ? (
-                <p className="muted small">
+                <Text tone="muted">
                   Scoring is on. Pitch is worked out on this device; nothing is recorded or sent.
-                </p>
+                </Text>
               ) : (
                 <>
-                  <p className="muted small">
+                  <Text tone="muted">
                     Scoring listens to what you play. Pitch is worked out on this device — nothing
                     is recorded, stored, or sent anywhere.
-                  </p>
+                  </Text>
 
                   {skipped && (
-                    <p className="warning small">
+                    <Text tone="warning">
                       {blocked
                         ? 'Your browser blocked the microphone. Exercises still run, but nothing is scored.'
                         : 'Without it, exercises still run but nothing is scored.'}
-                    </p>
+                    </Text>
                   )}
 
                   {blocked && (
-                    <ol className="steps muted small">
+                    <List as="ol" tone="muted" className="steps">
                       {recovery.steps.map((step) => (
                         <li key={step}>{step}</li>
                       ))}
-                    </ol>
+                    </List>
                   )}
 
                   <div className="check-actions">
@@ -150,12 +153,12 @@ export function Onboarding({
 
             {needsInstrument && (
             <li className={picked ? 'is-done' : ''}>
-              <h3>
+              <Heading level={3}>
                 <span className="check-mark" aria-hidden="true">
                   {picked ? '✓' : '○'}
                 </span>
                 Instrument
-              </h3>
+              </Heading>
 
               <label className="field">
                 <span className="field-label">What are you playing?</span>

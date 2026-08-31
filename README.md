@@ -251,6 +251,31 @@ audio buffer whose size is the device's business — so any window narrow enough
 to be safe misses it on some machines, and any window wide enough to catch it
 everywhere is blind over the player's own attack. Headphones solve it outright.
 
+### Typography
+
+Two sizes, set through components in `ui/Text.tsx` rather than by reaching for a
+class. `small` is the interface talking about itself — labels, readouts, the
+commentary beside a control; `default` is anything meant to be read as prose.
+The distinction is what the text is for, not how much of it there is: a long
+caption is still small, and one sentence of explanation is not.
+
+Headings take the same two sizes, chosen separately from the level, because the
+level is where a thing sits in the document and the size is how loudly it says
+so — a card's label and a dialog's title are both second-level headings and
+should look nothing alike. That one variant carries more than a size: a small
+second-level heading is the app's label style, the quiet uppercase run at the
+top of a card, and every second-level heading here is either a card's label or a
+dialog's title.
+
+Figures are the exception and have their own steps — a note name, a beat count,
+a percentage. They are read at a glance rather than word by word, so they are
+sized to be seen from a music stand.
+
+The scale exists because the stylesheet had drifted: five values between 0.75
+and 1rem doing the same job in different corners, which is how a caption ends up
+a pixel smaller than the caption beside it. Every `font-size` in the stylesheet
+is now a token, and a test in `contrast.test.ts` fails if one is not.
+
 ## How it is put together
 
 | Path | Purpose |

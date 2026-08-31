@@ -49,6 +49,31 @@
    */
   --accent-surface: light-dark(#4b45c9, #2f2a7a);
   --on-accent: light-dark(#f7f5ff, #e8e5ff);
+
+  /*
+   * Type scale. Two sizes for text and for each heading level — see
+   * ui/Text.tsx for which is which and why. Before this there were five values
+   * between 0.75 and 1rem doing the same job in different corners, which is
+   * how a caption ends up a pixel smaller than the caption beside it.
+   *
+   * Figures are the exception and are listed separately: a note name, a beat
+   * count, a percentage. They are read at a glance rather than word by word,
+   * so they are sized to be seen from a music stand, not to sit in a paragraph.
+   */
+  --text-size: 1rem;
+  --text-size-small: 0.8125rem;
+
+  --heading-1: 1rem;
+  --heading-1-small: 0.8125rem;
+  --heading-2: 1.25rem;
+  --heading-2-small: 0.8125rem;
+  --heading-3: 1.0625rem;
+  --heading-3-small: 0.9375rem;
+
+  --figure-sm: 1.25rem;
+  --figure-md: 1.5rem;
+  --figure-lg: 1.875rem;
+  --figure-xl: 2rem;
 }
 
 /*
@@ -104,7 +129,7 @@ header {
   border: 0;
   background: none;
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: var(--text-size-small);
   color: inherit;
   text-decoration: underline;
   text-underline-offset: 0.2em;
@@ -115,18 +140,86 @@ header {
   opacity: 1;
 }
 
-h1 {
-  margin: 0;
-  font-size: 1rem;
-  letter-spacing: 0.02em;
+/*
+ * Typography, set through the components in ui/Text.tsx rather than by reaching
+ * for these classes: choosing a size is then a statement about what the text is
+ * for, and the two places that show the same kind of thing cannot drift apart.
+ */
+.text {
+  font-size: var(--text-size);
+  line-height: 1.5;
+  margin: 0 0 0.75rem;
 }
 
-h2 {
-  font-size: 0.8125rem;
+.text-small {
+  font-size: var(--text-size-small);
+  line-height: 1.45;
+}
+
+.text-muted {
+  color: var(--fg-muted);
+}
+
+.text-warning {
+  color: var(--fail);
+}
+
+.heading {
+  margin: 0 0 0.5rem;
+  color: var(--fg);
+}
+
+.heading-1 {
+  font-size: var(--heading-1);
+  letter-spacing: 0.02em;
+  margin: 0;
+}
+
+.heading-1.heading-small {
+  font-size: var(--heading-1-small);
+}
+
+.heading-2 {
+  font-size: var(--heading-2);
+}
+
+.heading-3 {
+  font-size: var(--heading-3);
+}
+
+.heading-3.heading-small {
+  font-size: var(--heading-3-small);
+}
+
+/*
+ * A small second-level heading is this app's label: the quiet uppercase run at
+ * the top of a card. It is the one variant that changes more than the size,
+ * because at these levels "small" and "label" have never been two decisions —
+ * every second-level heading in the app is either a card's label or a dialog's
+ * title, and they should look nothing alike.
+ */
+.heading-2.heading-small {
+  font-size: var(--heading-2-small);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--fg-muted);
-  margin: 0 0 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+/* Prose lists sit at their own indent; the structural ones bring their own. */
+.list {
+  padding-left: 1.25rem;
+}
+
+/* Dev-only preview page: its section titles want to be titles, not a wordmark
+   in a bar, which is what a first-level heading is everywhere else here. */
+.preview-title {
+  font-size: var(--heading-2);
+  margin: 1.5rem 0 0.5rem;
+}
+
+.list li {
+  margin-bottom: 0.25rem;
 }
 
 /* The exercise gets the room; settings sit out of the way beside it. */
@@ -268,6 +361,13 @@ select:disabled {
   cursor: not-allowed;
 }
 
+/* The browser's own blue otherwise, which is nobody's brand. One property
+   colours the range track and the checkboxes alike. */
+input[type='range'],
+input[type='checkbox'] {
+  accent-color: var(--accent);
+}
+
 input[type='range'] {
   width: 100%;
 }
@@ -289,14 +389,6 @@ input[type='range'] {
   cursor: pointer;
 }
 
-.muted {
-  color: var(--fg-muted);
-}
-
-.small {
-  font-size: 0.8125rem;
-}
-
 .reading {
   margin: 0 0 1rem;
 }
@@ -305,7 +397,6 @@ input[type='range'] {
   list-style: none;
   padding: 0;
   margin: 0 0 1rem;
-  font-size: 0.875rem;
 }
 
 .introducing li {
@@ -336,18 +427,18 @@ input[type='range'] {
 }
 
 .field-primary .field-label {
-  font-size: 1.5rem;
+  font-size: var(--figure-md);
   font-weight: 600;
 }
 
 .field-primary .field-label .unit {
-  font-size: 0.875rem;
+  font-size: var(--text-size-small);
   font-weight: 400;
   color: var(--fg-muted);
 }
 
 .hint {
-  font-size: 0.75rem;
+  font-size: var(--text-size-small);
   color: var(--fg-muted);
   margin: 0.25rem 0 0;
 }
@@ -356,7 +447,6 @@ input[type='range'] {
   list-style: none;
   padding: 0;
   margin: 0 0 1.25rem;
-  font-size: 0.875rem;
 }
 
 .facts li {
@@ -408,11 +498,11 @@ input[type='range'] {
 }
 
 .count-in {
-  font-size: 1.125rem;
+  font-size: var(--text-size);
 }
 
 .count-in strong {
-  font-size: 1.75rem;
+  font-size: var(--figure-lg);
   font-variant-numeric: tabular-nums;
 }
 
@@ -428,7 +518,7 @@ input[type='range'] {
 
 .readout .note {
   display: block;
-  font-size: 1.875rem;
+  font-size: var(--figure-lg);
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
 }
@@ -466,8 +556,8 @@ input[type='range'] {
   max-width: 32rem;
 }
 
-.milestone h2 {
-  font-size: 2rem;
+.milestone .heading {
+  font-size: var(--figure-xl);
   text-transform: none;
   letter-spacing: normal;
   opacity: 1;
@@ -492,9 +582,11 @@ input[type='range'] {
   padding-top: 0.75rem;
 }
 
+/* Styled as the card label it reads as — the same as a small second-level
+   heading, which is what sits at the top of the card above it. */
 .accordion summary {
   cursor: pointer;
-  font-size: 0.8125rem;
+  font-size: var(--heading-2-small);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--fg-muted);
@@ -541,7 +633,7 @@ input[type='range'] {
   padding: 0.75rem 1rem;
 }
 
-.status > .card h2 {
+.status > .card .heading {
   margin-bottom: 0.25rem;
 }
 
@@ -579,7 +671,7 @@ input[type='range'] {
 }
 
 .result-score {
-  font-size: 1.25rem;
+  font-size: var(--figure-sm);
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
@@ -620,13 +712,6 @@ input[type='range'] {
   background: var(--bg);
 }
 
-.modal h2 {
-  font-size: 1.25rem;
-  text-transform: none;
-  letter-spacing: normal;
-  color: var(--fg);
-  margin-bottom: 0.25rem;
-}
 
 .checklist {
   list-style: none;
@@ -643,11 +728,11 @@ input[type='range'] {
   margin-bottom: 0;
 }
 
-.checklist h3 {
+.checklist .heading {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 1rem;
+  font-size: var(--heading-3);
   margin: 0 0 0.35rem;
 }
 
@@ -691,10 +776,6 @@ input[type='range'] {
   margin-top: 1.25rem;
 }
 
-.trouble h3 {
-  font-size: 0.9375rem;
-  margin: 0 0 0.25rem;
-}
 
 .modal-actions {
   display: flex;

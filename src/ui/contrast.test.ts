@@ -116,3 +116,33 @@ describe('palette contrast', () => {
     expect(contrast(dark['fg-muted'], dark.surface)).toBeGreaterThan(6);
   });
 });
+
+/**
+ * The type scale, guarded the same way and for the same reason as the palette:
+ * read from the stylesheet, so it cannot pass while the real values drift.
+ */
+describe('type scale', () => {
+  it('is the only place a size is written down', () => {
+    // Before the scale there were five values between 0.75 and 1rem doing the
+    // same job in different corners of this file — which is how a caption ends
+    // up a pixel smaller than the caption beside it.
+    const sizes = [...css.matchAll(/font-size:\s*([^;]+);/g)].map(([, value]) => value.trim());
+    expect(sizes.length).toBeGreaterThan(8);
+    for (const size of sizes) expect(size).toMatch(/^var\(--/);
+  });
+
+  it('defines every token the text components ask for', () => {
+    for (const token of [
+      '--text-size',
+      '--text-size-small',
+      '--heading-1',
+      '--heading-1-small',
+      '--heading-2',
+      '--heading-2-small',
+      '--heading-3',
+      '--heading-3-small',
+    ]) {
+      expect(css).toContain(`${token}:`);
+    }
+  });
+});

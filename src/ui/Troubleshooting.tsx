@@ -1,6 +1,7 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { recoverySteps } from '../lib/browser';
 import type { InstrumentDefinition } from '../config/instruments';
+import { Heading, List, Text } from './Text';
 
 export interface TroubleshootingProps {
   open: boolean;
@@ -21,6 +22,9 @@ export interface TroubleshootingProps {
  * right note marked wrong, not having decided that their microphone is thin
  * below 200Hz. Which is also why the metronome and the octave errors sit under
  * one heading — they look identical from the outside.
+ *
+ * Set at reading size throughout. It is the one part of the app that is prose
+ * rather than interface, and the only place anyone stops to read a paragraph.
  */
 export function Troubleshooting({ open, onOpenChange, instrument }: TroubleshootingProps) {
   const recovery = recoverySteps(typeof navigator === 'undefined' ? '' : navigator.userAgent);
@@ -33,58 +37,63 @@ export function Troubleshooting({ open, onOpenChange, instrument }: Troubleshoot
       <Dialog.Portal>
         <Dialog.Overlay className="modal-overlay" />
         <Dialog.Content className="modal">
-          <Dialog.Title>Troubleshooting</Dialog.Title>
-          <Dialog.Description className="muted small">
-            This app uses your system microphone to listen to you play. That can cause problems if
-            it doesn&rsquo;t hear you well.
+          <Dialog.Title asChild>
+            <Heading level={2}>Troubleshooting</Heading>
+          </Dialog.Title>
+          <Dialog.Description asChild>
+            <Text tone="muted">
+              This app uses your system microphone to listen to you play. That can cause problems
+              if it doesn&rsquo;t hear you well.
+            </Text>
           </Dialog.Description>
 
           <section className="trouble">
-            <h3>Correct Notes Show As Wrong</h3>
-            <p className="muted small">
+            <Heading level={3}>Correct Notes Show As Wrong</Heading>
+            <Text tone="muted">
               The microphone may be picking up the metronome as well as you. Wear headphones, or
               play a bit louder than the metronome.
-            </p>
-            <p className="muted small">
+            </Text>
+            <Text tone="muted">
               Low notes and quiet notes are harder to detect, and the system can show a note an
               octave out. Play clearly, avoid distortion, and stay near the microphone.
-            </p>
+            </Text>
             {amplified && (
-              <p className="muted small">
+              <Text tone="muted">
                 Small practice amps often have little output at the bottom of their range, which
-                has the same effect. If you are using one, try a higher fretboard position.
-              </p>
+                has the same effect. If you are using one, try choosing a higher fretboard position
+                in Settings.
+              </Text>
             )}
           </section>
 
           <section className="trouble">
-            <h3>No Sound Is Heard</h3>
-            <p className="muted small">
+            <Heading level={3}>No Sound Is Heard</Heading>
+            <Text tone="muted">
               Check that this page has permission to use the microphone, and that no other app is
               holding onto it &mdash; video call apps often don&rsquo;t release it.
-            </p>
-            <p className="muted small">In {recovery.name}:</p>
-            <ol className="steps muted small">
+            </Text>
+            <Text tone="muted">In {recovery.name}:</Text>
+            <List as="ol" tone="muted" className="steps">
               {recovery.steps.map((step) => (
                 <li key={step}>{step}</li>
               ))}
-            </ol>
+            </List>
           </section>
 
           <section className="trouble">
-            <h3>Fast Notes Are Not Scored</h3>
-            <p className="muted small">
+            <Heading level={3}>Fast Notes Are Not Scored</Heading>
+            <Text tone="muted">
               A short note at a high tempo doesn&rsquo;t last long enough for the system to judge
               it. Try decreasing the tempo.
-            </p>
+            </Text>
           </section>
 
           <section className="trouble">
-            <h3>Privacy</h3>
-            <p className="muted small">
+            <Heading level={3}>Privacy</Heading>
+            <Text tone="muted">
               The system doesn&rsquo;t record, store, or send your audio anywhere. It&rsquo;s read
               on this device and discarded.
-            </p>
+            </Text>
           </section>
 
           <div className="modal-actions">

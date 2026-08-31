@@ -32,6 +32,7 @@ import { LivePitch } from './LivePitch';
 import { useCurrentReading, useSteadyPitch } from './useSteadyPitch';
 import { Onboarding } from './Onboarding';
 import { Troubleshooting } from './Troubleshooting';
+import { Heading, Text } from './Text';
 import { Waveform } from './Waveform';
 import { useLesson } from './useLesson';
 
@@ -201,14 +202,14 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
       <div className="stage">
         {lesson.milestone !== null ? (
           <section className="milestone">
-            <h2>Level {lesson.milestone}</h2>
+            <Heading level={2}>Level {lesson.milestone}</Heading>
             <p>Now introducing:</p>
             <ul>
               {conceptsIntroducedAt(lesson.milestone).map((concept) => (
                 <li key={concept}>{concept}</li>
               ))}
             </ul>
-            <p className="muted">These start appearing gradually, not all at once.</p>
+            <Text tone="muted">These start appearing gradually, not all at once.</Text>
             <button onClick={lesson.acknowledgeMilestone}>Continue</button>
           </section>
         ) : (
@@ -219,7 +220,7 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
                   Start
                 </button>
               )}
-              {lesson.phase === 'arming' && <span className="muted">Requesting microphone…</span>}
+              {lesson.phase === 'arming' && <Text as="span" tone="muted">Requesting microphone…</Text>}
               {listening && <button onClick={lesson.stop}>Stop</button>}
               {lesson.phase === 'results' && !autoAdvance && (
                 <button className="primary" onClick={lesson.start}>
@@ -246,7 +247,7 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
 
             <div className="score-area">
               {lesson.exercise && (
-                <Suspense fallback={<p className="muted">Loading notation…</p>}>
+                <Suspense fallback={<Text tone="muted">Loading notation…</Text>}>
                   <Score
                     exercise={lesson.exercise}
                     instrument={instrument}
@@ -275,9 +276,9 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
                 </div>
               ) : (
                 <div className="card monitor">
-                  <p className="muted small">
+                  <Text size="small" tone="muted">
                     Scoring is off — the microphone was not available.
-                  </p>
+                  </Text>
                   <button type="button" onClick={() => setMicAsked(false)}>
                     Turn scoring on
                   </button>
@@ -285,7 +286,7 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
               )}
 
               <section className="card progress-card">
-                <h2>Levelling up</h2>
+                <Heading level={2} size="small">Levelling up</Heading>
                 {/* With nothing scored there is no accuracy to fill a bar with,
                     so the same window counts exercises read instead. */}
                 <div
@@ -323,17 +324,17 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
 
               {scoring && (
                 <section className="card result-card">
-                  <h2>Last exercise</h2>
+                  <Heading level={2} size="small">Last exercise</Heading>
                   <p className="result-line">
                     <span className="result-score">
                       {lesson.summary ? `${Math.round(lesson.summary.accuracy * 100)}%` : '—'}
                     </span>
-                    <span className="muted small">
+                    <Text as="span" size="small" tone="muted">
                       {lesson.summary &&
                         `${lesson.summary.passed}/${
                           lesson.summary.total - lesson.summary.unscorable
                         }`}
-                    </span>
+                    </Text>
                   </p>
                 </section>
               )}
@@ -430,12 +431,12 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
               </label>
             )}
 
-            <p className="muted small">
+            <Text size="small" tone="muted">
               {position?.region && `${fretRangeLabel(position.region)} · `}
               {pool.length} pitches, {midiToName(pool[0])}–{midiToName(pool[pool.length - 1])}
               {instrument.transposition.semitones !== 0 &&
                 ` · ${instrument.transposition.label.toLowerCase()}`}
-            </p>
+            </Text>
 
             <label className="field">
               <span className="field-label">Appearance</span>
@@ -470,7 +471,7 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
         </section>
 
         <section className="card">
-          <h2>This level</h2>
+          <Heading level={2} size="small">This level</Heading>
           <ul className="facts">
             {brief.facts.map((fact) => (
               <li key={fact.label}>
