@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import App from '../App';
 import { Troubleshooting } from './Troubleshooting';
+import { instrumentById } from '../config/instruments';
 
 afterEach(cleanup);
 
@@ -34,6 +35,19 @@ describe('Troubleshooting', () => {
     render(<Troubleshooting open onOpenChange={() => {}} />);
     expect(screen.getByText(/headphones/i)).toBeTruthy();
     expect(screen.getByText(/louder than the metronome/i)).toBeTruthy();
+  });
+
+  it('warns a guitarist about their amp, and nobody else', () => {
+    // A small practice amp has little output at the bottom of its range, so it
+    // reproduces the harmonic better than the fundamental — the same octave
+    // error, from the speaker rather than the string. Useless advice to a
+    // flautist, who has no amp and no fretboard to move up.
+    render(<Troubleshooting open onOpenChange={() => {}} instrument={instrumentById('guitar')} />);
+    expect(screen.getByText(/practice amps/i)).toBeTruthy();
+    cleanup();
+
+    render(<Troubleshooting open onOpenChange={() => {}} instrument={instrumentById('flute')} />);
+    expect(screen.queryByText(/practice amps/i)).toBeNull();
   });
 
   it('closes on the button, unlike the checklist', () => {

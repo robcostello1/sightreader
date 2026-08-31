@@ -83,17 +83,16 @@ main {
   padding: var(--gap);
 }
 
-/* A bar rather than a line of text, so the app has a top edge. Inset and
-   rounded like the cards below it: it is part of the same set of surfaces, not
-   a browser chrome pretending the page starts higher up. */
+/* A bar across the top of the window, not a card among the cards. Pulled out to
+   the edges through the padding on main, so the colour reaches the corners
+   rather than floating with a margin of page around it. */
 header {
-  margin: 0;
+  margin: calc(var(--gap) * -1) calc(var(--gap) * -1) 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--gap);
-  padding: 0.75rem 1.25rem;
-  border-radius: 0.625rem;
+  padding: 0.75rem var(--gap);
   background: var(--accent-surface);
   color: var(--on-accent);
 }

@@ -237,7 +237,12 @@ said on the way in — most of it either does not apply or is obvious, and a pag
 that warns about every way listening can go wrong reads as an app that expects
 to get it wrong. It is arranged by symptom rather than by cause: someone opens
 it having seen a right note marked wrong, not having concluded that their
-microphone is thin below 200Hz.
+microphone is thin below 200Hz. The one piece of advice that only fits some
+instruments — a small practice amp reproducing the harmonic better than the
+fundamental, which is the same octave error arriving from the speaker rather
+than the string — is shown only to fretted players, who are the ones with an amp
+and a fretboard to move up. That is why the dialog is rendered by the lesson,
+which knows the instrument, and merely opened from the header.
 
 The metronome bleeding in is advice rather than a filter. The app knows when it
 clicked and at what pitch, so a filter looks easy, but the gap between the click

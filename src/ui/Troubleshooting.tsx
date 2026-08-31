@@ -1,9 +1,12 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { recoverySteps } from '../lib/browser';
+import type { InstrumentDefinition } from '../config/instruments';
 
 export interface TroubleshootingProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** What is being played, for the advice that only applies to some of them. */
+  instrument?: InstrumentDefinition;
 }
 
 /**
@@ -19,8 +22,11 @@ export interface TroubleshootingProps {
  * below 200Hz. Which is also why the metronome and the octave errors sit under
  * one heading — they look identical from the outside.
  */
-export function Troubleshooting({ open, onOpenChange }: TroubleshootingProps) {
+export function Troubleshooting({ open, onOpenChange, instrument }: TroubleshootingProps) {
   const recovery = recoverySteps(typeof navigator === 'undefined' ? '' : navigator.userAgent);
+  // Amplified, and with a fretboard to move up. Everyone else is told to move
+  // nearer the microphone, which is the whole of the advice that applies.
+  const amplified = instrument?.family === 'fretted';
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -43,6 +49,12 @@ export function Troubleshooting({ open, onOpenChange }: TroubleshootingProps) {
               Low notes and quiet notes are harder to detect, and the system can show a note an
               octave out. Play clearly, avoid distortion, and stay near the microphone.
             </p>
+            {amplified && (
+              <p className="muted small">
+                Small practice amps often have little output at the bottom of their range, which
+                has the same effect. If you are using one, try a higher fretboard position.
+              </p>
+            )}
           </section>
 
           <section className="trouble">

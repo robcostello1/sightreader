@@ -31,6 +31,7 @@ import { Accordion } from './Accordion';
 import { LivePitch } from './LivePitch';
 import { useCurrentReading, useSteadyPitch } from './useSteadyPitch';
 import { Onboarding } from './Onboarding';
+import { Troubleshooting } from './Troubleshooting';
 import { Waveform } from './Waveform';
 import { useLesson } from './useLesson';
 
@@ -53,7 +54,13 @@ const C_MAJOR = keyByName('C');
 const readFlag = (value: unknown) => (typeof value === 'boolean' ? value : null);
 const readBpm = (value: unknown) => (typeof value === 'number' ? clampBpm(value) : null);
 
-export function Lesson() {
+export interface LessonProps {
+  /** Opened from the header, but rendered here, where the instrument is known. */
+  troubleshooting?: boolean;
+  onTroubleshooting?: (open: boolean) => void;
+}
+
+export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonProps = {}) {
   const [level, setLevel] = useState(() => loadSetting('level', readLevel, 1));
   const [instrumentId, setInstrumentId] = useState(() =>
     loadSetting('instrument', readInstrumentId, DEFAULT_INSTRUMENT_ID),
@@ -183,6 +190,12 @@ export function Lesson() {
           setOnboarded(true);
           setMicAsked(true);
         }}
+      />
+
+      <Troubleshooting
+        open={troubleshooting}
+        onOpenChange={(open) => onTroubleshooting?.(open)}
+        instrument={instrument}
       />
 
       <div className="stage">

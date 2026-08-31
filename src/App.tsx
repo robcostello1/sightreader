@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Lesson } from './ui/Lesson';
-import { Troubleshooting } from './ui/Troubleshooting';
 
 export default function App() {
+  // The link is in the header and the dialog is rendered by the lesson, which
+  // is where the instrument is known — some of the advice only applies to some
+  // of them. So the header asks, and the lesson answers.
   const [helping, setHelping] = useState(false);
 
   return (
@@ -17,9 +19,7 @@ export default function App() {
         </nav>
       </header>
 
-      <Troubleshooting open={helping} onOpenChange={setHelping} />
-
-      <Lesson />
+      <Lesson troubleshooting={helping} onTroubleshooting={setHelping} />
     </main>
   );
 }
