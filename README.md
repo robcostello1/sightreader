@@ -204,18 +204,7 @@ not a new reading of the room, so a pitch last heard under the note before is
 dropped rather than carried across and laid over a note the microphone has said
 nothing about yet — while a note held or struck again across the bar line keeps
 arriving, and so keeps its guide.
-
-The metronome is filtered out of what is heard. Played out loud the microphone
-picks the click up, and between the player's own notes there is nothing else to
-hear, so the detector locks onto it and reports a confident B. The app made that
-sound, so it knows both when it happened and what pitch it was, and both have to
-agree before a reading is thrown out — matching on the moment alone would blind
-the display on every beat, which is exactly where the player's attack falls. A
-rejected frame is blanked rather than dropped: the frame did happen, and a
-window is judged partly on how many frames it got. This is scoring's problem as
-much as the display's — occupancy is the share of confident frames that were the
-target note, so a click inside a note dilutes it, and a click inside a rest is a
-pitch where silence was asked for. It takes the steadied reading the
+ It takes the steadied reading the
 readout shows, not the raw detector, and it is off by a checkbox for anyone who
 finds it distracting.
 
@@ -239,6 +228,21 @@ an exercise rolls into the next after a short pause, count-in included. That
 gap can be held with **Pause** — and only that gap: an exercise is a continuous
 reading against a fixed tempo, so there is no coherent place to stop partway
 and pick it up again.
+
+A **Troubleshooting** link in the header opens what to try when the scoring
+disagrees with what was played: the microphone hearing the metronome as well as
+the player, low notes coming back an octave high, permissions, and notes left
+unscored because the tempo outran the detector. It is behind a link rather than
+said on the way in — most of it either does not apply or is obvious, and a page
+that warns about every way listening can go wrong reads as an app that expects
+to get it wrong.
+
+The metronome bleeding in is advice rather than a filter. The app knows when it
+clicked and at what pitch, so a filter looks easy, but the gap between the click
+being scheduled and it reaching the microphone is the speaker, the room and an
+audio buffer whose size is the device's business — so any window narrow enough
+to be safe misses it on some machines, and any window wide enough to catch it
+everywhere is blind over the player's own attack. Headphones solve it outright.
 
 ## How it is put together
 
