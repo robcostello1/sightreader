@@ -122,11 +122,21 @@ header {
   color: var(--on-accent);
   /*
    * A line box of its own height rather than the page's 1.5, which leaves half
-   * a line of air above and below the text and hands it to the padding. With
-   * that gone the two sit on one optical centre, and the bar is as tall as its
-   * padding says it is.
+   * a line of air above and below the text before the padding gets a say.
    */
   line-height: 1.2;
+}
+
+/*
+ * Centred on the letters rather than on the line box. A line box is taller than
+ * the letters in it — room above for accents, below for descenders — and
+ * centring the box therefore leaves the text looking high. Trimming to the cap
+ * height and the baseline centres what is actually visible. Browsers without it
+ * fall back to centring the box, which is where this started.
+ */
+header .heading,
+header .link {
+  text-box: trim-both cap alphabetic;
 }
 
 /* A button, because it opens a dialog rather than going anywhere, but it has to
@@ -806,17 +816,21 @@ input[type='range'] {
 }
 
 
-@media (max-width: 900px) {
+/*
+ * Too narrow to hold two columns, or too short to hold the app: either way the
+ * page gives up pinning itself to the viewport and scrolls.
+ *
+ * The height half matters as much as the width. Pinned to a short window, the
+ * sidebar became its own scroll region — the only one on the page, with no
+ * scrollbar of its own on most machines — so the settings were sliced off at
+ * the top and bottom and read as a clipping bug rather than as something to
+ * scroll. Whichever way the window is short of room, the answer is the same:
+ * let the page be as tall as it needs and scroll it.
+ */
+@media (max-width: 900px), (max-height: 46rem) {
   main {
     height: auto;
     min-height: 100dvh;
-  }
-
-  .layout {
-    grid-template-columns: minmax(0, 1fr);
-    /* Stacked, the rows would otherwise stretch to fill the viewport and leave
-       a gap between them. */
-    align-content: start;
   }
 
   .sidebar {
@@ -828,6 +842,17 @@ input[type='range'] {
   .score-area {
     flex: none;
     height: 23rem;
+  }
+}
+
+/* Stacking is the narrow case only: a wide, short window still has room for
+   two columns, it just has to scroll them. */
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    /* Stacked, the rows would otherwise stretch to fill the viewport and leave
+       a gap between them. */
+    align-content: start;
   }
 
   /* Wraps instead of running off the edge, and grows to fit what wrapped. */
