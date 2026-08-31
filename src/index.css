@@ -113,17 +113,30 @@ main {
    rather than floating with a margin of page around it. */
 header {
   margin: calc(var(--gap) * -1) calc(var(--gap) * -1) 0;
-  display: flex;
+  /* Three tracks rather than a flex row: the middle one is the centre of the
+     bar whatever sits either side of it, so the wordmark does not shift when
+     the link beside it changes width. */
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   gap: var(--gap);
   padding: 0.75rem var(--gap);
   background: var(--accent-surface);
   color: var(--on-accent);
 }
 
+header .heading {
+  grid-column: 2;
+}
+
+header nav {
+  grid-column: 3;
+  text-align: right;
+}
+
 /* A button, because it opens a dialog rather than going anywhere, but it has to
-   read as the quiet aside it is rather than as another control. */
+   read as the quiet aside it is rather than as another control. Undecorated:
+   it is not a link out, and on a coloured bar an underline reads as clutter. */
 .link {
   padding: 0;
   border: 0;
@@ -131,8 +144,6 @@ header {
   font: inherit;
   font-size: var(--text-size-small);
   color: inherit;
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
   opacity: 0.85;
 }
 
@@ -164,9 +175,13 @@ header {
   color: var(--fail);
 }
 
+/*
+ * No colour of its own, so a heading takes the colour of whatever it is sitting
+ * on. Setting --fg here put the wordmark in near-black on the accent bar, which
+ * is the sort of thing a token is meant to prevent rather than cause.
+ */
 .heading {
   margin: 0 0 0.5rem;
-  color: var(--fg);
 }
 
 .heading-1 {

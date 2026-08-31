@@ -146,3 +146,13 @@ describe('type scale', () => {
     }
   });
 });
+
+describe('surfaces', () => {
+  it('leaves headings the colour of whatever they sit on', () => {
+    // A heading that names its own colour cannot be put on the accent bar, and
+    // the wordmark went out in near-black on purple before this. Only the label
+    // variant chooses a colour, and it is never on anything but a card.
+    const heading = css.slice(css.indexOf('.heading {'));
+    expect(heading.slice(0, heading.indexOf('}'))).not.toContain('color:');
+  });
+});
