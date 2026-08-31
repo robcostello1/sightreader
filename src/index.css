@@ -31,6 +31,16 @@
   --gap: 1rem;
 
   /*
+   * The horizontal tracks in the status row: the level-up bars and the tuning
+   * meter beside them. They sit in different cards and are read across the gap
+   * between the two, so their centres are held level by these rather than by
+   * two numbers that happen to agree. The meter is the thinner of the two — it
+   * is a scale with a dot riding on it, not a bar with a value in it.
+   */
+  --track: 0.5rem;
+  --track-thin: 0.3rem;
+
+  /*
    * Verdict colours, shared by the notation and the level-up bars so a note and
    * its score never disagree. Hues are pulled slightly off primary — the blue
    * towards violet, success towards cyan, failure towards magenta — which keeps
@@ -498,7 +508,7 @@ input[type='range'] {
 
 .window-slot {
   flex: 1;
-  height: 0.5rem;
+  height: var(--track);
   border-radius: 999px;
   background: var(--line);
   overflow: hidden;
@@ -529,9 +539,13 @@ input[type='range'] {
   font-variant-numeric: tabular-nums;
 }
 
+/* A column filling the card, so the meter can be pinned to the bottom while the
+   note keeps the middle. */
 .readout {
   flex: none;
   width: 5.5rem;
+  display: flex;
+  flex-direction: column;
   color: var(--fg-muted);
 }
 
@@ -539,19 +553,26 @@ input[type='range'] {
   color: var(--fg);
 }
 
+/* Centred in what the meter leaves rather than pushed to the top, which is
+   where it already sat and where it should stay. */
 .readout .note {
   display: block;
+  margin: auto 0;
   font-size: var(--figure-lg);
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
 }
 
-/* Flat on the left, sharp on the right, in tune in the middle. */
+/* Flat on the left, sharp on the right, in tune in the middle. Sits on the
+   floor of its card, level with the level-up bars in the card beside it —
+   offset by half the difference in thickness, so the two share a centre line
+   rather than an edge. */
 .tuning {
   position: relative;
   display: block;
-  height: 0.3rem;
+  height: var(--track-thin);
   margin-top: 0.35rem;
+  margin-bottom: calc((var(--track) - var(--track-thin)) / 2);
   border-radius: 999px;
   background: var(--line);
 }
@@ -664,14 +685,14 @@ input[type='range'] {
    anything that resized with them would move everything else. */
 .monitor {
   flex: none;
-  /* One row of content, so it centres rather than pushing against the edges the
-     way the level-up card's title and bars do. */
-  justify-content: center;
 }
 
+/* Full height, so what is inside it can be placed against the card's floor and
+   its middle independently. */
 .monitor-row {
   display: flex;
-  align-items: center;
+  align-items: stretch;
+  flex: 1;
   gap: 1.25rem;
   min-width: 0;
 }
@@ -701,6 +722,9 @@ input[type='range'] {
 
 .waveform {
   display: block;
+  /* Its own middle, not stretched: it is a trace, and it has no floor to sit
+     on the way the meter beside it does. */
+  align-self: center;
   /* Gives way first when the row has to narrow — the note beside it must not. */
   flex: 1 1 auto;
   min-width: 2.5rem;
