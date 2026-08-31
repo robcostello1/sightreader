@@ -52,15 +52,6 @@
   --unclear: light-dark(#855800, #e0a648);
 
   /*
-   * The header bar. Its own pair rather than --accent on --bg: the accent is
-   * tuned to be read *as* text against the page, and inverting that is not the
-   * same question. The dark value is a deeper indigo than the accent, because a
-   * bar in the light-scheme lilac would be the brightest thing on a dark page.
-   */
-  --accent-surface: light-dark(#4b45c9, #2f2a7a);
-  --on-accent: light-dark(#f7f5ff, #e8e5ff);
-
-  /*
    * Type scale. Two sizes for text and for each heading level — see
    * ui/Text.tsx for which is which and why. Before this there were five values
    * between 0.75 and 1rem doing the same job in different corners, which is
@@ -118,9 +109,9 @@ main {
   padding: var(--gap);
 }
 
-/* A bar across the top of the window, not a card among the cards. Pulled out to
-   the edges through the padding on main, so the colour reaches the corners
-   rather than floating with a margin of page around it. */
+/* A bar across the top of the window, on the same surface as the cards below
+   it. Pulled out to the edges through the padding on main, so the colour
+   reaches the corners rather than floating with a margin of page around it. */
 header {
   margin: calc(var(--gap) * -1) calc(var(--gap) * -1) 0;
   display: flex;
@@ -128,8 +119,7 @@ header {
   justify-content: space-between;
   gap: var(--gap);
   padding: 0.75rem var(--gap);
-  background: var(--accent-surface);
-  color: var(--on-accent);
+  background: var(--surface);
   /*
    * A line box of its own height rather than the page's 1.5, which leaves half
    * a line of air above and below the text before the padding gets a say.
@@ -152,21 +142,26 @@ header nav {
   align-items: center;
 }
 
+/* The wordmark carries the colour; everything else in the bar stays neutral, so
+   there is one thing to look at rather than two. */
+header .heading-1 {
+  color: var(--accent);
+}
+
 /* A button, because it opens a dialog rather than going anywhere, but it has to
-   read as the quiet aside it is rather than as another control. Undecorated:
-   it is not a link out, and on a coloured bar an underline reads as clutter. */
+   read as the quiet aside it is rather than as another control. Undecorated: it
+   is not a link out, and beside the wordmark an underline reads as clutter. */
 .link {
   padding: 0;
   border: 0;
   background: none;
   font: inherit;
   font-size: var(--text-size-small);
-  color: inherit;
-  opacity: 0.85;
+  color: var(--fg-muted);
 }
 
 .link:hover {
-  opacity: 1;
+  color: var(--fg);
 }
 
 /*

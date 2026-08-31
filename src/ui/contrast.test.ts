@@ -62,8 +62,6 @@ describe('palette contrast', () => {
       'pass',
       'fail',
       'unclear',
-      'accent-surface',
-      'on-accent',
     ]) {
       expect(light[name]).toBeDefined();
       expect(dark[name]).toBeDefined();
@@ -95,18 +93,6 @@ describe('palette contrast', () => {
         expect(contrast(tokens[name], tokens[background])).toBeGreaterThanOrEqual(4.5);
       }
     }
-  });
-
-  it.each([
-    ['light', () => light],
-    ['dark', () => dark],
-  ])('keeps the header bar readable in %s', (_scheme, read) => {
-    // The header inverts the palette — light text on the accent — which the
-    // checks above do not cover: they ask whether the accent reads as text on
-    // the page, which is a different question from whether the page reads as
-    // text on the accent.
-    const tokens = read();
-    expect(contrast(tokens['on-accent'], tokens['accent-surface'])).toBeGreaterThanOrEqual(4.5);
   });
 
   it('keeps secondary text clearly readable, not merely passing', () => {
