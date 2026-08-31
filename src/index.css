@@ -272,11 +272,23 @@ header nav {
   gap: var(--gap);
 }
 
+/*
+ * The settings column, and its own scroll region.
+ *
+ * It reaches through the page's padding to the header above and the window edge
+ * below, and carries that spacing inside itself instead. The scroll then clips
+ * against the edges of the window rather than against a boundary in the middle
+ * of the page: a card leaves under the header and off the bottom, which reads
+ * as scrolling, where a card sliced across a gap of visible page reads as a
+ * clipping bug. The spacing is unchanged at rest — it has only moved inside.
+ */
 .sidebar {
   display: flex;
   flex-direction: column;
   gap: var(--gap);
   min-height: 0;
+  margin-block: calc(var(--gap) * -1);
+  padding-block: var(--gap);
   overflow-y: auto;
 }
 
