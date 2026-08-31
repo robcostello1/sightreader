@@ -194,3 +194,40 @@ describe('appearance', () => {
     expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
   });
 });
+
+describe('the settings panel', () => {
+  it('keeps difficulty and tempo out, and folds the rest away', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    const settings = screen.getByText('Settings').closest('details');
+    expect(settings).not.toBeNull();
+    // Closed on arrival: these are set once, not reached for mid-session.
+    expect(settings!.open).toBe(false);
+
+    // The two that change what an exercise is like stay in the open.
+    for (const label of [/^difficulty/i, /^tempo/i]) {
+      expect(screen.getByLabelText(label).closest('details')).toBeNull();
+    }
+    // Everything else is inside it.
+    for (const label of [/^instrument$/i, /appearance/i, /auto-advance/i]) {
+      expect(screen.getByLabelText(label).closest('details')).toBe(settings);
+    }
+  });
+
+  it('leaves the guide note off until it is asked for, and remembers', async () => {
+    // The microphone hears the metronome as well as the player, and a guide
+    // note appearing on the click looks wrong even where it changes no verdict.
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    const toggle = screen.getByLabelText(/guide note/i);
+    expect((toggle as HTMLInputElement).checked).toBe(false);
+
+    fireEvent.click(toggle);
+    await settle();
+    expect(JSON.parse(localStorage.getItem('sightreader.showHeard') ?? 'null')).toBe(true);
+  });
+});

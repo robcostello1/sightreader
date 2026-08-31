@@ -117,3 +117,35 @@ export function layoutExercise(exercise: Exercise): NotatedBar[] {
 
   return bars.sort((a, b) => a.index - b.index);
 }
+
+/** The order accidentals are added to a key signature. */
+const SHARP_ORDER = ['F', 'C', 'G', 'D', 'A', 'E', 'B'];
+const FLAT_ORDER = ['B', 'E', 'A', 'D', 'G', 'C', 'F'];
+
+/**
+ * The accidental a note must carry to read correctly against a key signature,
+ * or null when the signature already says it.
+ *
+ * VexFlow works this out for notes inside a voice, taking earlier bars and
+ * earlier notes into account. A note drawn on its own — the heard-note ghost —
+ * has no voice to be reasoned about, so it asks here instead: an F in G major
+ * needs a natural in front of it, and an F sharp needs nothing.
+ */
+export function explicitAccidental(midi: Midi, key: MusicalKey): string | null {
+  const { letter, alter } = spellInKey(midi, key);
+  const signature =
+    key.accidentals > 0
+      ? SHARP_ORDER.slice(0, key.accidentals).includes(letter)
+        ? 1
+        : 0
+      : FLAT_ORDER.slice(0, -key.accidentals).includes(letter)
+        ? -1
+        : 0;
+  if (alter === signature) return null;
+  // Unreachable while spellInKey spells chromatic notes by borrowing a
+  // neighbouring letter, which never lands a bare natural on an altered one.
+  // Kept because the question this answers is about the signature, not about
+  // where the spelling came from.
+  if (alter === 0) return 'n';
+  return alter > 0 ? '#'.repeat(alter) : 'b'.repeat(-alter);
+}

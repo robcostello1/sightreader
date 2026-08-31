@@ -31,6 +31,16 @@
   --gap: 1rem;
 
   /*
+   * The horizontal tracks in the status row: the level-up bars and the tuning
+   * meter beside them. They sit in different cards and are read across the gap
+   * between the two, so their centres are held level by these rather than by
+   * two numbers that happen to agree. The meter is the thinner of the two — it
+   * is a scale with a dot riding on it, not a bar with a value in it.
+   */
+  --track: 0.5rem;
+  --track-thin: 0.3rem;
+
+  /*
    * Verdict colours, shared by the notation and the level-up bars so a note and
    * its score never disagree. Hues are pulled slightly off primary — the blue
    * towards violet, success towards cyan, failure towards magenta — which keeps
@@ -40,6 +50,40 @@
   --pass: light-dark(#0b7469, #3fd6bb);
   --fail: light-dark(#b01e52, #f27aab);
   --unclear: light-dark(#855800, #e0a648);
+
+  /*
+   * The header bar. Its own pair rather than --accent on --bg: the accent is
+   * tuned to be read *as* text against the page, and inverting that is not the
+   * same question. The dark value is a deeper indigo than the accent, because a
+   * bar in the light-scheme lilac would be the brightest thing on a dark page.
+   */
+  --accent-surface: light-dark(#4b45c9, #2f2a7a);
+  --on-accent: light-dark(#f7f5ff, #e8e5ff);
+
+  /*
+   * Type scale. Two sizes for text and for each heading level — see
+   * ui/Text.tsx for which is which and why. Before this there were five values
+   * between 0.75 and 1rem doing the same job in different corners, which is
+   * how a caption ends up a pixel smaller than the caption beside it.
+   *
+   * Figures are the exception and are listed separately: a note name, a beat
+   * count, a percentage. They are read at a glance rather than word by word,
+   * so they are sized to be seen from a music stand, not to sit in a paragraph.
+   */
+  --text-size: 1rem;
+  --text-size-small: 0.8125rem;
+
+  --heading-1: 1rem;
+  --heading-1-small: 0.8125rem;
+  --heading-2: 1.25rem;
+  --heading-2-small: 0.8125rem;
+  --heading-3: 1.0625rem;
+  --heading-3-small: 0.9375rem;
+
+  --figure-sm: 1.25rem;
+  --figure-md: 1.5rem;
+  --figure-lg: 1.875rem;
+  --figure-xl: 2rem;
 }
 
 /*
@@ -74,22 +118,141 @@ main {
   padding: var(--gap);
 }
 
+/* A bar across the top of the window, not a card among the cards. Pulled out to
+   the edges through the padding on main, so the colour reaches the corners
+   rather than floating with a margin of page around it. */
 header {
-  margin: 0;
+  margin: calc(var(--gap) * -1) calc(var(--gap) * -1) 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  padding: 0.75rem var(--gap);
+  background: var(--accent-surface);
+  color: var(--on-accent);
+  /*
+   * A line box of its own height rather than the page's 1.5, which leaves half
+   * a line of air above and below the text before the padding gets a say.
+   */
+  line-height: 1.2;
 }
 
-h1 {
-  margin: 0;
-  font-size: 1rem;
+/*
+ * A flex row, not a block with an inline button in it.
+ *
+ * As a block, nav laid out its button as inline content, which means against a
+ * strut: an invisible line box at nav's own inherited 16px, while the button's
+ * text is 13px. The button was baseline-aligned into that taller strut and rode
+ * about a pixel and a half low with it — measurably, 18px of bar above the caps
+ * and 15.8px below the baseline. As a flex parent there is no strut, and the
+ * button is centred as a box in its own right.
+ */
+header nav {
+  display: flex;
+  align-items: center;
+}
+
+/* A button, because it opens a dialog rather than going anywhere, but it has to
+   read as the quiet aside it is rather than as another control. Undecorated:
+   it is not a link out, and on a coloured bar an underline reads as clutter. */
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--text-size-small);
+  color: inherit;
+  opacity: 0.85;
+}
+
+.link:hover {
+  opacity: 1;
+}
+
+/*
+ * Typography, set through the components in ui/Text.tsx rather than by reaching
+ * for these classes: choosing a size is then a statement about what the text is
+ * for, and the two places that show the same kind of thing cannot drift apart.
+ */
+.text {
+  font-size: var(--text-size);
+  line-height: 1.5;
+  margin: 0 0 0.75rem;
+}
+
+.text-small {
+  font-size: var(--text-size-small);
+  line-height: 1.45;
+}
+
+.text-muted {
+  color: var(--fg-muted);
+}
+
+.text-warning {
+  color: var(--fail);
+}
+
+/*
+ * No colour of its own, so a heading takes the colour of whatever it is sitting
+ * on. Setting --fg here put the wordmark in near-black on the accent bar, which
+ * is the sort of thing a token is meant to prevent rather than cause.
+ */
+.heading {
+  margin: 0 0 0.5rem;
+}
+
+.heading-1 {
+  font-size: var(--heading-1);
   letter-spacing: 0.02em;
+  margin: 0;
 }
 
-h2 {
-  font-size: 0.8125rem;
+.heading-1.heading-small {
+  font-size: var(--heading-1-small);
+}
+
+.heading-2 {
+  font-size: var(--heading-2);
+}
+
+.heading-3 {
+  font-size: var(--heading-3);
+}
+
+.heading-3.heading-small {
+  font-size: var(--heading-3-small);
+}
+
+/*
+ * A small second-level heading is this app's label: the quiet uppercase run at
+ * the top of a card. It is the one variant that changes more than the size,
+ * because at these levels "small" and "label" have never been two decisions —
+ * every second-level heading in the app is either a card's label or a dialog's
+ * title, and they should look nothing alike.
+ */
+.heading-2.heading-small {
+  font-size: var(--heading-2-small);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--fg-muted);
-  margin: 0 0 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+/* Prose lists sit at their own indent; the structural ones bring their own. */
+.list {
+  padding-left: 1.25rem;
+}
+
+/* Dev-only preview page: its section titles want to be titles, not a wordmark
+   in a bar, which is what a first-level heading is everywhere else here. */
+.preview-title {
+  font-size: var(--heading-2);
+  margin: 1.5rem 0 0.5rem;
+}
+
+.list li {
+  margin-bottom: 0.25rem;
 }
 
 /* The exercise gets the room; settings sit out of the way beside it. */
@@ -109,11 +272,23 @@ h2 {
   gap: var(--gap);
 }
 
+/*
+ * The settings column, and its own scroll region.
+ *
+ * It reaches through the page's padding to the header above and the window edge
+ * below, and carries that spacing inside itself instead. The scroll then clips
+ * against the edges of the window rather than against a boundary in the middle
+ * of the page: a card leaves under the header and off the bottom, which reads
+ * as scrolling, where a card sliced across a gap of visible page reads as a
+ * clipping bug. The spacing is unchanged at rest — it has only moved inside.
+ */
 .sidebar {
   display: flex;
   flex-direction: column;
   gap: var(--gap);
   min-height: 0;
+  margin-block: calc(var(--gap) * -1);
+  padding-block: var(--gap);
   overflow-y: auto;
 }
 
@@ -135,6 +310,48 @@ h2 {
 
 .score-area::-webkit-scrollbar {
   display: none;
+}
+
+/* The staff and the guide note over it. The guide is its own layer because the
+   staff is re-engraved whole every time a note is scored or the cursor moves,
+   and something rebuilt that often can neither fade nor travel. */
+.score {
+  position: relative;
+}
+
+.guide-note {
+  position: absolute;
+  inset: 0;
+  /* It is a readout of the room laid over the music, never a target. VexFlow
+     marks its own hit areas pointer-events:auto, which would otherwise punch
+     back through this layer. */
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.guide-note * {
+  pointer-events: none;
+}
+
+.guide-note.is-shown {
+  /* Under the stave lines it is drawn over, so it never competes with the
+     music, but not so faint that a note out on ledger lines disappears. */
+  opacity: 0.4;
+}
+
+/* Arriving, or jumping a line: there is nowhere to travel from, so it fades in
+   where it is rather than sliding in from the last place it was. */
+.guide-note.is-still {
+  transition: opacity 160ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guide-note {
+    transition: none;
+  }
 }
 
 .stage-controls {
@@ -189,6 +406,13 @@ select:disabled {
   cursor: not-allowed;
 }
 
+/* The browser's own blue otherwise, which is nobody's brand. One property
+   colours the range track and the checkboxes alike. */
+input[type='range'],
+input[type='checkbox'] {
+  accent-color: var(--accent);
+}
+
 input[type='range'] {
   width: 100%;
 }
@@ -210,14 +434,6 @@ input[type='range'] {
   cursor: pointer;
 }
 
-.muted {
-  color: var(--fg-muted);
-}
-
-.small {
-  font-size: 0.8125rem;
-}
-
 .reading {
   margin: 0 0 1rem;
 }
@@ -226,7 +442,6 @@ input[type='range'] {
   list-style: none;
   padding: 0;
   margin: 0 0 1rem;
-  font-size: 0.875rem;
 }
 
 .introducing li {
@@ -257,18 +472,18 @@ input[type='range'] {
 }
 
 .field-primary .field-label {
-  font-size: 1.5rem;
+  font-size: var(--figure-md);
   font-weight: 600;
 }
 
 .field-primary .field-label .unit {
-  font-size: 0.875rem;
+  font-size: var(--text-size-small);
   font-weight: 400;
   color: var(--fg-muted);
 }
 
 .hint {
-  font-size: 0.75rem;
+  font-size: var(--text-size-small);
   color: var(--fg-muted);
   margin: 0.25rem 0 0;
 }
@@ -277,7 +492,6 @@ input[type='range'] {
   list-style: none;
   padding: 0;
   margin: 0 0 1.25rem;
-  font-size: 0.875rem;
 }
 
 .facts li {
@@ -306,7 +520,7 @@ input[type='range'] {
 
 .window-slot {
   flex: 1;
-  height: 0.5rem;
+  height: var(--track);
   border-radius: 999px;
   background: var(--line);
   overflow: hidden;
@@ -328,18 +542,33 @@ input[type='range'] {
   max-width: 100%;
 }
 
+/* Baseline, so the label sits on the same line the numeral stands on, and a gap
+   of its own: at this size difference the word and the number run together. */
 .count-in {
-  font-size: 1.125rem;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: var(--text-size);
 }
 
 .count-in strong {
-  font-size: 1.75rem;
+  font-size: var(--figure-lg);
   font-variant-numeric: tabular-nums;
+  /*
+   * A line box its own height. At the page's 1.5 this numeral was 45px inside a
+   * control row 44px tall, so the row grew by a pixel for the length of the
+   * count-in and the score below it moved when the count-in ended.
+   */
+  line-height: 1;
 }
 
+/* A column filling the card, so the meter can be pinned to the bottom while the
+   note keeps the middle. */
 .readout {
   flex: none;
   width: 5.5rem;
+  display: flex;
+  flex-direction: column;
   color: var(--fg-muted);
 }
 
@@ -347,19 +576,26 @@ input[type='range'] {
   color: var(--fg);
 }
 
+/* Centred in what the meter leaves rather than pushed to the top, which is
+   where it already sat and where it should stay. */
 .readout .note {
   display: block;
-  font-size: 1.875rem;
+  margin: auto 0;
+  font-size: var(--figure-lg);
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
 }
 
-/* Flat on the left, sharp on the right, in tune in the middle. */
+/* Flat on the left, sharp on the right, in tune in the middle. Sits on the
+   floor of its card, level with the level-up bars in the card beside it —
+   offset by half the difference in thickness, so the two share a centre line
+   rather than an edge. */
 .tuning {
   position: relative;
   display: block;
-  height: 0.3rem;
+  height: var(--track-thin);
   margin-top: 0.35rem;
+  margin-bottom: calc((var(--track) - var(--track-thin)) / 2);
   border-radius: 999px;
   background: var(--line);
 }
@@ -387,8 +623,8 @@ input[type='range'] {
   max-width: 32rem;
 }
 
-.milestone h2 {
-  font-size: 2rem;
+.milestone .heading {
+  font-size: var(--figure-xl);
   text-transform: none;
   letter-spacing: normal;
   opacity: 1;
@@ -404,17 +640,35 @@ input[type='range'] {
   margin-bottom: 0.25rem;
 }
 
-/* Native accordion: what is arriving is worth having, but not worth the space
-   it takes when you are not asking. */
+/* Native accordion: what is behind one is worth having, but not worth the space
+   it takes when you are not asking. Every one of these is a section of the card
+   it sits in, so its summary reads as a card title — the same as the headings
+   it sits under — and a rule above it says where the section starts. */
+.accordion {
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
+}
+
+/* Styled as the card label it reads as — the same as a small second-level
+   heading, which is what sits at the top of the card above it. */
 .accordion summary {
   cursor: pointer;
-  font-size: 0.8125rem;
+  font-size: var(--heading-2-small);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--fg-muted);
   padding: 0.25rem 0;
 }
 
 .accordion[open] summary {
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+/* Two checkboxes in a row would otherwise share a line, since a toggle is
+   inline so it can sit beside text elsewhere. */
+.accordion .toggle {
+  display: flex;
+  margin-bottom: 0.5rem;
 }
 
 [role='alert'] {
@@ -446,7 +700,7 @@ input[type='range'] {
   padding: 0.75rem 1rem;
 }
 
-.status > .card h2 {
+.status > .card .heading {
   margin-bottom: 0.25rem;
 }
 
@@ -454,14 +708,14 @@ input[type='range'] {
    anything that resized with them would move everything else. */
 .monitor {
   flex: none;
-  /* One row of content, so it centres rather than pushing against the edges the
-     way the level-up card's title and bars do. */
-  justify-content: center;
 }
 
+/* Full height, so what is inside it can be placed against the card's floor and
+   its middle independently. */
 .monitor-row {
   display: flex;
-  align-items: center;
+  align-items: stretch;
+  flex: 1;
   gap: 1.25rem;
   min-width: 0;
 }
@@ -484,13 +738,16 @@ input[type='range'] {
 }
 
 .result-score {
-  font-size: 1.25rem;
+  font-size: var(--figure-sm);
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
 
 .waveform {
   display: block;
+  /* Its own middle, not stretched: it is a trace, and it has no floor to sit
+     on the way the meter beside it does. */
+  align-self: center;
   /* Gives way first when the row has to narrow — the note beside it must not. */
   flex: 1 1 auto;
   min-width: 2.5rem;
@@ -525,13 +782,6 @@ input[type='range'] {
   background: var(--bg);
 }
 
-.modal h2 {
-  font-size: 1.25rem;
-  text-transform: none;
-  letter-spacing: normal;
-  color: var(--fg);
-  margin-bottom: 0.25rem;
-}
 
 .checklist {
   list-style: none;
@@ -548,11 +798,11 @@ input[type='range'] {
   margin-bottom: 0;
 }
 
-.checklist h3 {
+.checklist .heading {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 1rem;
+  font-size: var(--heading-3);
   margin: 0 0 0.35rem;
 }
 
@@ -591,6 +841,12 @@ input[type='range'] {
   color: var(--fail);
 }
 
+/* Each thing that can go wrong, and what to do about it. */
+.trouble {
+  margin-top: 1.25rem;
+}
+
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -610,17 +866,21 @@ input[type='range'] {
 }
 
 
-@media (max-width: 900px) {
+/*
+ * Too narrow to hold two columns, or too short to hold the app: either way the
+ * page gives up pinning itself to the viewport and scrolls.
+ *
+ * The height half matters as much as the width. Pinned to a short window, the
+ * sidebar became its own scroll region — the only one on the page, with no
+ * scrollbar of its own on most machines — so the settings were sliced off at
+ * the top and bottom and read as a clipping bug rather than as something to
+ * scroll. Whichever way the window is short of room, the answer is the same:
+ * let the page be as tall as it needs and scroll it.
+ */
+@media (max-width: 900px), (max-height: 46rem) {
   main {
     height: auto;
     min-height: 100dvh;
-  }
-
-  .layout {
-    grid-template-columns: minmax(0, 1fr);
-    /* Stacked, the rows would otherwise stretch to fill the viewport and leave
-       a gap between them. */
-    align-content: start;
   }
 
   .sidebar {
@@ -632,6 +892,17 @@ input[type='range'] {
   .score-area {
     flex: none;
     height: 23rem;
+  }
+}
+
+/* Stacking is the narrow case only: a wide, short window still has room for
+   two columns, it just has to scroll them. */
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    /* Stacked, the rows would otherwise stretch to fill the viewport and leave
+       a gap between them. */
+    align-content: start;
   }
 
   /* Wraps instead of running off the edge, and grows to fit what wrapped. */

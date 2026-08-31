@@ -182,19 +182,100 @@ appears in every exercise it stops being news and folds into the facts.
 Difficulty is the setting worth reading first, so it carries visibly more
 weight than the tempo or range beside it.
 
+The note being heard can also be laid over the note being played, as a faint
+stemless notehead in the page's own colour — the same shape as the note under
+it, at the pitch actually coming out, so the gap between the two is read off the
+staff rather than inferred from a name. Its head is always filled, even where
+the note it covers is hollow: translucent and hollow leaves a ring that is hard
+to place against a stave line, and the ghost states a pitch rather than a
+duration, which is the same reason it has no stem.
+
+It is drawn on a layer of its own over the staff, and that is what lets it fade
+in and out and slide between pitches: the staff itself is re-engraved whole
+every time a note is scored or the cursor moves, several times a bar, and
+something rebuilt that often can only ever appear and vanish. Moving the guide
+off that path also took the pitch heard out of the engraving entirely, so a
+reading that changes between beats no longer redraws the music. A move it could
+not have travelled — the music wrapping to the next line — is left as a jump,
+and `prefers-reduced-motion` turns all of it off.
+
+The guide only ever speaks for the note it is sitting on. The cursor moving is
+not a new reading of the room, so a pitch last heard under the note before is
+dropped rather than carried across and laid over a note the microphone has said
+nothing about yet — while a note held or struck again across the bar line keeps
+arriving, and so keeps its guide.
+ It takes the steadied reading the
+readout shows, not the raw detector. It is off unless asked for: the microphone
+hears the metronome as well as the player, and a guide note appearing on the
+click looks wrong even where it changes no verdict.
+
 Beside the heard note, a waveform shows the input, so it is visible that audio
 is arriving even when nothing is confident enough to name. Both run from page
 load rather than only during an exercise: the microphone session is opened
 independently of the lesson, so you can check your tuning or your input level
 before starting.
 
-Level, instrument, range and the auto-advance toggle persist in localStorage,
-validated on read — a level saved before the range changed, or a position id
-since renamed, falls back rather than breaking. With auto-advance on, finishing
+Only difficulty and tempo sit out in the open in the sidebar — they are the two
+worth reaching for mid-session, and everything else is set once and then only in
+the way, so the rest folds into a **Settings** accordion. That and the
+introducing list are the same `Accordion`: both are sections of the card they
+sit in, and written out separately they had already drifted into looking like
+different kinds of thing.
+
+Level, instrument, range and the auto-advance and heard-note toggles persist in
+localStorage, validated on read — a level saved before the range changed, or a
+position id since renamed, falls back rather than breaking. With auto-advance on, finishing
 an exercise rolls into the next after a short pause, count-in included. That
 gap can be held with **Pause** — and only that gap: an exercise is a continuous
 reading against a fixed tempo, so there is no coherent place to stop partway
 and pick it up again.
+
+A **Troubleshooting** link in the header opens what to try when the scoring
+disagrees with what was played: the microphone hearing the metronome as well as
+the player, low notes coming back an octave high, permissions, and notes left
+unscored because the tempo outran the detector. It is behind a link rather than
+said on the way in — most of it either does not apply or is obvious, and a page
+that warns about every way listening can go wrong reads as an app that expects
+to get it wrong. It is arranged by symptom rather than by cause: someone opens
+it having seen a right note marked wrong, not having concluded that their
+microphone is thin below 200Hz. The one piece of advice that only fits some
+instruments — a small practice amp reproducing the harmonic better than the
+fundamental, which is the same octave error arriving from the speaker rather
+than the string — is shown only to fretted players, who are the ones with an amp
+and a fretboard to move up. That is why the dialog is rendered by the lesson,
+which knows the instrument, and merely opened from the header.
+
+The metronome bleeding in is advice rather than a filter. The app knows when it
+clicked and at what pitch, so a filter looks easy, but the gap between the click
+being scheduled and it reaching the microphone is the speaker, the room and an
+audio buffer whose size is the device's business — so any window narrow enough
+to be safe misses it on some machines, and any window wide enough to catch it
+everywhere is blind over the player's own attack. Headphones solve it outright.
+
+### Typography
+
+Two sizes, set through components in `ui/Text.tsx` rather than by reaching for a
+class. `small` is the interface talking about itself — labels, readouts, the
+commentary beside a control; `default` is anything meant to be read as prose.
+The distinction is what the text is for, not how much of it there is: a long
+caption is still small, and one sentence of explanation is not.
+
+Headings take the same two sizes, chosen separately from the level, because the
+level is where a thing sits in the document and the size is how loudly it says
+so — a card's label and a dialog's title are both second-level headings and
+should look nothing alike. That one variant carries more than a size: a small
+second-level heading is the app's label style, the quiet uppercase run at the
+top of a card, and every second-level heading here is either a card's label or a
+dialog's title.
+
+Figures are the exception and have their own steps — a note name, a beat count,
+a percentage. They are read at a glance rather than word by word, so they are
+sized to be seen from a music stand.
+
+The scale exists because the stylesheet had drifted: five values between 0.75
+and 1rem doing the same job in different corners, which is how a caption ends up
+a pixel smaller than the caption beside it. Every `font-size` in the stylesheet
+is now a token, and a test in `contrast.test.ts` fails if one is not.
 
 ## How it is put together
 

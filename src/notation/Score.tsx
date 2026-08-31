@@ -8,6 +8,7 @@ import {
   StaveConnector,
   StaveNote,
   StaveTie,
+  TickContext,
   Tuplet,
   Voice,
   VoiceMode,
@@ -15,7 +16,7 @@ import {
 } from 'vexflow/bravura';
 import { beamBar } from './beaming';
 import { verdictColours, type VerdictColours } from './colours';
-import { layoutExercise, midiToVexKey, type NotatedNote } from './layout';
+import { explicitAccidental, layoutExercise, midiToVexKey, type NotatedNote } from './layout';
 import { NO_SOURCE, mergeRests } from './rests';
 import {
   instrumentById,
@@ -158,9 +159,74 @@ export interface ScoreProps {
   results?: readonly NoteResult[];
   /** Index of the note currently being played, for the live cursor. */
   activeIndex?: number;
+  /**
+   * Sounding pitch currently being heard, drawn faintly over the note being
+   * played so the gap between what is written and what is coming out is visible
+   * on the staff itself. Already steadied — see useSteadyPitch — because a
+   * ghost that flickers with the detector would be worse than none.
+   */
+  heardMidi?: Midi | null;
   /** Fixed width; when omitted the score fills its container. */
   width?: number;
 }
+
+/**
+ * Filled stand-ins for the hollow noteheads, by duration code.
+ *
+ * The ghost takes the shape of the note it covers but is always filled: hollow
+ * and translucent leaves a faint ring that is hard to place against a stave
+ * line, and the ghost is stating a pitch, not a duration — which is the same
+ * reason its stem and flag are hidden.
+ *
+ * SMuFL U+E0FA and U+E0FB, written out because VexFlow does not re-export its
+ * glyph table and a SMuFL codepoint is fixed by the standard. There is no
+ * filled breve in SMuFL, so a breve borrows the filled semibreve — the nearest
+ * head that exists, and the same width.
+ */
+const FILLED_HEAD: Record<string, string> = {
+  '1/2': '\uE0FA',
+  w: '\uE0FA',
+  h: '\uE0FB',
+};
+
+/**
+ * Where a ghost note can be pinned: the note being played fixes the horizontal
+ * position, and the staves of its bar are what it might be drawn on. Both
+ * staves are kept because the heard pitch decides which one it belongs to,
+ * which need not be the staff the written note is on.
+ */
+interface HeardAnchor {
+  /** Tick position rather than absolute x, so it transfers between staves. */
+  tickX: number;
+  /** The played note's duration, so the ghost takes the same notehead shape. */
+  code: string;
+  staves: Map<'treble' | 'bass' | 'single', Stave>;
+}
+
+/**
+ * Everything the guide layer needs from the last engraving of the score.
+ *
+ * The guide is drawn on a layer of its own rather than into the score, because
+ * the score is redrawn whole every time a note is scored or the cursor moves —
+ * several times a bar. An element that is destroyed and rebuilt that often can
+ * neither fade nor travel; one that outlives the redraws can do both.
+ */
+interface GuidePlan {
+  anchor: HeardAnchor | null;
+  width: number;
+  height: number;
+  grand: boolean;
+  singleClef: string;
+  writtenKey: MusicalKey;
+  colour: string;
+}
+
+/**
+ * Past this far, a move is not a move. The music wrapping to the next line puts
+ * the next note at the other end and a line lower, and sliding the whole way
+ * across the page reads as a mistake rather than as travel.
+ */
+const GUIDE_JUMP_PX = 140;
 
 function colourFor(
   sourceIndex: number,
@@ -211,12 +277,23 @@ export function Score({
   position = null,
   results,
   activeIndex,
+  heardMidi = null,
   width,
 }: ScoreProps) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const staffRef = useRef<HTMLDivElement>(null);
+  const guideRef = useRef<HTMLDivElement>(null);
   const [measured, setMeasured] = useState<number | null>(null);
   /** Last system scrolled to, so the view moves on wrapping and not every frame. */
   const scrolledSystemRef = useRef<number | null>(null);
+  /** What the last engraving left behind for the guide layer to draw against. */
+  const planRef = useRef<GuidePlan | null>(null);
+  /** Where the guide is now, so a move can start from where the eye left it. */
+  const guideAtRef = useRef<{ x: number; y: number } | null>(null);
+  // The guide is redrawn when the plan changes as well as when the pitch does —
+  // the note under it moves on every beat. A ref alone cannot say when that
+  // happened, so the engraving counts itself.
+  const [engraving, setEngraving] = useState(0);
 
   // Fill the container so bars are not cramped on a wide screen. jsdom has no
   // ResizeObserver, so tests fall back to the fixed width.
@@ -234,8 +311,9 @@ export function Score({
 
   useEffect(() => {
     const host = hostRef.current;
-    if (!host) return;
-    host.replaceChildren();
+    const staff = staffRef.current;
+    if (!host || !staff) return;
+    staff.replaceChildren();
 
     const colours = verdictColours(host);
     // The page is in the instrument's key, not the concert one: a B flat
@@ -279,12 +357,15 @@ export function Score({
     }
     if (current.length > 0) systems.push(current);
 
-    const renderer = new Renderer(host, Renderer.Backends.SVG);
-    renderer.resize(renderWidth, STAVE_TOP + systems.length * systemHeight);
+    const renderHeight = STAVE_TOP + systems.length * systemHeight;
+    const renderer = new Renderer(staff, Renderer.Backends.SVG);
+    renderer.resize(renderWidth, renderHeight);
     const context = renderer.getContext();
 
     /** Fragments of each source note, per system, so ties stay within a line. */
     const drawn = new Map<number, { note: StaveNote; system: number }[]>();
+    /** Where the heard-note ghost goes, once the note being played is formatted. */
+    let heardAnchor: HeardAnchor | null = null;
 
     systems.forEach((system, systemIndex) => {
       const leading = leadingModifierWidth(writtenKey.accidentals, systemIndex === 0);
@@ -308,6 +389,9 @@ export function Score({
 
         /** Builds and draws one staff of this bar; returns its voice for formatting. */
         const buildStaff = (clef: string, staveY: number, side: 'treble' | 'bass' | null) => {
+          // Boxed rather than a plain local: it is assigned inside the map
+          // below, which TypeScript's flow analysis does not follow.
+          const found: { active: StaveNote | null; code: string } = { active: null, code: 'q' };
           const stave = new Stave(x, staveY, width);
           // Every system restates the clef and key, as a printed score does.
           if (first) {
@@ -323,6 +407,10 @@ export function Score({
             const note = buildNote(notated, writtenKey, instrument, clef);
             const colour = colourFor(notated.sourceIndex, results, activeIndex, colours);
             note.setStyle({ fillStyle: colour, strokeStyle: colour });
+            if (notated.sourceIndex === activeIndex && found.active === null) {
+              found.active = note;
+              found.code = notated.code;
+            }
             // Only sounding notes are tied; a stand-in rest on the other staff
             // shares a source index but is not the same note.
             if (notated.midi !== null) {
@@ -369,7 +457,7 @@ export function Score({
             .filter((g) => g.sounds && g.notes.length === g.num)
             .map((g) => new Tuplet(g.notes, { numNotes: g.num, notesOccupied: g.inSpaceOf }));
 
-          return { stave, voice, beams, tuplets };
+          return { stave, voice, beams, tuplets, side, active: found.active, code: found.code };
         };
 
         const staves = grand
@@ -395,6 +483,18 @@ export function Score({
           entry.voice.draw(context, entry.stave);
           for (const beam of entry.beams) beam.setContext(context).draw();
           for (const tuplet of entry.tuplets) tuplet.setContext(context).draw();
+        }
+
+        // Formatting is what gives a note an x, so the ghost's position can only
+        // be taken now. A note split across a bar line has a fragment in more
+        // than one bar; the first is where the note is actually struck.
+        const activeEntry = built.find((entry) => entry.active !== null);
+        if (activeEntry?.active && heardAnchor === null) {
+          heardAnchor = {
+            tickX: activeEntry.active.getTickContext().getX(),
+            code: activeEntry.code,
+            staves: new Map(built.map((entry) => [entry.side ?? 'single', entry.stave])),
+          };
         }
 
         // The brace and the joined barlines are what make two staves read as one
@@ -430,7 +530,20 @@ export function Score({
       }
     }
 
-    followPageColour(host);
+    // What the guide layer needs to place a notehead over the note being
+    // played. Handed over rather than drawn here: see GuidePlan.
+    planRef.current = {
+      anchor: heardAnchor,
+      width: renderWidth,
+      height: renderHeight,
+      grand,
+      singleClef,
+      writtenKey,
+      colour: colours.idle,
+    };
+    setEngraving((count) => count + 1);
+
+    followPageColour(staff);
 
     // A long exercise scrolls inside its area. The line being played is put at
     // the top rather than centred, so the line after it is visible — a reader
@@ -453,5 +566,98 @@ export function Score({
     }
   }, [exercise, instrument, position, results, activeIndex, renderWidth]);
 
-  return <div ref={hostRef} className="score" aria-label="Notated exercise" />;
+  // The guide note, on its own layer over the staff. Drawn whenever the pitch
+  // heard changes or the score is re-engraved under it.
+  useEffect(() => {
+    const layer = guideRef.current;
+    const plan = planRef.current;
+    if (!layer) return;
+
+    const anchor = plan?.anchor ?? null;
+    // Nothing being heard, or nothing being played to lay it over. The drawing
+    // is left where it is and only faded out, so a note that comes back within
+    // the fade returns rather than restarting.
+    if (heardMidi === null || plan === null || anchor === null) {
+      layer.classList.remove('is-shown');
+      guideAtRef.current = null;
+      return;
+    }
+
+    const { grand, singleClef, writtenKey, colour } = plan;
+    const written = soundingToWritten(heardMidi, instrument);
+    const side = grand ? handFor(heardMidi, instrument) : 'single';
+    const stave = anchor.staves.get(side) ?? anchor.staves.values().next().value;
+    if (!stave) return;
+
+    const clef = grand ? side : singleClef;
+    // The played note's own duration, so the guide takes that note's notehead
+    // and reads as it moved rather than as some other symbol. Its stem and flag
+    // are hidden and its head is always filled: the rhythm is the page's to
+    // state. The ledger lines stay, since without them a pitch well off the
+    // staff cannot be read at all.
+    const ghost = new StaveNote({
+      keys: [midiToVexKey(written, writtenKey)],
+      duration: anchor.code,
+      clef,
+    });
+    // Before anything measures it: swapping the glyph changes the width.
+    const filled = FILLED_HEAD[anchor.code];
+    if (filled) for (const head of ghost.noteHeads) head.setText(filled);
+
+    const accidental = explicitAccidental(written, writtenKey);
+    if (accidental) ghost.addModifier(new Accidental(accidental), 0);
+    // The page's own colour, not a verdict one. A guide tinted like a scored
+    // note would read as a judgement, and one tinted like the active note would
+    // vanish into it at the moment it matters most — when the two agree and it
+    // is sitting exactly on top.
+    ghost.setStyle({ fillStyle: colour, strokeStyle: colour });
+    // After the note's own style, which a StaveNote hands down to its stem.
+    ghost.setStemStyle({ fillStyle: 'none', strokeStyle: 'none' });
+    ghost.setFlagStyle({ fillStyle: 'none', strokeStyle: 'none' });
+
+    // Its own tick context, positioned at the played note's: the two staves of a
+    // grand staff start their notes at slightly different x, so sharing the tick
+    // position lands the guide under the note even when the heard pitch belongs
+    // to the other hand.
+    new TickContext().addTickable(ghost).preFormat().setX(anchor.tickX);
+    ghost.setStave(stave);
+
+    layer.replaceChildren();
+    const renderer = new Renderer(layer, Renderer.Backends.SVG);
+    renderer.resize(plan.width, plan.height);
+    const context = renderer.getContext();
+    context.openGroup('heard-note');
+    // setStave took the score's context; this layer has its own.
+    ghost.setContext(context).draw();
+    context.closeGroup();
+    followPageColour(layer);
+
+    const to = { x: ghost.getAbsoluteX(), y: ghost.getYs()[0] };
+    const from = guideAtRef.current;
+    guideAtRef.current = to;
+
+    // Slide from wherever it already was, rather than reappearing somewhere
+    // else: the layer is drawn at the destination, offset back to where the eye
+    // last had it, and then let go of. A pitch that has only just arrived has
+    // nowhere to travel from and simply fades in.
+    const dx = from === null ? 0 : from.x - to.x;
+    const dy = from === null ? 0 : from.y - to.y;
+    const travels = Math.abs(dx) <= GUIDE_JUMP_PX && Math.abs(dy) <= GUIDE_JUMP_PX;
+    layer.classList.toggle('is-still', !travels || (dx === 0 && dy === 0));
+    if (travels && (dx !== 0 || dy !== 0)) {
+      layer.style.transform = `translate(${dx}px, ${dy}px)`;
+      // Read a laid-out value so the offset is a state to leave, not one the
+      // browser folds into the same frame as the line below.
+      void layer.offsetHeight;
+    }
+    layer.style.transform = '';
+    layer.classList.add('is-shown');
+  }, [heardMidi, engraving, instrument]);
+
+  return (
+    <div ref={hostRef} className="score" aria-label="Notated exercise">
+      <div ref={staffRef} />
+      <div ref={guideRef} className="guide-note" aria-hidden />
+    </div>
+  );
 }

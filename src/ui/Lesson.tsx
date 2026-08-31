@@ -27,8 +27,12 @@ import { loadSetting, saveSetting } from '../lib/storage';
 import { applyTheme, loadTheme, type ThemePreference } from '../lib/theme';
 import { midiToName } from '../lib/pitch';
 import { keyByName, transposeKey } from '../lib/key';
+import { Accordion } from './Accordion';
 import { LivePitch } from './LivePitch';
+import { useCurrentReading, useSteadyPitch } from './useSteadyPitch';
 import { Onboarding } from './Onboarding';
+import { Troubleshooting } from './Troubleshooting';
+import { Heading, Text } from './Text';
 import { Waveform } from './Waveform';
 import { useLesson } from './useLesson';
 
@@ -51,13 +55,23 @@ const C_MAJOR = keyByName('C');
 const readFlag = (value: unknown) => (typeof value === 'boolean' ? value : null);
 const readBpm = (value: unknown) => (typeof value === 'number' ? clampBpm(value) : null);
 
-export function Lesson() {
+export interface LessonProps {
+  /** Opened from the header, but rendered here, where the instrument is known. */
+  troubleshooting?: boolean;
+  onTroubleshooting?: (open: boolean) => void;
+}
+
+export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonProps = {}) {
   const [level, setLevel] = useState(() => loadSetting('level', readLevel, 1));
   const [instrumentId, setInstrumentId] = useState(() =>
     loadSetting('instrument', readInstrumentId, DEFAULT_INSTRUMENT_ID),
   );
   const [positionId, setPositionId] = useState(() => loadSetting('position', readPositionId, null));
   const [autoAdvance, setAutoAdvance] = useState(() => loadSetting('autoAdvance', readFlag, true));
+  // Off unless asked for. What the microphone hears is not only the player —
+  // the metronome comes back in through it, and a guide note appearing on the
+  // click looks wrong even where it changes no verdict.
+  const [showHeard, setShowHeard] = useState(() => loadSetting('showHeard', readFlag, false));
   const [bpm, setBpm] = useState(() => loadSetting('bpm', readBpm, MIN_BPM));
   const [micPermission, setMicPermission] = useState<MicPermission>(loadMicPermission);
   const [onboarded, setOnboarded] = useState(() => loadSetting('onboarded', readFlag, false));
@@ -73,6 +87,7 @@ export function Lesson() {
   useEffect(() => saveSetting('instrument', instrumentId), [instrumentId]);
   useEffect(() => saveSetting('position', positionId), [positionId]);
   useEffect(() => saveSetting('autoAdvance', autoAdvance), [autoAdvance]);
+  useEffect(() => saveSetting('showHeard', showHeard), [showHeard]);
   useEffect(() => saveSetting('bpm', bpm), [bpm]);
   useEffect(() => saveMicPermission(micPermission), [micPermission]);
   useEffect(() => saveSetting('onboarded', onboarded), [onboarded]);
@@ -126,6 +141,17 @@ export function Lesson() {
     -instrument.transposition.letters,
   );
 
+  // The same steadied reading the note-name readout shows, so the guide on the
+  // staff and the name under it never name different notes. The readout says
+  // what is being heard whenever that is; the guide only speaks for the note it
+  // is sitting on, so it is gated on the reading being one of that note's.
+  const heard = useSteadyPitch(
+    lesson.livePitch?.hz ?? null,
+    lesson.livePitch?.confidence ?? 0,
+    config.scoring.confidenceGate,
+  );
+  const guideMidi = useCurrentReading(heard, lesson.activeIndex);
+
   const threshold = Math.round(DEFAULT_PROGRESSION.threshold * 100);
   const running = lesson.phase === 'count-in' || lesson.phase === 'playing';
   const listening = running || lesson.phase === 'results';
@@ -170,17 +196,23 @@ export function Lesson() {
         }}
       />
 
+      <Troubleshooting
+        open={troubleshooting}
+        onOpenChange={(open) => onTroubleshooting?.(open)}
+        instrument={instrument}
+      />
+
       <div className="stage">
         {lesson.milestone !== null ? (
           <section className="milestone">
-            <h2>Level {lesson.milestone}</h2>
+            <Heading level={2}>Level {lesson.milestone}</Heading>
             <p>Now introducing:</p>
             <ul>
               {conceptsIntroducedAt(lesson.milestone).map((concept) => (
                 <li key={concept}>{concept}</li>
               ))}
             </ul>
-            <p className="muted">These start appearing gradually, not all at once.</p>
+            <Text tone="muted">These start appearing gradually, not all at once.</Text>
             <button onClick={lesson.acknowledgeMilestone}>Continue</button>
           </section>
         ) : (
@@ -191,7 +223,7 @@ export function Lesson() {
                   Start
                 </button>
               )}
-              {lesson.phase === 'arming' && <span className="muted">Requesting microphone…</span>}
+              {lesson.phase === 'arming' && <Text as="span" tone="muted">Requesting microphone…</Text>}
               {listening && <button onClick={lesson.stop}>Stop</button>}
               {lesson.phase === 'results' && !autoAdvance && (
                 <button className="primary" onClick={lesson.start}>
@@ -218,13 +250,14 @@ export function Lesson() {
 
             <div className="score-area">
               {lesson.exercise && (
-                <Suspense fallback={<p className="muted">Loading notation…</p>}>
+                <Suspense fallback={<Text tone="muted">Loading notation…</Text>}>
                   <Score
                     exercise={lesson.exercise}
                     instrument={instrument}
                     position={position}
                     results={lesson.results}
                     activeIndex={lesson.activeIndex ?? undefined}
+                    heardMidi={showHeard && scoring ? guideMidi : null}
                   />
                 </Suspense>
               )}
@@ -246,9 +279,9 @@ export function Lesson() {
                 </div>
               ) : (
                 <div className="card monitor">
-                  <p className="muted small">
+                  <Text size="small" tone="muted">
                     Scoring is off — the microphone was not available.
-                  </p>
+                  </Text>
                   <button type="button" onClick={() => setMicAsked(false)}>
                     Turn scoring on
                   </button>
@@ -256,7 +289,7 @@ export function Lesson() {
               )}
 
               <section className="card progress-card">
-                <h2>Levelling up</h2>
+                <Heading level={2} size="small">Levelling up</Heading>
                 {/* With nothing scored there is no accuracy to fill a bar with,
                     so the same window counts exercises read instead. */}
                 <div
@@ -294,17 +327,17 @@ export function Lesson() {
 
               {scoring && (
                 <section className="card result-card">
-                  <h2>Last exercise</h2>
+                  <Heading level={2} size="small">Last exercise</Heading>
                   <p className="result-line">
                     <span className="result-score">
                       {lesson.summary ? `${Math.round(lesson.summary.accuracy * 100)}%` : '—'}
                     </span>
-                    <span className="muted small">
+                    <Text as="span" size="small" tone="muted">
                       {lesson.summary &&
                         `${lesson.summary.passed}/${
                           lesson.summary.total - lesson.summary.unscorable
                         }`}
-                    </span>
+                    </Text>
                   </p>
                 </section>
               )}
@@ -345,89 +378,103 @@ export function Lesson() {
               disabled={running}
             />
           </label>
-          <label className="field">
-            <span className="field-label">Instrument</span>
-            <select
-              value={instrumentId}
-              onChange={(event) => {
-                setInstrumentId(event.target.value);
-                // Positions belong to an instrument; the old one means nothing here.
-                setPositionId(null);
-              }}
-              disabled={running}
-            >
-              {INSTRUMENT_FAMILIES.map((family) => (
-                <optgroup key={family.id} label={family.label}>
-                  {INSTRUMENTS.filter((option) => option.family === family.id).map((option) => (
+          {/* Everything but the two settings that change what an exercise is
+              like. They are the ones worth reaching for mid-session; the rest
+              are set once and then only get in the way. */}
+          <Accordion title="Settings">
+            <label className="field">
+              <span className="field-label">Instrument</span>
+              <select
+                value={instrumentId}
+                onChange={(event) => {
+                  setInstrumentId(event.target.value);
+                  // Positions belong to an instrument; the old one means nothing here.
+                  setPositionId(null);
+                }}
+                disabled={running}
+              >
+                {INSTRUMENT_FAMILIES.map((family) => (
+                  <optgroup key={family.id} label={family.label}>
+                    {INSTRUMENTS.filter((option) => option.family === family.id).map((option) => (
+                      <option
+                        key={option.id}
+                        value={option.id}
+                        disabled={option.status === 'comingSoon'}
+                      >
+                        {option.name}
+                        {option.status === 'comingSoon' ? ' — coming soon' : ''}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </label>
+
+            {instrument.hasPositions && instrument.positions && (
+              <label className="field">
+                <span className="field-label">
+                  {instrument.id === 'guitar' ? 'Fretboard position' : 'Range'}
+                </span>
+                <select
+                  value={position?.id ?? ''}
+                  onChange={(event) => setPositionId(event.target.value)}
+                  disabled={running}
+                >
+                  {instrument.positions.map((option) => (
                     <option
                       key={option.id}
                       value={option.id}
                       disabled={option.status === 'comingSoon'}
                     >
-                      {option.name}
+                      {option.label}
                       {option.status === 'comingSoon' ? ' — coming soon' : ''}
                     </option>
                   ))}
-                </optgroup>
-              ))}
-            </select>
-          </label>
+                </select>
+              </label>
+            )}
 
-          {instrument.hasPositions && instrument.positions && (
+            <Text size="small" tone="muted">
+              {position?.region && `${fretRangeLabel(position.region)} · `}
+              {pool.length} pitches, {midiToName(pool[0])}–{midiToName(pool[pool.length - 1])}
+              {instrument.transposition.semitones !== 0 &&
+                ` · ${instrument.transposition.label.toLowerCase()}`}
+            </Text>
+
             <label className="field">
-              <span className="field-label">
-                {instrument.id === 'guitar' ? 'Fretboard position' : 'Range'}
-              </span>
+              <span className="field-label">Appearance</span>
               <select
-                value={position?.id ?? ''}
-                onChange={(event) => setPositionId(event.target.value)}
-                disabled={running}
+                value={theme}
+                onChange={(event) => setTheme(event.target.value as ThemePreference)}
               >
-                {instrument.positions.map((option) => (
-                  <option
-                    key={option.id}
-                    value={option.id}
-                    disabled={option.status === 'comingSoon'}
-                  >
-                    {option.label}
-                    {option.status === 'comingSoon' ? ' — coming soon' : ''}
-                  </option>
-                ))}
+                <option value="system">Match system</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
               </select>
             </label>
-          )}
 
-          <p className="muted small">
-            {position?.region && `${fretRangeLabel(position.region)} · `}
-            {pool.length} pitches, {midiToName(pool[0])}–{midiToName(pool[pool.length - 1])}
-            {instrument.transposition.semitones !== 0 &&
-              ` · ${instrument.transposition.label.toLowerCase()}`}
-          </p>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={autoAdvance}
+                onChange={(event) => setAutoAdvance(event.target.checked)}
+              />
+              Auto-advance
+            </label>
 
-          <label className="field">
-            <span className="field-label">Appearance</span>
-            <select
-              value={theme}
-              onChange={(event) => setTheme(event.target.value as ThemePreference)}
-            >
-              <option value="system">Match system</option>
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-            </select>
-          </label>
-
-          <label className="toggle">
-            <input
-              type="checkbox"
-              checked={autoAdvance}
-              onChange={(event) => setAutoAdvance(event.target.checked)}
-            />
-            Auto-advance
-          </label>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={showHeard}
+                onChange={(event) => setShowHeard(event.target.checked)}
+              />
+              Show guide note
+            </label>
+          </Accordion>
         </section>
 
         <section className="card">
-          <h2>This level</h2>
+          <Heading level={2} size="small">This level</Heading>
           <ul className="facts">
             {brief.facts.map((fact) => (
               <li key={fact.label}>
@@ -438,8 +485,7 @@ export function Lesson() {
           </ul>
 
           {brief.introducing.length > 0 && (
-            <details className="accordion">
-              <summary>Being introduced ({brief.introducing.length})</summary>
+            <Accordion title="Being introduced" count={brief.introducing.length}>
               <ul className="introducing">
                 {brief.introducing.map((item) => (
                   <li key={item.label}>
@@ -450,7 +496,7 @@ export function Lesson() {
                   </li>
                 ))}
               </ul>
-            </details>
+            </Accordion>
           )}
 
         </section>

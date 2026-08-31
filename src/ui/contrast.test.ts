@@ -53,7 +53,18 @@ describe('palette contrast', () => {
   it('finds the palette it is meant to be checking', () => {
     // A stylesheet rewrite that stopped matching would otherwise leave this
     // whole file passing vacuously.
-    for (const name of ['bg', 'surface', 'fg', 'fg-muted', 'accent', 'pass', 'fail', 'unclear']) {
+    for (const name of [
+      'bg',
+      'surface',
+      'fg',
+      'fg-muted',
+      'accent',
+      'pass',
+      'fail',
+      'unclear',
+      'accent-surface',
+      'on-accent',
+    ]) {
       expect(light[name]).toBeDefined();
       expect(dark[name]).toBeDefined();
     }
@@ -86,10 +97,62 @@ describe('palette contrast', () => {
     }
   });
 
+  it.each([
+    ['light', () => light],
+    ['dark', () => dark],
+  ])('keeps the header bar readable in %s', (_scheme, read) => {
+    // The header inverts the palette — light text on the accent — which the
+    // checks above do not cover: they ask whether the accent reads as text on
+    // the page, which is a different question from whether the page reads as
+    // text on the accent.
+    const tokens = read();
+    expect(contrast(tokens['on-accent'], tokens['accent-surface'])).toBeGreaterThanOrEqual(4.5);
+  });
+
   it('keeps secondary text clearly readable, not merely passing', () => {
     // The original failure was dimming by opacity; muted text should have real
     // headroom above the threshold rather than sitting on it.
     expect(contrast(light['fg-muted'], light.surface)).toBeGreaterThan(6);
     expect(contrast(dark['fg-muted'], dark.surface)).toBeGreaterThan(6);
+  });
+});
+
+/**
+ * The type scale, guarded the same way and for the same reason as the palette:
+ * read from the stylesheet, so it cannot pass while the real values drift.
+ */
+describe('type scale', () => {
+  it('is the only place a size is written down', () => {
+    // Before the scale there were five values between 0.75 and 1rem doing the
+    // same job in different corners of this file — which is how a caption ends
+    // up a pixel smaller than the caption beside it.
+    const sizes = [...css.matchAll(/font-size:\s*([^;]+);/g)].map(([, value]) => value.trim());
+    expect(sizes.length).toBeGreaterThan(8);
+    for (const size of sizes) expect(size).toMatch(/^var\(--/);
+  });
+
+  it('defines every token the text components ask for', () => {
+    for (const token of [
+      '--text-size',
+      '--text-size-small',
+      '--heading-1',
+      '--heading-1-small',
+      '--heading-2',
+      '--heading-2-small',
+      '--heading-3',
+      '--heading-3-small',
+    ]) {
+      expect(css).toContain(`${token}:`);
+    }
+  });
+});
+
+describe('surfaces', () => {
+  it('leaves headings the colour of whatever they sit on', () => {
+    // A heading that names its own colour cannot be put on the accent bar, and
+    // the wordmark went out in near-black on purple before this. Only the label
+    // variant chooses a colour, and it is never on anything but a card.
+    const heading = css.slice(css.indexOf('.heading {'));
+    expect(heading.slice(0, heading.indexOf('}'))).not.toContain('color:');
   });
 });
