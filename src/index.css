@@ -137,6 +137,48 @@ h2 {
   display: none;
 }
 
+/* The staff and the guide note over it. The guide is its own layer because the
+   staff is re-engraved whole every time a note is scored or the cursor moves,
+   and something rebuilt that often can neither fade nor travel. */
+.score {
+  position: relative;
+}
+
+.guide-note {
+  position: absolute;
+  inset: 0;
+  /* It is a readout of the room laid over the music, never a target. VexFlow
+     marks its own hit areas pointer-events:auto, which would otherwise punch
+     back through this layer. */
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.guide-note * {
+  pointer-events: none;
+}
+
+.guide-note.is-shown {
+  /* Under the stave lines it is drawn over, so it never competes with the
+     music, but not so faint that a note out on ledger lines disappears. */
+  opacity: 0.4;
+}
+
+/* Arriving, or jumping a line: there is nowhere to travel from, so it fades in
+   where it is rather than sliding in from the last place it was. */
+.guide-note.is-still {
+  transition: opacity 160ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guide-note {
+    transition: none;
+  }
+}
+
 .stage-controls {
   display: flex;
   align-items: center;

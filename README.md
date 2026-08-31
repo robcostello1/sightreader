@@ -188,7 +188,16 @@ it, at the pitch actually coming out, so the gap between the two is read off the
 staff rather than inferred from a name. Its head is always filled, even where
 the note it covers is hollow: translucent and hollow leaves a ring that is hard
 to place against a stave line, and the ghost states a pitch rather than a
-duration, which is the same reason it has no stem. It takes the steadied reading the
+duration, which is the same reason it has no stem.
+
+It is drawn on a layer of its own over the staff, and that is what lets it fade
+in and out and slide between pitches: the staff itself is re-engraved whole
+every time a note is scored or the cursor moves, several times a bar, and
+something rebuilt that often can only ever appear and vanish. Moving the guide
+off that path also took the pitch heard out of the engraving entirely, so a
+reading that changes between beats no longer redraws the music. A move it could
+not have travelled — the music wrapping to the next line — is left as a jump,
+and `prefers-reduced-motion` turns all of it off. It takes the steadied reading the
 readout shows, not the raw detector, and it is off by a checkbox for anyone who
 finds it distracting.
 

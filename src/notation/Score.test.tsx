@@ -136,12 +136,35 @@ describe('Score', () => {
     expect(markup).toContain(VERDICT_FALLBACKS.active);
   });
 
-  it('lays the heard note over the one being played, faintly', () => {
+  it('lays the heard note over the one being played', () => {
     const { container } = render(<Score exercise={simple} activeIndex={0} heardMidi={67} />);
-    const ghost = container.querySelector('.vf-heard-note');
-    expect(ghost).not.toBeNull();
-    // Faint, so the note the player is meant to be reading stays the clearer one.
-    expect(Number(ghost!.getAttribute('opacity'))).toBeLessThan(1);
+    expect(container.querySelector('.vf-heard-note')).not.toBeNull();
+    // Shown rather than merely drawn: the stylesheet fades the layer in on this
+    // class, which is what lets it also fade out with its drawing intact.
+    expect(container.querySelector('.guide-note')!.classList.contains('is-shown')).toBe(true);
+  });
+
+  it('fades the guide out on its own layer rather than tearing it out', () => {
+    const { container, rerender } = render(
+      <Score exercise={simple} activeIndex={0} heardMidi={67} />,
+    );
+    rerender(<Score exercise={simple} activeIndex={0} heardMidi={null} />);
+
+    const layer = container.querySelector('.guide-note')!;
+    expect(layer.classList.contains('is-shown')).toBe(false);
+    // The drawing stays put while it fades, so a note that comes back within
+    // the fade returns instead of starting over.
+    expect(layer.querySelector('.vf-heard-note')).not.toBeNull();
+  });
+
+  it('is not re-engraved when only the note being heard changes', () => {
+    // The staff is expensive and the pitch heard moves several times a bar.
+    const { container, rerender } = render(
+      <Score exercise={simple} activeIndex={0} heardMidi={67} />,
+    );
+    const staff = container.querySelector('.score > div:not(.guide-note) svg');
+    rerender(<Score exercise={simple} activeIndex={0} heardMidi={62} />);
+    expect(container.querySelector('.score > div:not(.guide-note) svg')).toBe(staff);
   });
 
   it('shapes the ghost like the note being played, minus its stem', () => {
