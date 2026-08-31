@@ -249,19 +249,6 @@ function noteLabel(name: NoteValueName): string {
   }[name];
 }
 
-/** Name of a value, for anything that has to say which one it means. */
-export function noteValueName(value: NoteValue): NoteValueName | null {
-  const found = (Object.entries(NOTE_VALUES) as [NoteValueName, NoteValue][]).find(
-    ([, candidate]) => Math.abs(candidate - value) < 1e-9,
-  );
-  return found?.[0] ?? null;
-}
-
-export function noteValueLabel(value: NoteValue): string | null {
-  const name = noteValueName(value);
-  return name === null ? null : noteLabel(name);
-}
-
 /** Bare noun, for listing a range rather than a single value. */
 function noteNoun(name: NoteValueName): string {
   return { whole: 'whole', half: 'half', quarter: 'quarter', eighth: 'eighth', sixteenth: 'sixteenth', breve: 'breve' }[name];

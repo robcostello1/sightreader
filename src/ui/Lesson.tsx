@@ -5,10 +5,7 @@ import {
   conceptsIntroducedAt,
   levelBrief,
   levelConfig,
-  noteValueLabel,
-  shortestNoteValue,
 } from '../config/levels';
-import { DEFAULT_VIABILITY, shortestViableValue } from '../config/viability';
 import {
   loadMicPermission,
   queryMicPermission,
@@ -101,26 +98,10 @@ export function Lesson() {
   const config = levelConfig(level);
   const brief = levelBrief(level);
   const pool = soundingPool(instrument, position);
-  // Tempo is not capped, and neither is any instrument. What a fast tempo costs
-  // is the shortest note values, which the generator leaves out of an exercise
-  // it cannot score — per note, rather than by withholding the tempo.
-  //
-  // The per-range answer is therefore a note length, not a tempo: how short a
-  // note this instrument's lowest pitch can still hold at this speed. The
-  // tightest signature is the limiting one, since a smaller beat unit makes the
-  // same value briefer.
-  const tightestBeatUnit = Math.min(...config.timeSignatures.map((entry) => entry.value[1]));
-  const shortestHere = shortestViableValue(
-    pool,
-    tightestBeatUnit,
-    bpm,
-    DEFAULT_VIABILITY,
-    config.scoring,
-  );
-  const shortestLabel =
-    shortestHere !== null && shortestHere > shortestNoteValue(config)
-      ? noteValueLabel(shortestHere)
-      : null;
+  // Tempo is not capped and no instrument is withheld. What a fast tempo costs
+  // is the shortest note values, and what a low register costs is the shortest
+  // values down there — both per note, inside generation, and neither worth
+  // saying out loud: low notes being longer is how the music goes anyway.
   const effectiveBpm = bpm;
 
   // Advancement is gated on the same pass/fail scores used for feedback — no
@@ -364,13 +345,6 @@ export function Lesson() {
               disabled={running}
             />
           </label>
-          {shortestLabel !== null && (
-            <p className="muted small">
-              Shortest note in this range at this tempo: a {shortestLabel.replace(/s$/, '')}.
-              Anything briefer could not be scored down there.
-            </p>
-          )}
-
           <label className="field">
             <span className="field-label">Instrument</span>
             <select

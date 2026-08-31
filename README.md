@@ -103,12 +103,17 @@ the note value and the tempo, as a third constraint beside the pool and the
 movement limit — a whole phrase is rejected rather than one note quietly swapped
 out of it.
 
-So neither the tempo nor the instrument is ever withheld. A double bass is
-playable at 240bpm; what changes down there is that the semiquavers stop
-appearing and the quavers stay. The one thing no note length can buy back is
-frequency: under about 43Hz a 2048-sample frame no longer holds enough of a
-cycle, which costs a bass its open E and a tuba its bottom three semitones until
-the detector reads low registers with a longer frame.
+So neither the tempo nor the instrument is ever withheld, and none of it is
+announced: a double bass is playable at any tempo, and what changes down there
+is that its lowest few semitones stop taking the shortest values. Low notes
+being longer is how the music goes anyway.
+
+Two limits are worth knowing about. Under about 43Hz a 2048-sample frame no
+longer holds enough of a cycle, which no note length buys back — it costs a bass
+its open E and a tuba its bottom three semitones until the detector reads low
+registers with a longer frame. And the frame rule is not about register at all:
+past roughly 180bpm a semiquaver is too brief to yield the frames the scorer
+needs, at any pitch, so above that they stop appearing for everyone.
 
 **Scoring is windowed occupancy, not onset-exact.** Each note is judged over
 its expected rhythmic duration window: skip the attack transient, collect

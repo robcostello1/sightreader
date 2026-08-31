@@ -465,6 +465,32 @@ describe('viability gating', () => {
     expect(seen).toBeGreaterThan(0);
   });
 
+  it('takes the short values off the bottom notes and leaves the rest alone', () => {
+    // The confirmation that this is a per-note gate and not a per-instrument or
+    // per-exercise one: in the same pool, at the same tempo, in the same
+    // exercises, the top of the range keeps its semiquavers while the bottom
+    // few semitones do not get them.
+    const bass = Array.from({ length: 28 }, (_, i) => nameToMidi('E1') + i); // E1-G3
+    const shortestAt = new Map<number, number>();
+    for (const seed of Array.from({ length: 200 }, (_, i) => i + 1)) {
+      const exercise = generateExercise({ level: 10, pool: bass, bpm: 120, rng: mulberry32(seed) });
+      if (exercise.timeSignature[1] !== 4) continue;
+      for (const note of exercise.notes) {
+        if (note.midi === null) continue;
+        shortestAt.set(note.midi, Math.min(shortestAt.get(note.midi) ?? 99, note.value));
+      }
+    }
+
+    // The bottom of the range: nothing under the resolution floor at all, and
+    // no semiquavers for a few semitones above it.
+    expect(shortestAt.get(nameToMidi('E1'))).toBeUndefined();
+    expect(shortestAt.get(nameToMidi('G1'))).toBeGreaterThan(NOTE_VALUES.sixteenth);
+    // The top of the same range, from the same exercises: semiquavers as usual.
+    const high = [...shortestAt].filter(([midi]) => midi >= nameToMidi('C2'));
+    expect(high.length).toBeGreaterThan(10);
+    expect(Math.min(...high.map(([, value]) => value))).toBe(NOTE_VALUES.sixteenth);
+  });
+
   it('rejects the phrase rather than patching a note out of it', () => {
     // Every note of an idiom instance shares its fate: an instance is never
     // returned with one pitch quietly swapped, which would leave a run that no
