@@ -82,6 +82,12 @@ Crossing a **whole** level pauses the session and names what is about to start
 appearing, so a new idea is read about before it turns up mid-exercise. Tenth
 steps pass without interruption.
 
+One of those is the metronome: it clicks through every exercise to level 5,
+none from 7, and a diminishing share between, on the grounds that holding the
+pulse is part of reading. It is the only change a player meets by ear rather
+than by eye, so it is announced like the rest — unannounced it reads as the app
+breaking. `METRONOME_FADES_OUT` turns the whole idea off in one place.
+
 Gating uses the pass/fail scores directly — there is no separate mastery
 signal. The threshold is short of perfect on purpose: sight-reading is meant to
 be attempted at the edge of fluency, and demanding a clean run would stall
