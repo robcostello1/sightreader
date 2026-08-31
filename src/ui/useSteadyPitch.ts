@@ -102,3 +102,39 @@ export function useSteadyPitch(
 
   return steady;
 }
+
+
+/**
+ * The steadied reading, but only while it belongs to the note under the cursor.
+ *
+ * The cursor moving on is not a new reading of the room. A pitch still being
+ * held from the note before — or lingering inside the hold above — would
+ * otherwise travel to the note that has just come up and sit over it as though
+ * it were an answer to it, before the microphone has said anything about that
+ * note at all.
+ *
+ * What counts as having said something is a fresh reading, not a different one:
+ * a note held or struck again across the bar keeps arriving, so it keeps its
+ * guide, while a note that has stopped does not.
+ */
+/* oxlint-disable react/refs -- see below: the note a reading arrived under has
+   to be remembered as it arrives, and the value is derived during render on
+   purpose. */
+export function useCurrentReading(heard: Steady | null, activeIndex: number | null): Midi | null {
+  const lastHeard = useRef<Steady | null>(null);
+  const heardDuring = useRef<number | null>(null);
+
+  // Noted as the reading arrives rather than in an effect. An effect runs after
+  // the paint, and the frame it would run a step behind on is the one where the
+  // cursor has moved and the reading has not — precisely the frame that would
+  // show the note before over the note now. The pair here is a memo of the last
+  // arrival, not state the render depends on: the same arguments give the same
+  // answer, which is what makes it safe to work out here.
+  if (heard !== lastHeard.current) {
+    lastHeard.current = heard;
+    heardDuring.current = activeIndex;
+  }
+
+  return heard !== null && heardDuring.current === activeIndex ? heard.midi : null;
+}
+/* oxlint-enable react/refs */

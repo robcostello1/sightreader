@@ -29,7 +29,7 @@ import { midiToName } from '../lib/pitch';
 import { keyByName, transposeKey } from '../lib/key';
 import { Accordion } from './Accordion';
 import { LivePitch } from './LivePitch';
-import { useSteadyPitch } from './useSteadyPitch';
+import { useCurrentReading, useSteadyPitch } from './useSteadyPitch';
 import { Onboarding } from './Onboarding';
 import { Waveform } from './Waveform';
 import { useLesson } from './useLesson';
@@ -130,13 +130,16 @@ export function Lesson() {
     -instrument.transposition.letters,
   );
 
-  // The same steadied reading the note-name readout shows, so the ghost on the
-  // staff and the name under it never name different notes.
+  // The same steadied reading the note-name readout shows, so the guide on the
+  // staff and the name under it never name different notes. The readout says
+  // what is being heard whenever that is; the guide only speaks for the note it
+  // is sitting on, so it is gated on the reading being one of that note's.
   const heard = useSteadyPitch(
     lesson.livePitch?.hz ?? null,
     lesson.livePitch?.confidence ?? 0,
     config.scoring.confidenceGate,
   );
+  const guideMidi = useCurrentReading(heard, lesson.activeIndex);
 
   const threshold = Math.round(DEFAULT_PROGRESSION.threshold * 100);
   const running = lesson.phase === 'count-in' || lesson.phase === 'playing';
@@ -237,7 +240,7 @@ export function Lesson() {
                     position={position}
                     results={lesson.results}
                     activeIndex={lesson.activeIndex ?? undefined}
-                    heardMidi={showHeard && scoring ? (heard?.midi ?? null) : null}
+                    heardMidi={showHeard && scoring ? guideMidi : null}
                   />
                 </Suspense>
               )}

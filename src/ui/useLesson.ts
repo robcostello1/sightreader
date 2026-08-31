@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { startMicCapture, startSilentSession, type MicSession } from '../audio';
 import { generateExercise } from '../generator';
-import { buildSchedule, scheduleClicks, windowAt } from '../scheduler';
+import { buildSchedule, isClickBleed, scheduleClicks, windowAt } from '../scheduler';
 import type { Schedule, ScheduledClicks } from '../scheduler';
 import { scoreWindow, summarise, type ExerciseSummary } from '../scoring';
 import { levelConfig } from '../config/levels';
@@ -465,15 +465,27 @@ export function useLesson(options: UseLessonOptions) {
 
       startMicCapture({
         onSample: (sample) => {
-        // Always the newest reading, so the readout works before an exercise and
-        // between them. Showing what is heard is not scoring it.
-          latestRef.current = sample;
+          const schedule = scheduleRef.current;
+          // The click is the app's own sound coming back in, not the player's,
+          // and it is blanked here so that neither the display nor the scorer
+          // ever sees it as a note. Blanked rather than dropped: the frame did
+          // happen, and a window is judged partly on how many frames it got, so
+          // removing them outright would make a short note unscorable. What is
+          // left is an unvoiced frame — an absence of evidence, which is what
+          // the scorer already does with a frame it hears no pitch in.
+          const heard =
+            schedule !== null && isClickBleed(sample, schedule.clicks)
+              ? { ...sample, hz: null, confidence: 0 }
+              : sample;
+
+          // Always the newest reading, so the readout works before an exercise
+          // and between them. Showing what is heard is not scoring it.
+          latestRef.current = heard;
 
           // Count-in audio is ignored entirely — not scored, not classified, not
           // even retained — and nothing is collected while no exercise runs.
-          const schedule = scheduleRef.current;
           if (!schedule || sample.timestamp < schedule.t0) return;
-          samplesRef.current.push(sample);
+          samplesRef.current.push(heard);
         },
         onOnset: (onset) => onsetsRef.current.push(onset),
       }).then(

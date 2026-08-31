@@ -197,7 +197,25 @@ something rebuilt that often can only ever appear and vanish. Moving the guide
 off that path also took the pitch heard out of the engraving entirely, so a
 reading that changes between beats no longer redraws the music. A move it could
 not have travelled — the music wrapping to the next line — is left as a jump,
-and `prefers-reduced-motion` turns all of it off. It takes the steadied reading the
+and `prefers-reduced-motion` turns all of it off.
+
+The guide only ever speaks for the note it is sitting on. The cursor moving is
+not a new reading of the room, so a pitch last heard under the note before is
+dropped rather than carried across and laid over a note the microphone has said
+nothing about yet — while a note held or struck again across the bar line keeps
+arriving, and so keeps its guide.
+
+The metronome is filtered out of what is heard. Played out loud the microphone
+picks the click up, and between the player's own notes there is nothing else to
+hear, so the detector locks onto it and reports a confident B. The app made that
+sound, so it knows both when it happened and what pitch it was, and both have to
+agree before a reading is thrown out — matching on the moment alone would blind
+the display on every beat, which is exactly where the player's attack falls. A
+rejected frame is blanked rather than dropped: the frame did happen, and a
+window is judged partly on how many frames it got. This is scoring's problem as
+much as the display's — occupancy is the share of confident frames that were the
+target note, so a click inside a note dilutes it, and a click inside a rest is a
+pitch where silence was asked for. It takes the steadied reading the
 readout shows, not the raw detector, and it is off by a checkbox for anyone who
 finds it distracting.
 

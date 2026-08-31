@@ -12,5 +12,5 @@ export {
   windowAt,
 } from './schedule';
 export type { ClickEvent, Schedule, ScheduleOptions } from './schedule';
-export { scheduleClicks } from './metronome';
+export { ACCENT_HZ, CLICK_HZ, CLICK_MS, isClickBleed, scheduleClicks } from './metronome';
 export type { MetronomeOptions, ScheduledClicks } from './metronome';
