@@ -33,7 +33,7 @@ describe('Troubleshooting', () => {
     // the answer is advice rather than a filter.
     render(<Troubleshooting open onOpenChange={() => {}} />);
     expect(screen.getByText(/headphones/i)).toBeTruthy();
-    expect(screen.getByText(/play\s+a little louder/i)).toBeTruthy();
+    expect(screen.getByText(/louder than the metronome/i)).toBeTruthy();
   });
 
   it('closes on the button, unlike the checklist', () => {

@@ -13,6 +13,11 @@ export interface TroubleshootingProps {
  * obvious or does not apply, and a page that warns about every way listening
  * can go wrong reads as an app that expects to get it wrong. It is here for the
  * player who has already noticed something and gone looking.
+ *
+ * Written by symptom rather than by cause: someone arrives here having seen a
+ * right note marked wrong, not having decided that their microphone is thin
+ * below 200Hz. Which is also why the metronome and the octave errors sit under
+ * one heading — they look identical from the outside.
  */
 export function Troubleshooting({ open, onOpenChange }: TroubleshootingProps) {
   const recovery = recoverySteps(typeof navigator === 'undefined' ? '' : navigator.userAgent);
@@ -24,25 +29,29 @@ export function Troubleshooting({ open, onOpenChange }: TroubleshootingProps) {
         <Dialog.Content className="modal">
           <Dialog.Title>Troubleshooting</Dialog.Title>
           <Dialog.Description className="muted small">
-            Listening happens on this device, and rooms differ. If the scoring does not match what
-            you played, one of these is usually why.
+            This app uses your system microphone to listen to you play. That can cause problems if
+            it doesn&rsquo;t hear you well.
           </Dialog.Description>
 
           <section className="trouble">
-            <h3>Notes are marked wrong when they were right</h3>
+            <h3>Correct Notes Show As Wrong</h3>
             <p className="muted small">
-              The microphone may be hearing the metronome as well as you. Wear headphones, or play
-              a little louder, so that what you play is the loudest thing in the room. Moving away
-              from the speakers helps too.
+              The microphone may be picking up the metronome as well as you. Wear headphones, or
+              play a bit louder than the metronome.
+            </p>
+            <p className="muted small">
+              Low notes and quiet notes are harder to detect, and the system can show a note an
+              octave out. Play clearly, avoid distortion, and stay near the microphone.
             </p>
           </section>
 
           <section className="trouble">
-            <h3>Nothing is being heard at all</h3>
+            <h3>No Sound Is Heard</h3>
             <p className="muted small">
-              Check that this page has the microphone, and that no other app has taken it — video
-              calls tend to hold onto it. In {recovery.name}:
+              Check that this page has permission to use the microphone, and that no other app is
+              holding onto it &mdash; video call apps often don&rsquo;t release it.
             </p>
+            <p className="muted small">In {recovery.name}:</p>
             <ol className="steps muted small">
               {recovery.steps.map((step) => (
                 <li key={step}>{step}</li>
@@ -51,28 +60,20 @@ export function Troubleshooting({ open, onOpenChange }: TroubleshootingProps) {
           </section>
 
           <section className="trouble">
-            <h3>Low notes come back an octave high</h3>
+            <h3>Fast Notes Are Not Scored</h3>
             <p className="muted small">
-              Below about G3 the fundamental is often quieter than the harmonic an octave above it
-              — both on the instrument and in a built-in microphone, which tends to thin out down
-              there. Detection then hears the harmonic as the note. Playing those notes more
-              firmly, picking nearer the neck than the bridge, or using a better microphone all
-              give the fundamental more to stand on.
+              A short note at a high tempo doesn&rsquo;t last long enough for the system to judge
+              it. Try decreasing the tempo.
             </p>
           </section>
 
           <section className="trouble">
-            <h3>Fast notes come back unscored</h3>
+            <h3>Privacy</h3>
             <p className="muted small">
-              Past a certain tempo a short note does not last long enough to be judged, and is left
-              unscored rather than failed. Lower the tempo to bring those notes back.
+              The system doesn&rsquo;t record, store, or send your audio anywhere. It&rsquo;s read
+              on this device and discarded.
             </p>
           </section>
-
-          <p className="muted small">
-            Nothing you play is recorded, stored, or sent anywhere. It is read on this device and
-            discarded.
-          </p>
 
           <div className="modal-actions">
             <Dialog.Close asChild>

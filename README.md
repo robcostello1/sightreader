@@ -235,7 +235,9 @@ the player, low notes coming back an octave high, permissions, and notes left
 unscored because the tempo outran the detector. It is behind a link rather than
 said on the way in — most of it either does not apply or is obvious, and a page
 that warns about every way listening can go wrong reads as an app that expects
-to get it wrong.
+to get it wrong. It is arranged by symptom rather than by cause: someone opens
+it having seen a right note marked wrong, not having concluded that their
+microphone is thin below 200Hz.
 
 The metronome bleeding in is advice rather than a filter. The app knows when it
 clicked and at what pitch, so a filter looks easy, but the gap between the click
