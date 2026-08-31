@@ -128,15 +128,18 @@ header {
 }
 
 /*
- * Centred on the letters rather than on the line box. A line box is taller than
- * the letters in it — room above for accents, below for descenders — and
- * centring the box therefore leaves the text looking high. Trimming to the cap
- * height and the baseline centres what is actually visible. Browsers without it
- * fall back to centring the box, which is where this started.
+ * A flex row, not a block with an inline button in it.
+ *
+ * As a block, nav laid out its button as inline content, which means against a
+ * strut: an invisible line box at nav's own inherited 16px, while the button's
+ * text is 13px. The button was baseline-aligned into that taller strut and rode
+ * about a pixel and a half low with it — measurably, 18px of bar above the caps
+ * and 15.8px below the baseline. As a flex parent there is no strut, and the
+ * button is centred as a box in its own right.
  */
-header .heading,
-header .link {
-  text-box: trim-both cap alphabetic;
+header nav {
+  display: flex;
+  align-items: center;
 }
 
 /* A button, because it opens a dialog rather than going anywhere, but it has to
