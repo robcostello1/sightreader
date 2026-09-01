@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Output of the generator distribution harness (see docs/note-distribution.md)
+distribution-report.txt
