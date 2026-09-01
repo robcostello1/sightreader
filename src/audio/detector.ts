@@ -1,11 +1,12 @@
 import { PitchDetector as PitchyCore } from 'pitchy';
+import { DETECTOR_MIN_HZ } from './constants';
 import type { PitchDetector, PitchSample } from '../lib/types';
 
 /**
- * Defaults sized for the lowest note the app admits. A 2048-sample frame
- * resolves down to ~43Hz at 44.1kHz, comfortably below E2 (82.4Hz), the floor
- * every available instrument sits above; a 512-sample hop is ~11.6ms, inside
- * the 10-20ms the spec asks for.
+ * A 2048-sample frame resolves down to ~43Hz at 44.1kHz, which is where
+ * DETECTOR_MIN_HZ comes from and what bounds the bottom of the instrument list
+ * — a tuba's D1 is under it and a double bass's low E is not. A 512-sample hop
+ * is ~11.6ms, inside the 10-20ms the spec asks for.
  */
 export const DEFAULT_FRAME_SIZE = 2048;
 export const DEFAULT_HOP_SIZE = 512;
@@ -13,9 +14,21 @@ export const DEFAULT_HOP_SIZE = 512;
 export interface PitchyDetectorOptions {
   frameSize?: number;
   hopSize?: number;
-  /** Below the low E with margin for a flat string. */
+  /**
+   * Floor for a believable reading. Defaults to DETECTOR_MIN_HZ, the frame's
+   * own resolution limit, so the detector hears everything the generator is
+   * willing to write and the two cannot drift apart.
+   */
   minHz?: number;
-  /** Well above open position's top note, leaving room for future regions. */
+  /**
+   * Ceiling for a believable reading.
+   *
+   * Still the guitar-era value, and now too low: it is under the top of a
+   * piccolo, recorder, flute, violin, clarinet and the piano's wide range, and
+   * viability has no ceiling to match it, so those notes are written and then
+   * dropped. Raising it needs a measurement of where readings stop being
+   * trustworthy, not a guess — see docs/detector-band.md.
+   */
   maxHz?: number;
   /** RMS below this is treated as silence rather than run through detection. */
   rmsFloor?: number;
@@ -45,7 +58,7 @@ export class PitchyDetector implements PitchDetector {
   constructor(options: PitchyDetectorOptions = {}) {
     this.frameSize = options.frameSize ?? DEFAULT_FRAME_SIZE;
     this.hopSize = options.hopSize ?? DEFAULT_HOP_SIZE;
-    this.minHz = options.minHz ?? 70;
+    this.minHz = options.minHz ?? DETECTOR_MIN_HZ;
     this.maxHz = options.maxHz ?? 1320;
     this.rmsFloor = options.rmsFloor ?? 0.005;
     this.core = PitchyCore.forFloat32Array(this.frameSize);

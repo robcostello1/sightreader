@@ -1,4 +1,4 @@
-import { NOMINAL_HOP_MS } from '../audio/constants';
+import { DETECTOR_MIN_HZ, NOMINAL_HOP_MS } from '../audio/constants';
 import { midiToHz } from '../lib/pitch';
 import type { ScoringConfig } from './levels';
 import { NOTE_VALUES, type Midi, type NoteValue } from '../lib/types';
@@ -41,6 +41,9 @@ export interface ViabilityConfig {
    * 37Hz and the open E of a bass is 41Hz — both under it, however long they
    * ring. Raising this means a longer frame for low registers, which is a
    * detector change rather than a constant.
+   *
+   * Set from DETECTOR_MIN_HZ so this and the detector's own band cannot
+   * disagree — they did, by an octave, and the generator lost the argument.
    */
   resolutionFloorHz: number;
 }
@@ -56,7 +59,7 @@ export const DEFAULT_VIABILITY: ViabilityConfig = {
   basePeriods: 3,
   marginMultiplier: 1.5,
   attackExclusionMs: 40,
-  resolutionFloorHz: 43,
+  resolutionFloorHz: DETECTOR_MIN_HZ,
 };
 
 /** Cycles a note must contain to be scoreable, margin included. */
