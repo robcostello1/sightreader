@@ -155,10 +155,21 @@ Piano / Grand staff, wide (29 window starts)
 E2 is inside 3.4% of windows and G#4 is inside all of them — a **29x**
 availability gap. Violin, being only 10 semitones wider than the window, gets a
 trapezoid instead, and an 11x gap. This is why the wide pools come out
-middle-heavy whichever way the lean is set, and why on grand-wide A4 appears
-2.46x the mean while F#2 appears 0.007x — a ~370x swing between two pitches in
-the same pool. Neutralising the lean does not touch this one at all; it is
-purely a matter of which windows exist.
+middle-heavy whichever way the lean is set: neutralising the lean does not
+touch the window at all.
+
+Measured on two naturals, so the key set cannot confound it, grand-wide writes
+A4 **38.8x** as often as E2 — availability alone predicts 28.0x, and the
+remaining 1.4x is the boundary squeeze below. In 3000 exercises only 11 contain
+E2 at all, and only 7 contain C7.
+
+The pool's widest single-pitch swing is larger still, G4 against F#2 at 370x,
+but that one is *two* effects multiplied and should not be laid at the window's
+door: F# is diatonic only in G major, which level 3 draws 6% of the time.
+Separating them on matched pairs — F#4 against A4, whose availability is
+near-identical at 0.931 and 0.966, differ by 18.0x, which is all key — gives
+9.3x (window, for that pair) x 18.0x (key) x 2.2x (squeeze) = the 370x
+observed. The window is one factor of three.
 
 ## 3. Outliers
 
@@ -168,8 +179,9 @@ purely a matter of which windows exist.
 - **Most middle-skewed**: guitar 4th position in C, and 9th in F — E/M 0.21.
   Across keys, the busiest quarter of 4th position's pool takes 75% of its
   notes, against 25% for even coverage.
-- **Widest single-pitch swing**: piano grand-wide, A4 2.46x mean against
-  F#2 0.007x — 370x.
+- **Widest single-pitch swing**: piano grand-wide, G4 against F#2 — **370x**.
+  Two causes multiplied, not one: the register window and the key set. On
+  matched naturals the window alone is 38.8x (E2 against A4).
 - **Quietest pitches everywhere** are the accidentals — expected, since the
   level's key set decides them, but within a single key the effective pool at
   level 3 is 13–17 pitches of a nominal 24, which makes every skew above
