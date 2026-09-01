@@ -15,7 +15,7 @@
  *   3. pool holes                     — pitches a fretted position cannot reach
  *   4. structural coverage            — what the pool and idioms alone allow
  *   5. register window coverage       — the sliding window's edge starvation
- *   6. bias vs structure              — extremeBias on and off, side by side
+ *   6. bias vs structure              — rangeBias even, and leaning either way
  *   7. key sensitivity                — which holes are diatonic, by key
  *   8. pitch-choice policies          — what alternative weightings would give
  */
@@ -108,7 +108,7 @@ interface Sample {
   mean: number;
 }
 
-function sample(pool: readonly Midi[], level: number, extremeBias?: number, key?: MusicalKey): Sample {
+function sample(pool: readonly Midi[], level: number, rangeBias?: number, key?: MusicalKey): Sample {
   const low = pool[0];
   const high = pool[pool.length - 1];
   const counts = new Map<Midi, number>();
@@ -120,7 +120,7 @@ function sample(pool: readonly Midi[], level: number, extremeBias?: number, key?
       level: levelConfig(level),
       pool,
       seed,
-      ...(extremeBias === undefined ? {} : { extremeBias }),
+      ...(rangeBias === undefined ? {} : { rangeBias }),
       ...(key === undefined ? {} : { key }),
     });
     for (const note of exercise.notes) {
@@ -408,8 +408,9 @@ describe.skipIf(!process.env.DISTRIBUTION_REPORT)('generated note distribution',
 
   it('6. bias against structure', () => {
     log('\n########## 6. BIAS AGAINST STRUCTURE (level 3) ##########');
-    log('The same pools with extremeBias off and at its shipped value, so the two');
-    log('contributions can be told apart.\n');
+    log('The same pools with rangeBias even (1, the default), leaning to the edges');
+    log('(4) and leaning to the middle (0.25), so structure and lean can be told');
+    log('apart. 4 reproduces the lean this generator used to ship with.\n');
     const header =
       'pool'.padEnd(30) +
       'span'.padStart(5) +
@@ -418,7 +419,7 @@ describe.skipIf(!process.env.DISTRIBUTION_REPORT)('generated note distribution',
     log('-'.repeat(header.length));
     for (const [id, position] of CASES) {
       const { label, pool } = poolOf(id, position);
-      for (const bias of [0, 3]) {
+      for (const bias of [1, 4, 0.25]) {
         const stats = sample(pool, 3, bias);
         const { edge, middle, ratio } = edgeMiddle(stats.deciles, stats.notes);
         log(
@@ -438,7 +439,7 @@ describe.skipIf(!process.env.DISTRIBUTION_REPORT)('generated note distribution',
   }, 900_000);
 
   it('7. key sensitivity on fretted positions', () => {
-    log('\n########## 7. KEY SENSITIVITY (guitar, level 3, shipped bias) ##########');
+    log('\n########## 7. KEY SENSITIVITY (guitar, level 3, default rangeBias) ##########');
     log('Which of a position\'s holes are diatonic depends on the key, and that alone');
     log('swings the distribution from extremity-heavy to middle-heavy.\n');
     log(
@@ -450,7 +451,7 @@ describe.skipIf(!process.env.DISTRIBUTION_REPORT)('generated note distribution',
     for (const position of GUITAR_POSITIONS) {
       const { pool } = poolOf('guitar', position);
       for (const keyName of ['C', 'G', 'F', 'D', 'Bb']) {
-        const stats = sample(pool, 3, 3, keyNamed(keyName));
+        const stats = sample(pool, 3, undefined, keyNamed(keyName));
         const { edge, middle, ratio } = edgeMiddle(stats.deciles, stats.notes);
         log(
           position.padEnd(12) +
@@ -484,20 +485,20 @@ describe.skipIf(!process.env.DISTRIBUTION_REPORT)('generated note distribution',
       const { label, pool } = poolOf(id, position);
       const { placements, low, high } = enumeratePlacements(pool, keyNamed(keyName));
       log(`--- ${label}, key ${keyName}: ${placements.length} valid placements`);
-      policyLine('unweighted (bias 0)', marginal(placements, placements.map(() => 1), pool), pool);
-      for (const bias of [1, 3]) {
+      policyLine('even (rangeBias 1)', marginal(placements, placements.map(() => 1), pool), pool);
+      for (const bias of [2, 4]) {
         const weights = placements.map((pitches) => startPitchWeight(pitches[0], low, high, bias));
-        policyLine(`current: first note, bias ${bias}`, marginal(placements, weights, pool), pool);
+        policyLine(`first note, rangeBias ${bias}`, marginal(placements, weights, pool), pool);
       }
       const centred = placements.map((pitches) =>
         startPitchWeight(
           Math.round(pitches.reduce((a, b) => a + b, 0) / pitches.length),
           low,
           high,
-          3,
+          4,
         ),
       );
-      policyLine('bias 3 on placement centre', marginal(placements, centred, pool), pool);
+      policyLine('rangeBias 4 on centre pitch', marginal(placements, centred, pool), pool);
       policyLine('flat per reachable pitch', marginal(placements, flattened(placements, pool), pool), pool);
       log('');
     }

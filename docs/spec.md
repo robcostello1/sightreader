@@ -68,12 +68,22 @@ struggles with pattern-reading vs. keeping tempo.
      - Simple tier: steps and small thirds only.
      - Medium tier: wider intervals permitted, but still idiom-scoped (an
        arpeggio idiom's leaps are "idiomatic," not just any large jump).
-- **Starting-pitch selection should be weighted, not uniform-random**,
-  across the pool — deliberately over-sample pitches near the extremes of
-  the range (low E/A strings, high B/E strings) since these are typically
-  weakest for beginners and often involve ledger lines in standard
-  notation. Over many exercises this gives even coverage of the whole
-  region without making any single exercise hard to read.
+- **Starting-pitch selection is weighted, not uniform-random**, across the
+  pool. The goal is even coverage of the whole region over many exercises,
+  without making any single exercise hard to read.
+  - This was originally specified as *over-sampling the extremes* — the low
+    E/A and high B/E strings, being the weakest for beginners and the ones
+    needing ledger lines. Measuring the generator showed that reasoning had
+    the sign wrong in practice: before any weighting the distribution was
+    already extremity-heavy, from the shape of the idiom library and from
+    the holes a fretted position leaves in its pool, so a fixed lean towards
+    the extremes pushed it further the same way instead of evening it out.
+    See `docs/note-distribution.md`.
+  - The lean is now a dial, `rangeBias`, read as what an extreme of the
+    range is worth against its centre: 1 is even, above 1 leans to the
+    edges, below 1 to the middle. It defaults to 1. A deliberate lean either
+    way remains available where an instrument warrants it — but it should be
+    set against a measurement, not assumed.
 - Fretboard-region difficulty and rhythmic-density difficulty should be
   **gated independently per region**: a region can be introduced at
   breve/whole-note speed and later unlock faster note values within that

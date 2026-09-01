@@ -14,6 +14,14 @@ That writes `distribution-report.txt`. `RUNS=` sets the sample size (3000
 exercises per configuration below), `OUT=` the destination. The harness is
 skipped by `npm test`; it is a measuring instrument, not an assertion suite.
 
+**What changed since this was first measured.** The lean applied to
+starting-pitch choice, `extremeBias = 3`, is now `rangeBias`, read as what an
+extreme of the range is worth against its centre — 1 is even, above 1 leans to
+the edges, below 1 to the middle — and it defaults to **1**. Nothing else in
+the generator has changed, so causes 2a, 2c and 2d below are all still live.
+Figures are given at the new default unless they say otherwise; `rangeBias 4`
+reproduces the old shipped lean.
+
 Two ratios carry most of the argument:
 
 - **E/M** — share of notes in the outer 20% of the range against the share in
@@ -25,26 +33,32 @@ Two ratios carry most of the argument:
 
 ## 1. The symptom, measured
 
-Level 3, shipped defaults:
+Level 3. `confined` is shown both ways: under the lean this generator used to
+ship with, and at the neutral default it ships with now. The remaining columns
+are at the new default.
 
-| pool | confined% | touches middle third | E/M |
-|---|---|---|---|
-| Guitar / 5th position | **68.0** | 25.8% | **12.1** |
-| Guitar / 12th position | 60.9 | 34.2% | 5.3 |
-| Guitar / Open position | 60.1 | 35.2% | 4.2 |
-| Bass guitar | 55.7 | 39.9% | 4.0 |
-| Guitar / 7th position | 54.9 | 41.1% | 4.7 |
-| Piano / Bass staff | 54.4 | 41.6% | 3.4 |
-| Piano / Treble staff | 54.0 | 42.1% | 3.4 |
-| Violin | 46.0 | 52.1% | 1.3 |
-| Piano / Grand staff, wide | 32.7 | 67.3% | 0.6 |
-| Guitar / 4th position | 23.2 | 75.8% | **0.5** |
-| Guitar / 9th position | 21.9 | 77.1% | 0.7 |
+| pool | confined, bias 4 (was) | confined, bias 1 (now) | touches middle third | E/M |
+|---|---|---|---|---|
+| Guitar / 5th position | **68.0%** | **55.5%** | 40.1% | 5.21 |
+| Guitar / 12th position | 60.9% | 45.8% | 51.2% | 2.10 |
+| Guitar / Open position | 60.1% | 45.0% | 52.2% | 1.67 |
+| Bass guitar | 55.7% | 42.5% | 55.0% | 1.66 |
+| Guitar / 7th position | 54.9% | 39.4% | 58.6% | 1.90 |
+| Piano / Bass staff | 54.4% | 39.6% | 58.2% | 1.34 |
+| Piano / Treble staff | 54.0% | 39.6% | 58.2% | 1.34 |
+| Violin | 46.0% | 35.4% | 63.9% | 0.63 |
+| Piano / Grand staff, wide | 32.7% | 29.3% | 70.7% | 0.45 |
+| Guitar / 4th position | 23.2% | 16.5% | 83.1% | **0.22** |
+| Guitar / 9th position | 21.9% | 15.4% | 84.3% | 0.33 |
 
 So the hunch is right, and guitar is the worst of it — but it is not "guitar
 fixed ranges" as a class. 4th and 9th position lean the *other* way, and there
-the busiest quarter of the pool carries 68% of all notes. Which way a position
+the busiest quarter of the pool carries 75% of all notes. Which way a position
 falls is close to a lottery, and §4 below says what decides it.
+
+Neutralising the lean is worth 10–15 points of `confined` across the board —
+real, and not the whole story. Guitar 5th position still confines more than
+half its exercises to one end of the range, which is what §2a is about.
 
 ## 2. Four causes, separable
 
@@ -78,28 +92,32 @@ E4  129   ####################################
 
 Open position has no holes, and its coverage is a clean plateau.
 
-### 2b. `extremeBias` multiplies whatever shape is already there
+### 2b. The lean multiplies whatever shape is already there — addressed
 
-`startPitchWeight` gives the range ends 4x the weight of the centre. Turning it
-off roughly halves E/M everywhere, and never removes it:
+`startPitchWeight` gave the range ends 4x the weight of the centre. Removing
+that lean roughly halves E/M everywhere, and never removes it:
 
-| pool | E/M at bias 0 | E/M at bias 3 |
-|---|---|---|
-| Guitar / 5th position | 5.21 | 12.08 |
-| Guitar / 12th position | 2.10 | 5.33 |
-| Guitar / Open position | 1.67 | 4.15 |
-| Piano / Treble staff | 1.34 | 3.44 |
-| Guitar / 4th position | 0.22 | 0.48 |
+| pool | leaning to the middle (0.25) | even (1, now) | leaning to the edges (4, was) |
+|---|---|---|---|
+| Guitar / 5th position | 2.66 | 5.21 | 11.94 |
+| Guitar / 12th position | 1.01 | 2.10 | 4.94 |
+| Guitar / Open position | 0.80 | 1.67 | 3.86 |
+| Piano / Treble staff | 0.63 | 1.34 | 3.25 |
+| Guitar / 4th position | 0.10 | 0.22 | 0.46 |
 
-On a hole-free pool the bias is the whole story; on a fretted position it is an
-amplifier on top of 2a.
+Each step of the dial is worth roughly a factor of two, in either direction. On
+a hole-free pool the lean was the whole story; on a fretted position it was an
+amplifier on top of 2a, which is why 5th position still sits at 5.21 with the
+dial neutral.
 
-Worth noting against spec §3, which asks for weighted starting-pitch selection
-*so that* "over many exercises this gives even coverage of the whole region".
-The implementation applies a fixed U-shaped weight open-loop and never measures
-what comes out — and it is layered on a structural distribution that was
-already extremity-heavy. Even at bias 0 the busiest quarter of every pool
-carries 41–75% of the notes, against 25% for even coverage.
+This is what the change of default rests on. Spec §3 asks for weighted
+starting-pitch selection *so that* "over many exercises this gives even
+coverage of the whole region". A fixed U-shaped weight applied open-loop cannot
+deliver that — it never looks at what comes out — and here it sat on top of a
+structural distribution that was already extremity-heavy, so it pushed the same
+way rather than correcting. Even with the dial neutral the busiest quarter of
+every pool carries 41–75% of the notes against 25% for even coverage, so the
+dial was never the mechanism that could deliver §3 in the first place.
 
 ### 2c. The bias is applied to the first note, which is not symmetric
 
@@ -110,11 +128,11 @@ does both, `repeated-note` neither), and the ascending ones reach further —
 top is rejected outright by the pool test while the same idiom anchored at the
 bottom is fine. The high end is therefore reachable only as the *tail* of a
 run, never as a boosted anchor — and every hole-free pool comes out
-bottom-heavy: open position mean position 0.451, guitar 2nd 0.431, piano bass
-staff 0.466, where 0.5 is centred.
+bottom-heavy even with the dial neutral: open position mean position 0.480,
+guitar 2nd 0.456, piano bass staff 0.489, where 0.5 is centred.
 
-Weighting the placement's mean pitch instead does not help; §8 of the report
-measures it as slightly worse (open position 3.16 → 3.50).
+Weighting the placement's mean pitch instead does not fix it; §8 of the report
+measures it as no better than weighting the first note.
 
 ### 2d. `registerWindow` starves the ends of wide pools — the opposite outlier
 
@@ -136,20 +154,22 @@ Piano / Grand staff, wide (29 window starts)
 
 E2 is inside 3.4% of windows and G#4 is inside all of them — a **29x**
 availability gap. Violin, being only 10 semitones wider than the window, gets a
-trapezoid instead, and an 11x gap. This is why the wide pools are
-middle-heavy in spite of bias 3, and why on grand-wide A4 appears 2.36x the
-mean while A#6 appears 0.01x — a ~200x swing between two pitches in the same
-pool.
+trapezoid instead, and an 11x gap. This is why the wide pools come out
+middle-heavy whichever way the lean is set, and why on grand-wide A4 appears
+2.46x the mean while F#2 appears 0.007x — a ~370x swing between two pitches in
+the same pool. Neutralising the lean does not touch this one at all; it is
+purely a matter of which windows exist.
 
 ## 3. Outliers
 
-- **Most extremity-skewed**: guitar 5th position in G, and 12th in D — 71.5% of
-  notes in the outer 20% of the range, 3.6% in the middle 20% (**20x**).
-- **Most middle-skewed**: guitar 4th position in C, and 9th in F — E/M 0.43.
-  Across keys, the busiest quarter of 4th position's pool takes 68% of its
+- **Most extremity-skewed**: guitar 5th position in G, and 12th in D — 57.8%
+  of notes in the outer 20% of the range against 7.3% in the middle 20%
+  (**7.9x**). Under the old lean it was 71.5% against 3.6%, or 20x.
+- **Most middle-skewed**: guitar 4th position in C, and 9th in F — E/M 0.21.
+  Across keys, the busiest quarter of 4th position's pool takes 75% of its
   notes, against 25% for even coverage.
-- **Widest single-pitch swing**: piano grand-wide, A4 2.36x mean against
-  A#6 0.01x.
+- **Widest single-pitch swing**: piano grand-wide, A4 2.46x mean against
+  F#2 0.007x — 370x.
 - **Quietest pitches everywhere** are the accidentals — expected, since the
   level's key set decides them, but within a single key the effective pool at
   level 3 is 13–17 pitches of a nominal 24, which makes every skew above
@@ -162,18 +182,21 @@ from extremity-heavy to middle-heavy. Guitar, level 3, shipped bias:
 
 | position | C | G | F | D | Bb |
 |---|---|---|---|---|---|
-| open | 4.08 | 4.09 | 4.12 | 4.13 | 4.66 |
-| pos-2 | 2.12 | 4.90 | 0.60 | 4.93 | 0.43 |
-| pos-4 | 0.43 | 0.60 | 1.14 | **2.12** | 1.12 |
-| pos-5 | 13.48 | **20.12** | 4.93 | 8.12 | 4.90 |
-| pos-7 | 4.90 | 4.93 | 2.12 | 13.48 | 0.60 |
-| pos-9 | 0.60 | 2.12 | 0.43 | 4.90 | 1.14 |
-| pos-12 | 4.93 | **20.12** | 4.90 | **13.48** | 2.12 |
+| open | 1.71 | 1.71 | 1.71 | 1.71 | 2.05 |
+| pos-2 | 0.96 | 2.02 | 0.31 | 2.02 | 0.21 |
+| pos-4 | **0.21** | 0.31 | 0.56 | 0.96 | 0.56 |
+| pos-5 | 6.11 | **7.95** | 2.02 | 3.77 | 2.02 |
+| pos-7 | 2.02 | 2.02 | 0.96 | 6.11 | 0.31 |
+| pos-9 | 0.31 | 0.96 | 0.21 | 2.02 | 0.56 |
+| pos-12 | 2.02 | **7.95** | 2.02 | **7.95** | 0.96 |
+
+A 38-fold spread between the best and worst cell, with the dial already
+neutral. Under the old lean it was 47-fold, from 0.43 to 20.12.
 
 The values repeat exactly across the table because positions are transpositions
 of one another: only the offset between the key and the fret pattern matters,
 which is a clean confirmation that the driver is structural rather than random.
-Open position, with no holes, is flat at ~4.1 in every key.
+Open position, with no holes, is flat at 1.71 in every key but B flat.
 
 ## 5. What the alternatives are worth
 
@@ -183,10 +206,10 @@ held out.
 
 | policy | pos-5 / G, E/M | busiest/quietest |
 |---|---|---|
-| unweighted | 6.50 | 3.7x |
-| first note, bias 1 | 9.86 | 4.8x |
-| **first note, bias 3 (shipped)** | **15.52** | **7.9x** |
-| bias 3 on placement centre | 15.61 | 7.7x |
+| **even — rangeBias 1 (now)** | **6.50** | **3.7x** |
+| first note, rangeBias 2 | 9.64 | 4.6x |
+| first note, rangeBias 4 (was shipped) | 14.71 | 7.1x |
+| rangeBias 4 on placement centre | 14.21 | 6.7x |
 | flat per reachable pitch | 4.00 | 1.0x |
 
 Flattening to an even share per reachable pitch is the floor, and it still
@@ -194,7 +217,7 @@ leaves E/M at 4.00 — because a severed pool genuinely has fewer usable pitches
 near the seam, so "even per pitch" is not "even per semitone". 4.00 is the
 structural limit for that configuration, not a shortfall of the policy.
 
-Ordered by value against effort, if this is worth fixing:
+Ordered by value against effort. Item 3 is done; the rest are open:
 
 1. **`registerWindow` start range.** Clamping starts to `[low - 28, high]` and
    then intersecting with the pool makes every pitch equally reachable. One
@@ -205,8 +228,10 @@ Ordered by value against effort, if this is worth fixing:
    against how reachable its pitches actually are — or tracking per-pitch
    counts across a session and weighting down what has been over-used — targets
    the thing the spec actually asked for.
-3. **Revisit `extremeBias = 3`.** It roughly doubles E/M everywhere. On pools
-   that are already extremity-heavy it is the difference between 5x and 12x.
+3. ~~**Revisit `extremeBias = 3`.**~~ Done — it is now `rangeBias`, defaulting
+   to 1. The dial remains for a deliberate lean either way, including towards
+   the centre where an instrument's idiom warrants it, but it should be set
+   against a measurement rather than assumed.
 4. **Decide deliberately what a diatonic hole should do.** Today the idiom is
    silently dropped and the seam empties. The alternatives are to let an idiom
    skip a missing degree, to avoid keys whose degrees fall in a position's
