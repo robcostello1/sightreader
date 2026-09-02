@@ -119,7 +119,7 @@ way rather than correcting. Even with the dial neutral the busiest quarter of
 every pool carries 41–75% of the notes against 25% for even coverage, so the
 dial was never the mechanism that could deliver §3 in the first place.
 
-### 2c. The bias is applied to the first note, which is not symmetric
+### 2c. The bias is applied to the first note, which is not symmetric — still open
 
 `choosePlacement` weights `placementPitches(placement)[0]`. Of the sixteen
 idioms, nine reach only above their first note and five only below it (`turn`
@@ -134,7 +134,7 @@ guitar 2nd 0.456, piano bass staff 0.489, where 0.5 is centred.
 Weighting the placement's mean pitch instead does not fix it; §8 of the report
 measures it as no better than weighting the first note.
 
-### 2d. `registerWindow` starves the ends of wide pools — the opposite outlier
+### 2d. `registerWindow` starved the ends of wide pools — fixed
 
 For a pool wider than 28 semitones the window start is drawn uniformly from
 `[low, high - 28]`, so a pitch is reachable only by the windows that happen to
@@ -152,11 +152,27 @@ Piano / Grand staff, wide (29 window starts)
   C7   P=0.034  #
 ```
 
-E2 is inside 3.4% of windows and G#4 is inside all of them — a **29x**
-availability gap. Violin, being only 10 semitones wider than the window, gets a
-trapezoid instead, and an 11x gap. This is why the wide pools come out
-middle-heavy whichever way the lean is set: neutralising the lean does not
-touch the window at all.
+E2 was inside 3.4% of windows and G#4 inside all of them — a **29x** availability
+gap, and 59x over the full 88 keys. Violin, being only 10 semitones wider than
+the window, got a trapezoid instead, and an 11x gap. This is why the wide pools
+came out middle-heavy whichever way the lean was set: no weighting reaches a
+note that is not in the window.
+
+**The fix** is to let the window hang half a span off either end and be clipped,
+rather than requiring it to sit wholly inside the pool. The narrowest window that
+produces still spans fourteen semitones, which holds the widest idiom in the
+library, so nothing is ever too cramped to place in.
+
+| | before | after |
+|---|---|---|
+| availability, worst against best | 29x | **1.9x** |
+| lowest pitch, share of windows | 3.4% | **26.3%** |
+| exercises reaching the bottom 6 semitones | 3.9% | **12.5%** |
+| exercises reaching the top 6 semitones | 2.1% | **12.3%** |
+| busiest against quietest pitch | 370x | **50x** |
+
+The three existing window tests passed throughout, because reaching the top once
+in forty seeds satisfies them and none asks how *often*. The new one asks.
 
 Measured on two naturals, so the key set cannot confound it, grand-wide writes
 A4 **38.8x** as often as E2 — availability alone predicts 28.0x, and the
@@ -231,15 +247,16 @@ structural limit for that configuration, not a shortfall of the policy.
 
 Ordered by value against effort. Item 3 is done; the rest are open:
 
-1. **`registerWindow` start range.** Clamping starts to `[low - 28, high]` and
-   then intersecting with the pool makes every pitch equally reachable. One
-   change, removes the 29x gap on piano and the 11x on violin.
+1. ~~**`registerWindow` start range.**~~ Done — see §2d. The overhang took the
+   availability gap from 29x to 1.9x.
 2. **Close the loop on the bias.** The spec asks for even coverage over many
    exercises; a fixed U-shaped weight cannot deliver that on a pool whose
    structure already varies 6x from pitch to pitch. Weighting a placement
    against how reachable its pitches actually are — or tracking per-pitch
    counts across a session and weighting down what has been over-used — targets
-   the thing the spec actually asked for.
+   the thing the spec actually asked for. The lean now at least measures
+   against the range rather than the drawn window, so turning it up reaches the
+   outer octaves instead of the middle of the instrument.
 3. ~~**Revisit `extremeBias = 3`.**~~ Done — it is now `rangeBias`, defaulting
    to 1. The dial remains for a deliberate lean either way, including towards
    the centre where an instrument's idiom warrants it, but it should be set

@@ -10,10 +10,21 @@ staff ranges become.
 `PitchyDetector` discards any reading outside `[minHz, maxHz]`, and
 `useLesson.ts` constructs it with neither, so the defaults always apply.
 
-| | value | lowest / highest note | why |
+Both ends are now measured rather than assumed, by sweeping the detector over
+struck-string signals — decaying harmonic stacks, with and without noise at
+-20dB and -14dB, which moved neither end.
+
+| | value | note | why |
 |---|---|---|---|
-| `minHz` | **43 Hz** (`DETECTOR_MIN_HZ`) | F1, 43.7 Hz | The frame's own limit: 2048 samples at 44.1kHz spans 46ms, which holds two cycles at 43.07 Hz. E1 (41.2 Hz) is out of reach at any note length. |
-| `maxHz` | 1320 Hz | E6, 1318.5 Hz | **Unexamined.** A guitar-era value — "well above open position's top note", which is G#4 at 415 Hz. |
+| `minHz` | **32.3 Hz** (`DETECTOR_MIN_HZ`) | C1, 32.7 Hz | Every pitch from 1.52 cycles per frame up is named; nothing below 1.43 is. `MIN_PERIODS_IN_FRAME = 1.5`. The old 43 Hz came from a two-cycle rule of thumb and was conservative by five semitones. |
+| `maxHz` | **3392 Hz** (`DETECTOR_MAX_HZ`) | G#7, 3322 Hz | Past ~13 samples per period the NSDF peak an octave down is better resolved than the true one, so readings come back exactly an octave flat. G#7 (13.3 samples/period) is named; A7 (12.5) is not. `MIN_SAMPLES_PER_PERIOD = 13`. |
+
+Both are derived from the frame and the sample rate rather than written down, and
+the detector recomputes them from the rate the hardware actually granted: at
+48kHz the same frame is shorter in time, so C1 stops being nameable there.
+
+That is C1–G#7, 81 semitones, against D2–E6 and 51 before — and 81 of a piano's
+88 keys.
 
 ## The floor used to disagree with itself
 
@@ -42,10 +53,11 @@ Note the sample rate: at 48kHz the same frame spans 42.7ms and the true floor is
 nearer 47 Hz, so F1 is marginal on hardware that opens at that rate. Sizing the
 frame from the live rate is a detector change rather than a constant.
 
-## The ceiling has the same bug, unfixed
+## The ceiling had the same bug — fixed
 
-`viability.ts` has a floor and no ceiling, so nothing stops the generator writing
-above 1320 Hz. Share of generated notes the detector discards, at level 3:
+`viability.ts` had a floor and no ceiling, so nothing stopped the generator
+writing above 1320 Hz. Share of generated notes the detector discarded, at
+level 3 — every one of these is now 0.0%:
 
 | instrument / position | pool pitches above E6 | notes discarded |
 |---|---|---|
@@ -57,49 +69,53 @@ above 1320 Hz. Share of generated notes the detector discards, at level 3:
 | Clarinet in B♭ | 6 of 45 | 3.1% |
 | Oboe | 1 of 32 | 0.7% |
 
-Three notes in five on a piccolo cannot be scored. Fixing it needs two things,
-in this order:
+`viability.ts` gained `resolutionCeilingHz`, from the same shared constant as
+the floor, so the generator stops writing above the band as well as below it.
+Every instrument now generates nothing the microphone cannot hear.
 
-1. **A measurement.** Unlike the floor, 1320 Hz has no derivation behind it —
-   the frame resolves far above it. Where readings stop being trustworthy is a
-   question for the pitch-detection spike, not for a constant chosen by reading
-   the code.
-2. **A ceiling in `viability.ts`**, sourced from the same shared constant as the
-   floor, so the generator stops writing above whatever the answer is.
-
-## Planned: staff-symmetric grand staff ranges
+## Staff-symmetric grand staff ranges — done
 
 The piano's grand ranges are lopsided when measured in ledger lines rather than
 semitones, which is why exercises show notes far above the treble staff and
 almost never below the bass staff — see `note-distribution.md` §1.
 
-| | now | pitches needing ledgers below | above |
+They were lopsided when measured in ledger lines rather than semitones, which is
+why exercises showed unreadable high notes and almost never a note under the
+bass clef:
+
+| | was | pitches needing ledgers below | above |
 |---|---|---|---|
 | grand-close | C3–C6 | 0 (C3 sits inside the bass staff) | 2 (A5, C6) |
 | grand-wide | E2–C7 | 1 (E2) | 14, up to 5 lines |
 
-The intent is for both to be as symmetric as possible about middle C, counted in
-ledger lines:
+Both are now symmetric about middle C in ledger lines. Ledger lines below the
+bass staff run E2, C2, A1, F1; above the treble staff A5, C6, E6, G6.
 
-| | planned | low | high | span |
+| | now | low | high | span |
 |---|---|---|---|---|
 | **grand-close** | 1 ledger line each way | E2 | A5 | 41 semitones |
 | **grand-wide** | 3 ledger lines each way | A1 | E6 | 55 semitones |
-| grand-wide, if the ceiling rises | 4 ledger lines each way | F1 | G6 | 62 semitones |
+| **full range** | the whole keyboard, on octave signs | A0 | C8 | 87 semitones |
 
-Ledger lines below the bass staff run E2, C2, A1, F1; above the treble staff
-A5, C6, E6, G6.
+What that did to the balance, at level 3:
 
-Two things fall out of the band:
+| | bass-staff notes | any bass note | entirely treble |
+|---|---|---|---|
+| grand-wide, before | 24.1% | 31.2% | 68.8% |
+| grand-close, now | 47.7% | 53.5% | 46.5% |
+| grand-wide, now | 48.6% | 52.4% | 47.6% |
+| full range, now | 44.6% | 46.9% | 53.1% |
 
-- **A1–E6 is exactly the widest staff-symmetric grand range the detector can
-  hear today.** A1 is 55 Hz, comfortably over the floor; E6 is 1318.5 Hz, just
-  under the ceiling. It fits with nothing to spare at the top.
-- **Four ledger lines each way bottoms out at F1, which is precisely the new
-  floor** — but its top, G6 at 1568 Hz, is above the current ceiling. So the
-  4-line version is gated on the ceiling measurement above, and no wider
-  symmetric range than that is reachable at all.
+Full range writes C1 to G7 of its 88 keys and withholds the rest per note, which
+is the band's business rather than the range's: A0–B0 hold too few cycles in one
+frame, and above G#7 readings come back an octave flat.
 
-Not yet implemented. Changing the ranges without first fixing the window
-starvation in `note-distribution.md` §2d would put the new outer notes in the
-most starved positions in the pool, so they would barely appear.
+Two things the band decides for the ranges:
+
+- **A1–E6 was the widest staff-symmetric grand range the old band could hear.**
+  E6 is 1318.5 Hz, which sat just under the old 1320 Hz ceiling with nothing to
+  spare. The measured ceiling leaves room to widen it if that turns out to be
+  wanted.
+- **Four ledger lines each way is F1–G6.** F1 is 43.7 Hz and G6 is 1568 Hz, both
+  now comfortably inside the band, so that range is available whenever three
+  lines proves too narrow.
