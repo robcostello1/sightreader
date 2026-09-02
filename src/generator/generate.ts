@@ -74,18 +74,39 @@ const MAX_EXERCISE_SPAN = 28;
 export const DEFAULT_RANGE_BIAS = 1;
 
 /**
+ * How far a window may hang off either end of the pool before being clipped.
+ *
+ * Without an overhang the window has to sit wholly inside the pool, and that one
+ * constraint starves both ends: the lowest pitch belongs to exactly one window
+ * position while the middle belongs to every one. On the piano's wide range that
+ * was a 29x gap in how often a pitch was even *available* to be chosen, and it is
+ * why the bottom of a range went unheard however the pitch choice was weighted.
+ *
+ * Half a span is the useful amount. It cuts the gap to under 2x, and the
+ * narrowest window it can produce still spans fourteen semitones — enough to
+ * hold the widest idiom in the library, so no window is ever too cramped to
+ * place anything in.
+ */
+const WINDOW_OVERHANG = MAX_EXERCISE_SPAN / 2;
+
+/**
  * Narrows a wide pool to the register this exercise lives in.
  *
  * Idioms are compact by construction, but nothing constrains the gap between
  * one and the next, so a pool spanning a whole piano produces a line that
  * lurches between octaves. Drawing a window per exercise keeps each one
  * readable while coverage still spreads over the full range across a session.
+ *
+ * The window is allowed to hang off either end and be clipped, which is what
+ * makes that last clause true — see WINDOW_OVERHANG.
  */
 function registerWindow(pool: readonly Midi[], rng: Rng): readonly Midi[] {
   const low = pool[0];
   const high = pool[pool.length - 1];
   if (high - low <= MAX_EXERCISE_SPAN) return pool;
-  const start = low + Math.floor(rng() * (high - low - MAX_EXERCISE_SPAN + 1));
+  const first = low - WINDOW_OVERHANG;
+  const last = high - MAX_EXERCISE_SPAN + WINDOW_OVERHANG;
+  const start = first + Math.floor(rng() * (last - first + 1));
   return pool.filter((midi) => midi >= start && midi <= start + MAX_EXERCISE_SPAN);
 }
 

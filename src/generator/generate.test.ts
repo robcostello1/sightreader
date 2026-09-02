@@ -111,6 +111,31 @@ describe('register window', () => {
     expect(medians.some((midi) => midi >= 72)).toBe(true);
   });
 
+  it('visits both ends of a wide pool nearly as often as the middle', () => {
+    // The window used to have to sit wholly inside the pool, which meant the
+    // lowest pitch belonged to one window position and the middle to every one.
+    // The three tests above all passed throughout: reaching the top once in
+    // forty seeds satisfies them, and none of them asks how *often*.
+    // A pool wholly inside the detector band, so nothing at either end is
+    // withheld for being unscoreable — this is measuring the window alone.
+    const REACHABLE = Array.from({ length: 96 - 40 + 1 }, (_, i) => 40 + i); // E2-C7
+    const SEEDS_MANY = Array.from({ length: 600 }, (_, i) => i + 1);
+    const bands = { bottom: 0, middle: 0, top: 0 };
+    const low = REACHABLE[0];
+    const high = REACHABLE[REACHABLE.length - 1];
+    for (const seed of SEEDS_MANY) {
+      const pitches = pitchesFor(REACHABLE, seed);
+      if (pitches.some((midi) => midi <= low + 5)) bands.bottom++;
+      if (pitches.some((midi) => midi >= high - 5)) bands.top++;
+      const centre = (low + high) / 2;
+      if (pitches.some((midi) => Math.abs(midi - centre) <= 3)) bands.middle++;
+    }
+    // Not equality — the ends are genuinely reachable by fewer windows than the
+    // middle even with the overhang. But within a factor of three, not thirty.
+    expect(bands.bottom).toBeGreaterThan(bands.middle / 3);
+    expect(bands.top).toBeGreaterThan(bands.middle / 3);
+  });
+
   it('leaves a fretboard region whole', () => {
     // Every guitar position is narrower than the window, so none is narrowed
     // and both ends of the region stay reachable.
