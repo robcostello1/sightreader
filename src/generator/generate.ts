@@ -151,12 +151,12 @@ function buildCandidates(
 function choosePlacement(
   rng: Rng,
   candidate: Candidate,
-  low: Midi,
-  high: Midi,
+  rangeLow: Midi,
+  rangeHigh: Midi,
   rangeBias: number,
 ): IdiomPlacement {
   return weightedPick(rng, candidate.placements, (placement) =>
-    startPitchWeight(placementPitches(placement)[0], low, high, rangeBias),
+    startPitchWeight(placementPitches(placement)[0], rangeLow, rangeHigh, rangeBias),
   );
 }
 
@@ -165,10 +165,19 @@ export function generateExercise(options: GenerateOptions): Exercise {
   const { bpm = 60, rangeBias = DEFAULT_RANGE_BIAS, viability = DEFAULT_VIABILITY } = options;
   const rng = options.rng ?? mulberry32(options.seed ?? 1);
 
-  const poolList = registerWindow(options.pool ?? regionPool(OPEN_POSITION), rng);
+  const range = options.pool ?? regionPool(OPEN_POSITION);
+  const poolList = registerWindow(range, rng);
   const pool = new Set(poolList);
   const low = poolList[0];
   const high = poolList[poolList.length - 1];
+  // The lean is measured against the whole range, not the window drawn from it.
+  // Weighted against the window, "the extremes" are wherever this exercise
+  // happens to sit, which on a wide pool is usually the middle of the
+  // instrument — so a lean outwards never reached the outer octaves it names.
+  // Against the range, a window at the bottom leans down and one at the top
+  // leans up, and a window in the middle comes out level, which is right.
+  const rangeLow = range[0];
+  const rangeHigh = range[range.length - 1];
 
   // The fractional part is the chance of admitting one more accidental than the
   // whole part, so a new key signature turns up occasionally before always.
@@ -230,7 +239,7 @@ export function generateExercise(options: GenerateOptions): Exercise {
     if (candidates.length > 0) {
       const candidate = weightedPick(rng, candidates, (c) => c.weight);
       cadence = {
-        placement: choosePlacement(rng, candidate, low, high, rangeBias),
+        placement: choosePlacement(rng, candidate, rangeLow, rangeHigh, rangeBias),
         duration: candidate.duration,
       };
     }
@@ -267,7 +276,7 @@ export function generateExercise(options: GenerateOptions): Exercise {
 
     const candidate: Candidate = sequenced?.candidate ?? weightedPick(rng, fits, (c) => c.weight);
     const placement: IdiomPlacement =
-      sequenced?.placement ?? choosePlacement(rng, candidate, low, high, rangeBias);
+      sequenced?.placement ?? choosePlacement(rng, candidate, rangeLow, rangeHigh, rangeBias);
 
     const rendered = instantiateIdiom(placement, instance);
     let duration = candidate.duration;
