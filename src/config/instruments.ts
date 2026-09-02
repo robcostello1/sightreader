@@ -97,32 +97,31 @@ function nameOf(midi: Midi): string {
  * gets a position control of its own — one that varies which staves are in play
  * as well as the range.
  *
- * Grand staff, wide stops at E2 rather than at the bottom of the keyboard: the
- * same detector floor that gates the low instruments applies to a piano's
- * bottom two octaves, and generating notes the microphone cannot score is worse
- * than not offering them. Raise it when the note-level viability check lands.
+ * The ranges are laid out in ledger lines rather than semitones, so that what
+ * they ask a reader to do grows evenly in both directions — see the comment on
+ * the grand positions below.
  */
 const pianoPositions: PositionDefinition[] = [
   { id: 'rh-5-finger', label: 'Middle C 5-finger (right hand)', writtenLow: 'C4', writtenHigh: 'G4', staffMode: 'treble' },
   { id: 'lh-5-finger', label: 'Middle C 5-finger (left hand)', writtenLow: 'C3', writtenHigh: 'G3', staffMode: 'bass' },
   { id: 'treble-staff', label: 'Treble staff', writtenLow: 'C4', writtenHigh: 'C6', staffMode: 'treble' },
   { id: 'bass-staff', label: 'Bass staff', writtenLow: 'E2', writtenHigh: 'E4', staffMode: 'bass' },
-  { id: 'grand-close', label: 'Grand staff, close', writtenLow: 'C3', writtenHigh: 'C6', staffMode: 'grand' },
-  { id: 'grand-wide', label: 'Grand staff, wide', writtenLow: 'E2', writtenHigh: 'C7', staffMode: 'grand' },
-  // The outer octaves are unreadable without 8va and 8vb: five ledger lines
-  // either side of the staff is not notation anyone sight-reads. Held back
-  // until octave signs are drawn — and its bottom two octaves sit under the
-  // detector floor besides.
-  {
-    id: 'full-range',
-    label: 'Full range',
-    writtenLow: 'A0',
-    writtenHigh: 'C8',
-    staffMode: 'grand',
-    status: 'comingSoon',
-    comingSoonReason: 'Needs octave signs before the outer octaves are readable.',
-  },
+  // The two grand ranges are symmetric about middle C in *ledger lines*, not in
+  // semitones. Measured in semitones they look lopsided and read evenly; the
+  // old E2-C7 was the reverse — one ledger line below the bass staff against
+  // five above the treble, so exercises showed unreadable high notes and almost
+  // never a note under the bass clef. Ledger lines below the bass staff run E2,
+  // C2, A1, F1; above the treble staff A5, C6, E6, G6.
+  { id: 'grand-close', label: 'Grand staff, close', writtenLow: 'E2', writtenHigh: 'A5', staffMode: 'grand' },
+  { id: 'grand-wide', label: 'Grand staff, wide', writtenLow: 'A1', writtenHigh: 'E6', staffMode: 'grand' },
+  // The whole keyboard, now that octave signs keep the outer octaves readable
+  // and the detector band has been measured rather than assumed. What is still
+  // withheld is decided per note by viability, not here: A0-B0 hold too few
+  // cycles in one frame to be named, and above G#7 readings come back an octave
+  // flat, so neither end is written even though both are in the range.
+  { id: 'full-range', label: 'Full range', writtenLow: 'A0', writtenHigh: 'C8', staffMode: 'grand' },
 ];
+
 
 export const INSTRUMENTS: InstrumentDefinition[] = [
   {

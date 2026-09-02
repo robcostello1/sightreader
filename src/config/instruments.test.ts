@@ -41,12 +41,28 @@ describe('instrument catalogue', () => {
   });
 
   it('never resolves to a gated position, even when one is asked for by name', () => {
-    // A setting saved before "Full range" was held back must not put the app
-    // into a range it cannot draw.
+    // A setting saved while a position was available must not put the app into
+    // one that has since been held back. Nothing is gated at the moment — "Full
+    // range" was, until octave signs made its outer octaves readable — so this
+    // builds one rather than depending on the catalogue to keep supplying it.
     const piano = instrumentById('piano');
-    expect(piano.positions?.find((p) => p.id === 'full-range')?.status).toBe('comingSoon');
-    expect(positionById(piano, 'full-range')?.id).not.toBe('full-range');
+    const withGated = {
+      ...piano,
+      positions: [
+        { id: 'held-back', label: 'Held back', writtenLow: 'A0', writtenHigh: 'C8', status: 'comingSoon' as const },
+        ...piano.positions!,
+      ],
+    };
+    expect(positionById(withGated, 'held-back')?.id).not.toBe('held-back');
+    expect(positionById(withGated, null)?.status).toBeUndefined();
     expect(positionById(piano, null)?.status).toBeUndefined();
+  });
+
+  it('offers the whole keyboard, and lets viability decide what it writes', () => {
+    const piano = instrumentById('piano');
+    const full = positionById(piano, 'full-range');
+    expect(full?.id).toBe('full-range');
+    expect(soundingPool(piano, full)).toHaveLength(88);
   });
 
 });
