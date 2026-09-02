@@ -65,16 +65,26 @@ describe('the formula', () => {
 
 describe('the three ways a note can be unscoreable', () => {
   it('rejects a frequency the detector cannot resolve, however long it is held', () => {
-    // A 2048-sample frame at 44.1kHz spans 46ms, so under about 43Hz it stops
-    // holding the cycles the detector needs — and holding the note longer puts
-    // no more of it inside one frame. A tuba's D1 and a bass guitar's open E
-    // are both under it.
-    for (const name of ['D1', 'E1']) {
+    // A 2048-sample frame at 44.1kHz spans 46ms, and a pitch needs 1.5 cycles
+    // inside one frame to be named — holding the note longer puts no more of it
+    // in there. The piano's bottom three keys are under that.
+    for (const name of ['A0', 'B0']) {
       expect(hz(name)).toBeLessThan(CONFIG.resolutionFloorHz);
       expect(isViable(hz(name), NOTE_VALUES.whole, 4, 60, CONFIG)).toBe(false);
     }
-    // A tone higher and the same whole note is fine.
-    expect(isViable(hz('F1'), NOTE_VALUES.whole, 4, 60, CONFIG)).toBe(true);
+    // A semitone higher and the same whole note is fine.
+    expect(isViable(hz('C1'), NOTE_VALUES.whole, 4, 60, CONFIG)).toBe(true);
+  });
+
+  it('rejects a frequency above the band, where readings come back an octave flat', () => {
+    // The mirror of the floor: past ~13 samples per period the peak an octave
+    // down is the better-resolved one, so a note up there is confidently wrong
+    // rather than merely noisy. A piccolo's top notes live here.
+    for (const name of ['A7', 'C8']) {
+      expect(hz(name)).toBeGreaterThan(CONFIG.resolutionCeilingHz);
+      expect(isViable(hz(name), NOTE_VALUES.whole, 4, 60, CONFIG)).toBe(false);
+    }
+    expect(isViable(hz('G#7'), NOTE_VALUES.whole, 4, 60, CONFIG)).toBe(true);
   });
 
   it('rejects a note with too few cycles of itself, which bites in the bass', () => {
@@ -114,14 +124,14 @@ describe('shortestViableValue', () => {
   });
 
   it('answers from the lowest note it could write, not the lowest note there is', () => {
-    // A bass guitar's open E is under the resolution floor, so it is absent
-    // from every exercise whatever its length. Letting it set the range's
+    // The piano's bottom keys are under the resolution floor, so they are absent
+    // from every exercise whatever their length. Letting them set the range's
     // shortest value would report null for an instrument that plays perfectly
     // well an octave up.
-    const bass = pool('E1', 'G3');
-    expect(shortestViableValue(bass, 4, 120, CONFIG, DEFAULT_SCORING)).not.toBeNull();
+    const grand = pool('A0', 'G3');
+    expect(shortestViableValue(grand, 4, 120, CONFIG, DEFAULT_SCORING)).not.toBeNull();
     // A range that is entirely below the floor has nothing to say.
-    expect(shortestViableValue(pool('A0', 'D1'), 4, 120, CONFIG, DEFAULT_SCORING)).toBeNull();
+    expect(shortestViableValue(pool('A0', 'B0'), 4, 120, CONFIG, DEFAULT_SCORING)).toBeNull();
   });
 
   it('asks less of a high range than a low one', () => {

@@ -506,9 +506,10 @@ describe('viability gating', () => {
       }
     }
 
-    // The bottom of the range: nothing under the resolution floor at all, and
-    // no semiquavers for a few semitones above it.
-    expect(shortestAt.get(nameToMidi('E1'))).toBeUndefined();
+    // The bottom of the range keeps its long values and loses its short ones.
+    // Every pitch here is over the resolution floor — that end of the gate is
+    // covered in viability.test.ts, which has notes actually under it.
+    expect(shortestAt.get(nameToMidi('E1'))).toBeGreaterThan(NOTE_VALUES.sixteenth);
     expect(shortestAt.get(nameToMidi('G1'))).toBeGreaterThan(NOTE_VALUES.sixteenth);
     // The top of the same range, from the same exercises: semiquavers as usual.
     const high = [...shortestAt].filter(([midi]) => midi >= nameToMidi('C2'));
