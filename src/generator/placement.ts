@@ -121,16 +121,33 @@ export function validPlacements(
 }
 
 /**
- * Weight for a starting pitch, biased towards the extremes of the region.
+ * Weight for a starting pitch, according to how far it sits from the centre of
+ * the range.
  *
- * Spec §3: the low E/A and high B/E strings are typically weakest and involve
- * ledger lines, so they deserve more practice than the middle. Weighting the
- * choice rather than widening any single exercise means coverage evens out over
- * many exercises without making one of them hard to read.
+ * `rangeBias` is what an extreme of the range is worth against its centre: 1
+ * weights every pitch alike, above 1 leans towards the edges, below 1 towards
+ * the middle. It is reciprocal-symmetric, so 4 and 0.25 are mirror shapes of
+ * the same strength. The exponent is the *square* of the distance from centre,
+ * which keeps the lean gentle through the middle and lets it reach full
+ * strength only at the ends.
+ *
+ * It defaults to 1 because a lean applied open-loop does not do what spec §3
+ * asks of it. The spec wants weighting so that coverage evens out over many
+ * exercises; measuring the generator showed the distribution was already
+ * extremity-heavy before any weighting, from the shape of the idiom library and
+ * from the holes a fretted position leaves in its pool, so leaning further that
+ * way took guitar 5th position to twelve times as many notes at the edges of
+ * the range as in the middle of it. See docs/note-distribution.md.
  */
-export function startPitchWeight(midi: Midi, low: Midi, high: Midi, extremeBias: number): number {
-  if (high === low) return 1;
+export function startPitchWeight(midi: Midi, low: Midi, high: Midi, rangeBias: number): number {
+  if (!(rangeBias > 0)) {
+    // Zero used to mean "no bias" under the old additive parameter, where it
+    // was the neutral value. Here it would collapse the choice onto the exact
+    // centre of the range, so it is worth catching rather than obeying.
+    throw new RangeError(`rangeBias must be positive (1 is even), received ${rangeBias}`);
+  }
+  if (high === low || rangeBias === 1) return 1;
   const centre = (low + high) / 2;
   const normalised = Math.abs(midi - centre) / ((high - low) / 2);
-  return 1 + extremeBias * normalised * normalised;
+  return rangeBias ** (normalised * normalised);
 }

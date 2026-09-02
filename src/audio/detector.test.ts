@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_FRAME_SIZE, PitchyDetector, computeRms } from './detector';
+import { DETECTOR_MIN_HZ } from './constants';
+import { DEFAULT_VIABILITY } from '../config/viability';
 import { centsFromTarget, midiToHz } from '../lib/pitch';
 
 const SAMPLE_RATE = 44100;
@@ -95,5 +97,18 @@ describe('PitchyDetector', () => {
     const narrow = new PitchyDetector({ minHz: 200, maxHz: 400 });
     expect(narrow.detect(pluck(midiToHz(40)), SAMPLE_RATE).hz).toBeNull(); // E2, 82Hz
     expect(narrow.detect(pluck(midiToHz(62)), SAMPLE_RATE).hz).not.toBeNull(); // D4, 294Hz
+  });
+
+  it('hears everything the generator is willing to write', () => {
+    // These two were an octave apart, so the generator wrote notes the
+    // detector discarded before scoring — silently, as an unplayed note. They
+    // are the same physical limit and must be the same number.
+    expect(DEFAULT_VIABILITY.resolutionFloorHz).toBe(DETECTOR_MIN_HZ);
+
+    // F1 is the lowest note the frame can resolve at 44.1kHz; E1 is not.
+    const floor = new PitchyDetector();
+    expect(midiToHz(29)).toBeGreaterThan(DETECTOR_MIN_HZ); // F1, 43.7Hz
+    expect(midiToHz(28)).toBeLessThan(DETECTOR_MIN_HZ); // E1, 41.2Hz
+    expect(floor.detect(pluck(midiToHz(29)), SAMPLE_RATE).hz).not.toBeNull();
   });
 });

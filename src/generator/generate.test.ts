@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PADDING_IDIOM_ID, generateExercise } from './generate';
+import { DEFAULT_RANGE_BIAS, PADDING_IDIOM_ID, generateExercise } from './generate';
 import { startPitchWeight, validPlacements } from './placement';
 import { mulberry32 } from './rng';
 import { OPEN_POSITION, POSITIONS, regionPool } from '../config/regions';
@@ -20,16 +20,41 @@ const SEEDS = Array.from({ length: 40 }, (_, i) => i + 1);
 const ALL_LEVELS = Array.from({ length: MAX_LEVEL }, (_, i) => i + 1);
 
 describe('startPitchWeight', () => {
-  it('favours the extremes of the region over its middle', () => {
-    const middle = startPitchWeight((LOW + HIGH) / 2, LOW, HIGH, 3);
-    expect(startPitchWeight(LOW, LOW, HIGH, 3)).toBeGreaterThan(middle);
-    expect(startPitchWeight(HIGH, LOW, HIGH, 3)).toBeGreaterThan(middle);
+  const MIDDLE = (LOW + HIGH) / 2;
+
+  it('weights every pitch alike at 1, which is the default', () => {
+    expect(DEFAULT_RANGE_BIAS).toBe(1);
+    for (const midi of [LOW, MIDDLE, HIGH]) {
+      expect(startPitchWeight(midi, LOW, HIGH, 1)).toBe(1);
+    }
   });
 
-  it('flattens to uniform when the bias is zero', () => {
-    expect(startPitchWeight(LOW, LOW, HIGH, 0)).toBe(
-      startPitchWeight((LOW + HIGH) / 2, LOW, HIGH, 0),
+  it('leans towards the edges above 1 and towards the middle below it', () => {
+    expect(startPitchWeight(LOW, LOW, HIGH, 4)).toBeGreaterThan(
+      startPitchWeight(MIDDLE, LOW, HIGH, 4),
     );
+    expect(startPitchWeight(HIGH, LOW, HIGH, 4)).toBeGreaterThan(
+      startPitchWeight(MIDDLE, LOW, HIGH, 4),
+    );
+    expect(startPitchWeight(LOW, LOW, HIGH, 0.25)).toBeLessThan(
+      startPitchWeight(MIDDLE, LOW, HIGH, 0.25),
+    );
+  });
+
+  it('is the weight an extreme carries against the centre', () => {
+    // The parameter is a ratio, so it can be read off the ends directly rather
+    // than inferred from the curve.
+    expect(startPitchWeight(LOW, LOW, HIGH, 4) / startPitchWeight(MIDDLE, LOW, HIGH, 4)).toBeCloseTo(4);
+    expect(startPitchWeight(HIGH, LOW, HIGH, 0.25) / startPitchWeight(MIDDLE, LOW, HIGH, 0.25)).toBeCloseTo(
+      0.25,
+    );
+  });
+
+  it('rejects a non-positive bias rather than collapsing onto the centre', () => {
+    // Zero was the neutral value under the old additive parameter; here it
+    // would silently mean "the exact middle of the range, always".
+    expect(() => startPitchWeight(LOW, LOW, HIGH, 0)).toThrow(RangeError);
+    expect(() => startPitchWeight(LOW, LOW, HIGH, -1)).toThrow(RangeError);
   });
 });
 
@@ -87,8 +112,8 @@ describe('register window', () => {
   });
 
   it('leaves a fretboard region whole', () => {
-    // Every guitar position is narrower than the window, so none is narrowed —
-    // the extremes stay reachable, which is what the extreme bias is for.
+    // Every guitar position is narrower than the window, so none is narrowed
+    // and both ends of the region stay reachable.
     for (const region of POSITIONS) {
       const pool = regionPool(region);
       const pitches = SEEDS.flatMap((seed) => pitchesFor(pool, seed));

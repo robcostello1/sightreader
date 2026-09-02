@@ -1,9 +1,9 @@
 /**
  * Build order step 6: procedural exercise generator. Instantiates idioms
  * against a region pool under the local-interval constraint, with weighted
- * starting-pitch selection favouring the extremes of the range.
+ * starting-pitch selection weighted across the range.
  */
-export { generateExercise, PADDING_IDIOM_ID } from './generate';
+export { DEFAULT_RANGE_BIAS, generateExercise, PADDING_IDIOM_ID } from './generate';
 export type { GenerateOptions } from './generate';
 export { startPitchWeight, validPlacements } from './placement';
 export type { PlacementConstraints } from './placement';

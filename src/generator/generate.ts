@@ -27,8 +27,12 @@ export interface GenerateOptions {
   bpm?: number;
   seed?: number;
   rng?: Rng;
-  /** How strongly to favour the extremes of the region. */
-  extremeBias?: number;
+  /**
+   * What an extreme of the range is worth against its centre when a starting
+   * pitch is chosen. 1 is even, above 1 leans towards the edges, below 1
+   * towards the middle. Defaults to DEFAULT_RANGE_BIAS.
+   */
+  rangeBias?: number;
   /**
    * Keeps notes the microphone could not score off the page. Off by default
    * until the pitch-detection spike calibrates it.
@@ -56,6 +60,18 @@ function barDuration([beatsPerBar, beatUnit]: [number, number]): NoteValue {
  * five-octave keyboard range is not read as an invitation to leap across it.
  */
 const MAX_EXERCISE_SPAN = 28;
+
+/**
+ * How starting-pitch choice leans across the range by default — even, for now.
+ *
+ * Spec §3 asks for weighted rather than uniform selection so that coverage
+ * evens out over many exercises. It shipped as a fixed lean towards the
+ * extremes, which measurement showed was pushing an already extremity-heavy
+ * distribution further the same way rather than evening anything out; see
+ * docs/note-distribution.md. The dial stays, because a deliberate lean either
+ * way is worth having per instrument, but its resting position is neutral.
+ */
+export const DEFAULT_RANGE_BIAS = 1;
 
 /**
  * Narrows a wide pool to the register this exercise lives in.
@@ -116,16 +132,16 @@ function choosePlacement(
   candidate: Candidate,
   low: Midi,
   high: Midi,
-  extremeBias: number,
+  rangeBias: number,
 ): IdiomPlacement {
   return weightedPick(rng, candidate.placements, (placement) =>
-    startPitchWeight(placementPitches(placement)[0], low, high, extremeBias),
+    startPitchWeight(placementPitches(placement)[0], low, high, rangeBias),
   );
 }
 
 export function generateExercise(options: GenerateOptions): Exercise {
   const config = typeof options.level === 'number' ? levelConfig(options.level) : options.level;
-  const { bpm = 60, extremeBias = 3, viability = DEFAULT_VIABILITY } = options;
+  const { bpm = 60, rangeBias = DEFAULT_RANGE_BIAS, viability = DEFAULT_VIABILITY } = options;
   const rng = options.rng ?? mulberry32(options.seed ?? 1);
 
   const poolList = registerWindow(options.pool ?? regionPool(OPEN_POSITION), rng);
@@ -193,7 +209,7 @@ export function generateExercise(options: GenerateOptions): Exercise {
     if (candidates.length > 0) {
       const candidate = weightedPick(rng, candidates, (c) => c.weight);
       cadence = {
-        placement: choosePlacement(rng, candidate, low, high, extremeBias),
+        placement: choosePlacement(rng, candidate, low, high, rangeBias),
         duration: candidate.duration,
       };
     }
@@ -230,7 +246,7 @@ export function generateExercise(options: GenerateOptions): Exercise {
 
     const candidate: Candidate = sequenced?.candidate ?? weightedPick(rng, fits, (c) => c.weight);
     const placement: IdiomPlacement =
-      sequenced?.placement ?? choosePlacement(rng, candidate, low, high, extremeBias);
+      sequenced?.placement ?? choosePlacement(rng, candidate, low, high, rangeBias);
 
     const rendered = instantiateIdiom(placement, instance);
     let duration = candidate.duration;
