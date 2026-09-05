@@ -74,18 +74,39 @@ const MAX_EXERCISE_SPAN = 28;
 export const DEFAULT_RANGE_BIAS = 1;
 
 /**
+ * How far a window may hang off either end of the pool before being clipped.
+ *
+ * Without an overhang the window has to sit wholly inside the pool, and that one
+ * constraint starves both ends: the lowest pitch belongs to exactly one window
+ * position while the middle belongs to every one. On the piano's wide range that
+ * was a 29x gap in how often a pitch was even *available* to be chosen, and it is
+ * why the bottom of a range went unheard however the pitch choice was weighted.
+ *
+ * Half a span is the useful amount. It cuts the gap to under 2x, and the
+ * narrowest window it can produce still spans fourteen semitones — enough to
+ * hold the widest idiom in the library, so no window is ever too cramped to
+ * place anything in.
+ */
+const WINDOW_OVERHANG = MAX_EXERCISE_SPAN / 2;
+
+/**
  * Narrows a wide pool to the register this exercise lives in.
  *
  * Idioms are compact by construction, but nothing constrains the gap between
  * one and the next, so a pool spanning a whole piano produces a line that
  * lurches between octaves. Drawing a window per exercise keeps each one
  * readable while coverage still spreads over the full range across a session.
+ *
+ * The window is allowed to hang off either end and be clipped, which is what
+ * makes that last clause true — see WINDOW_OVERHANG.
  */
 function registerWindow(pool: readonly Midi[], rng: Rng): readonly Midi[] {
   const low = pool[0];
   const high = pool[pool.length - 1];
   if (high - low <= MAX_EXERCISE_SPAN) return pool;
-  const start = low + Math.floor(rng() * (high - low - MAX_EXERCISE_SPAN + 1));
+  const first = low - WINDOW_OVERHANG;
+  const last = high - MAX_EXERCISE_SPAN + WINDOW_OVERHANG;
+  const start = first + Math.floor(rng() * (last - first + 1));
   return pool.filter((midi) => midi >= start && midi <= start + MAX_EXERCISE_SPAN);
 }
 
@@ -130,12 +151,12 @@ function buildCandidates(
 function choosePlacement(
   rng: Rng,
   candidate: Candidate,
-  low: Midi,
-  high: Midi,
+  rangeLow: Midi,
+  rangeHigh: Midi,
   rangeBias: number,
 ): IdiomPlacement {
   return weightedPick(rng, candidate.placements, (placement) =>
-    startPitchWeight(placementPitches(placement)[0], low, high, rangeBias),
+    startPitchWeight(placementPitches(placement)[0], rangeLow, rangeHigh, rangeBias),
   );
 }
 
@@ -144,10 +165,19 @@ export function generateExercise(options: GenerateOptions): Exercise {
   const { bpm = 60, rangeBias = DEFAULT_RANGE_BIAS, viability = DEFAULT_VIABILITY } = options;
   const rng = options.rng ?? mulberry32(options.seed ?? 1);
 
-  const poolList = registerWindow(options.pool ?? regionPool(OPEN_POSITION), rng);
+  const range = options.pool ?? regionPool(OPEN_POSITION);
+  const poolList = registerWindow(range, rng);
   const pool = new Set(poolList);
   const low = poolList[0];
   const high = poolList[poolList.length - 1];
+  // The lean is measured against the whole range, not the window drawn from it.
+  // Weighted against the window, "the extremes" are wherever this exercise
+  // happens to sit, which on a wide pool is usually the middle of the
+  // instrument — so a lean outwards never reached the outer octaves it names.
+  // Against the range, a window at the bottom leans down and one at the top
+  // leans up, and a window in the middle comes out level, which is right.
+  const rangeLow = range[0];
+  const rangeHigh = range[range.length - 1];
 
   // The fractional part is the chance of admitting one more accidental than the
   // whole part, so a new key signature turns up occasionally before always.
@@ -209,7 +239,7 @@ export function generateExercise(options: GenerateOptions): Exercise {
     if (candidates.length > 0) {
       const candidate = weightedPick(rng, candidates, (c) => c.weight);
       cadence = {
-        placement: choosePlacement(rng, candidate, low, high, rangeBias),
+        placement: choosePlacement(rng, candidate, rangeLow, rangeHigh, rangeBias),
         duration: candidate.duration,
       };
     }
@@ -246,7 +276,7 @@ export function generateExercise(options: GenerateOptions): Exercise {
 
     const candidate: Candidate = sequenced?.candidate ?? weightedPick(rng, fits, (c) => c.weight);
     const placement: IdiomPlacement =
-      sequenced?.placement ?? choosePlacement(rng, candidate, low, high, rangeBias);
+      sequenced?.placement ?? choosePlacement(rng, candidate, rangeLow, rangeHigh, rangeBias);
 
     const rendered = instantiateIdiom(placement, instance);
     let duration = candidate.duration;

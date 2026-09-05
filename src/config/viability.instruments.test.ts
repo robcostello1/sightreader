@@ -41,24 +41,19 @@ describe('the low instruments, now that none of them is held back', () => {
     }
   });
 
-  it('loses only the bottom of the bottom, to the resolution floor', () => {
-    // Under about 43Hz the detector cannot resolve a pitch at all, so those
-    // notes are absent however long they are held. It costs the four
-    // instruments that reach that low a few semitones each, not a range.
+  it('now loses nothing at all at the bottom', () => {
+    // The floor was 43Hz on a two-cycle rule of thumb, and cost a bass its open
+    // E and a tuba its bottom three semitones. Measuring the detector put it at
+    // 32.7Hz — a pitch needs 1.5 cycles in a frame, not 2 — which is below
+    // every note any of these instruments can play.
     const lost: Record<string, string[]> = {};
     for (const id of formerlyGated) {
       const unresolvable = poolFor(id).filter((midi) => midiToHz(midi) < CONFIG.resolutionFloorHz);
       if (unresolvable.length > 0) lost[id] = unresolvable.map(midiToName);
     }
-    expect(lost).toEqual({
-      'double-bass': ['E1'],
-      'french-horn': ['E1'],
-      tuba: ['D1', 'D#1', 'E1'],
-      'bass-guitar': ['E1'],
-    });
-    // One semitone off a bass, three off a tuba. Recovering them means a longer
-    // detector frame for low registers, which is a detector change rather than
-    // a constant — see ViabilityConfig.resolutionFloorHz.
+    expect(lost).toEqual({});
+    // What is still out of reach is the piano's bottom three keys, A0 to B0,
+    // which no other instrument goes near.
   });
 
   it('keeps the short values away from the low register, which is the point', () => {

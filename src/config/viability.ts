@@ -1,4 +1,4 @@
-import { DETECTOR_MIN_HZ, NOMINAL_HOP_MS } from '../audio/constants';
+import { DETECTOR_MAX_HZ, DETECTOR_MIN_HZ, NOMINAL_HOP_MS } from '../audio/constants';
 import { midiToHz } from '../lib/pitch';
 import type { ScoringConfig } from './levels';
 import { NOTE_VALUES, type Midi, type NoteValue } from '../lib/types';
@@ -46,6 +46,19 @@ export interface ViabilityConfig {
    * disagree — they did, by an octave, and the generator lost the argument.
    */
   resolutionFloorHz: number;
+  /**
+   * Highest frequency the detector can resolve at all, in Hz.
+   *
+   * The mirror of the floor, and it had no counterpart here at all, so the
+   * generator wrote whatever an instrument's range reached and the detector
+   * discarded it: three notes in five on a piccolo, one in three on a soprano
+   * recorder. Above this the NSDF peak an octave down is better resolved than
+   * the true one and readings come back exactly an octave flat, so a note up
+   * there is not merely noisy, it is confidently wrong.
+   *
+   * Set from DETECTOR_MAX_HZ, for the same reason as the floor.
+   */
+  resolutionCeilingHz: number;
 }
 
 /**
@@ -60,6 +73,7 @@ export const DEFAULT_VIABILITY: ViabilityConfig = {
   marginMultiplier: 1.5,
   attackExclusionMs: 40,
   resolutionFloorHz: DETECTOR_MIN_HZ,
+  resolutionCeilingHz: DETECTOR_MAX_HZ,
 };
 
 /** Cycles a note must contain to be scoreable, margin included. */
@@ -94,10 +108,10 @@ export function periodsAvailable(
 /**
  * Whether this pitch, at this value and tempo, is worth putting on the page.
  *
- * Three ways a note can be unscoreable, and all three are properties of the
+ * Four ways a note can be unscoreable, and all of them are properties of the
  * note rather than of the instrument or the tempo:
  *
- *  - its frequency is under what the detector can resolve at all;
+ *  - its frequency is outside the band the detector can resolve at all;
  *  - it holds too few cycles of itself to be named;
  *  - it yields too few detector frames to be judged.
  *
@@ -119,7 +133,7 @@ export function isViable(
   hopMs: number = NOMINAL_HOP_MS,
 ): boolean {
   if (!config.enabled) return true;
-  if (hz < config.resolutionFloorHz) return false;
+  if (hz < config.resolutionFloorHz || hz > config.resolutionCeilingHz) return false;
   if (periodsAvailable(hz, value, beatUnit, bpm, config) < requiredPeriods(config) - 1e-9) {
     return false;
   }

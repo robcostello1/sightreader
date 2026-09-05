@@ -131,6 +131,46 @@ describe('Score', () => {
     expect(markup).toContain(VERDICT_FALLBACKS.unclear);
   });
 
+  it('draws an octave sign over a passage instead of a stack of ledger lines', () => {
+    // Seven ledger lines is not notation anyone sight-reads. The passage is
+    // written an octave down with 8va over it, so it sits beside the staff.
+    const high: Exercise = {
+      ...simple,
+      notes: [86, 88, 89, 91].map((midi, i) => ({
+        midi,
+        value: NOTE_VALUES.quarter,
+        idiomId: 'test',
+        instance: i,
+      })),
+    };
+    const piano = instrumentById('piano');
+    const markup = render(
+      <Score exercise={high} instrument={piano} position={positionById(piano, 'full-range')} />,
+    ).container.innerHTML;
+    expect(markup).toContain('8');
+    expect(markup).toContain('va');
+  });
+
+  it('draws one over a passage below the bass staff too', () => {
+    const low: Exercise = {
+      ...simple,
+      notes: [31, 33, 35, 36].map((midi, i) => ({
+        midi,
+        value: NOTE_VALUES.quarter,
+        idiomId: 'test',
+        instance: i,
+      })),
+    };
+    const piano = instrumentById('piano');
+    expect(() =>
+      render(<Score exercise={low} instrument={piano} position={positionById(piano, 'full-range')} />),
+    ).not.toThrow();
+    const markup = render(
+      <Score exercise={low} instrument={piano} position={positionById(piano, 'full-range')} />,
+    ).container.innerHTML;
+    expect(markup).toContain('vb');
+  });
+
   it('marks the active note distinctly from scored ones', () => {
     const markup = render(<Score exercise={simple} activeIndex={2} />).container.innerHTML;
     expect(markup).toContain(VERDICT_FALLBACKS.active);

@@ -32,6 +32,65 @@ export function midiToVexKey(midi: Midi, key: MusicalKey): string {
 }
 
 /** Whole-note units in one bar. */
+/**
+ * How far past a staff a passage may sit before it earns an octave sign.
+ *
+ * Only outwards, which is how signs are actually used: 8va sits above a treble
+ * staff and 8vb below a bass one, and the opposite pair — 8vb under a treble
+ * staff, 8va over a bass one — is vanishingly rare in real music. The asymmetry
+ * is not a simplification but the point. A guitar is written an octave up
+ * precisely so its low E lands three ledger lines under the treble staff, and
+ * marking that 8vb would be both wrong and unreadable. Same for a trombone's
+ * top notes over a bass staff.
+ *
+ * On a grand staff the question does not arise in the other direction anyway:
+ * anything under middle C is already the bass staff's to draw.
+ *
+ * C6 is two ledger lines over the treble staff, C2 two under the bass. Past
+ * those an engraver reaches for a sign rather than a third ledger line.
+ */
+const STAFF_COMFORT: Record<string, { low: Midi; high: Midi }> = {
+  treble: { low: Number.NEGATIVE_INFINITY, high: 84 },
+  bass: { low: 36, high: Number.POSITIVE_INFINITY },
+  // Viola stays close to its staff; a sign either side would be an oddity.
+  alto: { low: Number.NEGATIVE_INFINITY, high: Number.POSITIVE_INFINITY },
+};
+
+/** Furthest an octave sign displaces: 8va/8vb, then 15ma/15mb. */
+const MAX_OCTAVE_SHIFT = 2;
+
+/**
+ * Octaves to move a passage on the page, so it can be read near the staff with
+ * a sign over it rather than on a stack of ledger lines.
+ *
+ * Positive writes the passage lower and marks it 8va/15ma; negative writes it
+ * higher and marks it 8vb/15mb. Zero is the ordinary case and by far the
+ * commonest — nothing inside a normal range is displaced at all.
+ *
+ * Decided for a whole bar of one staff rather than per note. A note-by-note
+ * rule would flick in and out of the sign wherever a phrase crossed the
+ * threshold, which is both ugly and harder to read than the ledger lines it
+ * was meant to replace.
+ */
+export function octaveShiftFor(clef: string, written: readonly Midi[]): number {
+  const comfort = STAFF_COMFORT[clef];
+  if (!comfort || written.length === 0) return 0;
+  const above = Math.max(...written) - comfort.high;
+  const below = comfort.low - Math.min(...written);
+  // A 28-semitone exercise cannot leave a 48-semitone comfort zone at both
+  // ends, so at most one of these is ever positive.
+  const shift = above > 0 ? Math.ceil(above / 12) : below > 0 ? -Math.ceil(below / 12) : 0;
+  return Math.max(-MAX_OCTAVE_SHIFT, Math.min(MAX_OCTAVE_SHIFT, shift));
+}
+
+/** How an octave sign of this size is labelled, split for its superscript. */
+export function octaveSignLabel(shift: number): { text: string; superscript: string } | null {
+  if (shift === 0) return null;
+  const text = Math.abs(shift) === 1 ? '8' : '15';
+  const above = shift > 0;
+  return { text, superscript: Math.abs(shift) === 1 ? (above ? 'va' : 'vb') : above ? 'ma' : 'mb' };
+}
+
 export function barDuration([beatsPerBar, beatUnit]: [number, number]): NoteValue {
   return beatsPerBar / beatUnit;
 }

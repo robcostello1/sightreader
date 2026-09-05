@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_FRAME_SIZE, PitchyDetector, computeRms } from './detector';
-import { DETECTOR_MIN_HZ } from './constants';
+import { DETECTOR_MAX_HZ, DETECTOR_MIN_HZ } from './constants';
 import { DEFAULT_VIABILITY } from '../config/viability';
 import { centsFromTarget, midiToHz } from '../lib/pitch';
 
@@ -105,10 +105,42 @@ describe('PitchyDetector', () => {
     // are the same physical limit and must be the same number.
     expect(DEFAULT_VIABILITY.resolutionFloorHz).toBe(DETECTOR_MIN_HZ);
 
-    // F1 is the lowest note the frame can resolve at 44.1kHz; E1 is not.
-    const floor = new PitchyDetector();
-    expect(midiToHz(29)).toBeGreaterThan(DETECTOR_MIN_HZ); // F1, 43.7Hz
-    expect(midiToHz(28)).toBeLessThan(DETECTOR_MIN_HZ); // E1, 41.2Hz
-    expect(floor.detect(pluck(midiToHz(29)), SAMPLE_RATE).hz).not.toBeNull();
+    expect(DEFAULT_VIABILITY.resolutionCeilingHz).toBe(DETECTOR_MAX_HZ);
+
+    // C1 is the lowest note the frame can resolve at 44.1kHz; B0 is not.
+    const detector = new PitchyDetector();
+    expect(midiToHz(24)).toBeGreaterThan(DETECTOR_MIN_HZ); // C1, 32.7Hz
+    expect(midiToHz(23)).toBeLessThan(DETECTOR_MIN_HZ); // B0, 30.9Hz
+    expect(detector.detect(pluck(midiToHz(24)), SAMPLE_RATE).hz).not.toBeNull();
+
+    // And G#7 is the highest; above it the reading comes back an octave flat.
+    expect(midiToHz(104)).toBeLessThan(DETECTOR_MAX_HZ); // G#7, 3322Hz
+    expect(midiToHz(105)).toBeGreaterThan(DETECTOR_MAX_HZ); // A7, 3520Hz
+  });
+
+  it('narrows the band when the hardware opens at a higher rate', () => {
+    // The same frame spans less time at 48kHz, so it holds 1.5 cycles of a
+    // higher pitch than it does at 44.1kHz: C1 is nameable at one rate and not
+    // the other, and a device opening at 48kHz simply loses it.
+    const detector = new PitchyDetector();
+    expect(detector.bandAt(44100).minHz).toBeCloseTo(DETECTOR_MIN_HZ, 6);
+    expect(detector.bandAt(48000).minHz).toBeGreaterThan(midiToHz(24)); // above C1
+    expect(detector.bandAt(44100).minHz).toBeLessThan(midiToHz(24));
+  });
+
+  it('never widens past the band the generator writes to', () => {
+    // A higher rate would resolve a little higher too, but the generator works
+    // to the nominal band, so nothing is ever written up there. Widening would
+    // only admit readings from a region nothing asks about — and just past the
+    // ceiling they come back an octave flat, which is worse than silence.
+    const detector = new PitchyDetector();
+    expect(detector.bandAt(48000).maxHz).toBe(DETECTOR_MAX_HZ);
+    expect(detector.bandAt(44100).maxHz).toBe(DETECTOR_MAX_HZ);
+  });
+
+  it('keeps an explicitly narrow band narrow', () => {
+    // Deriving from the rate must widen nothing a caller deliberately pinched.
+    const narrow = new PitchyDetector({ minHz: 200, maxHz: 400 });
+    expect(narrow.bandAt(44100)).toEqual({ minHz: 200, maxHz: 400 });
   });
 });

@@ -3,9 +3,9 @@ import {
   Accidental,
   Dot,
   Formatter,
-  Renderer,
   Stave,
   StaveConnector,
+  Renderer,
   StaveNote,
   StaveTie,
   TickContext,
@@ -14,9 +14,17 @@ import {
   VoiceMode,
   // Only the Bravura font, not every music font the default entry bundles.
 } from 'vexflow/bravura';
+import type { RenderContext } from 'vexflow/bravura';
 import { beamBar } from './beaming';
 import { verdictColours, type VerdictColours } from './colours';
-import { explicitAccidental, layoutExercise, midiToVexKey, type NotatedNote } from './layout';
+import {
+  explicitAccidental,
+  layoutExercise,
+  midiToVexKey,
+  octaveShiftFor,
+  octaveSignLabel,
+  type NotatedNote,
+} from './layout';
 import { NO_SOURCE, mergeRests } from './rests';
 import {
   instrumentById,
@@ -84,6 +92,27 @@ const WIDTH_PER_NOTE = 34;
  */
 const MAX_WIDTH_PER_NOTE = 64;
 const BAR_PADDING = 26;
+/**
+ * The octave sign is drawn here rather than with VexFlow's TextBracket.
+ *
+ * TextBracket lays its dashed line out from the measured width and height of
+ * its own label, and measuring text needs a font engine. Under jsdom there
+ * isn't one: the height comes back NaN once the label has been rendered, every
+ * coordinate derived from it follows, and the dash loop — which walks towards a
+ * target it compares with `>=` — never reaches NaN and runs until the SVG path
+ * string exhausts the string length limit. So a single 8va took the notation
+ * tests from 3 seconds to 337 and failed 27 of them.
+ *
+ * Drawing it here needs no measurement at all. The label is placed at the
+ * passage's first notehead and the line starts a fixed distance after it, which
+ * is all the geometry an octave sign has.
+ */
+const OCTAVE_SIGN_LINE = 1;
+/** Room left for the label before the dashed line starts, in pixels. */
+const OCTAVE_LABEL_WIDTH: Record<number, number> = { 1: 20, 2: 30 };
+/** Length of the hook that closes the sign over its last note. */
+const OCTAVE_HOOK = 8;
+const OCTAVE_DASH = [4, 3];
 const MARGIN = 12;
 
 /**
@@ -201,6 +230,8 @@ interface HeardAnchor {
   /** The played note's duration, so the ghost takes the same notehead shape. */
   code: string;
   staves: Map<'treble' | 'bass' | 'single', Stave>;
+  /** Octave sign in force on each staff of that bar, so the guide matches it. */
+  octaveShifts: Map<'treble' | 'bass' | 'single', number>;
 }
 
 /**
@@ -228,6 +259,46 @@ interface GuidePlan {
  */
 const GUIDE_JUMP_PX = 140;
 
+/**
+ * An octave sign over or under a passage: the label, a dashed line to the last
+ * notehead, and a hook turning down onto it.
+ */
+function drawOctaveSign(
+  context: RenderContext,
+  stave: Stave,
+  ends: { start: StaveNote; stop: StaveNote },
+  shift: number,
+  colour: string,
+): void {
+  const label = octaveSignLabel(shift);
+  if (label === null) return;
+  const above = shift > 0;
+  const y = above
+    ? stave.getYForTopText(OCTAVE_SIGN_LINE)
+    : stave.getYForBottomText(OCTAVE_SIGN_LINE);
+  const startX = ends.start.getAbsoluteX();
+  const endX = ends.stop.getAbsoluteX() + ends.stop.getGlyphWidth();
+  // Everything downstream is arithmetic on these two, so a note that never got
+  // a tick context would otherwise draw a line to nowhere.
+  if (!Number.isFinite(startX) || !Number.isFinite(endX) || !Number.isFinite(y)) return;
+
+  context.save();
+  context.setFont('Times', 13, 'normal', 'italic');
+  context.setFillStyle(colour);
+  context.setStrokeStyle(colour);
+  context.fillText(`${label.text}${label.superscript}`, startX, y);
+
+  const lineFrom = startX + (OCTAVE_LABEL_WIDTH[Math.abs(shift)] ?? 20);
+  // Too short for a line and the label alone says it, which is what an engraver
+  // does over a single note.
+  if (endX > lineFrom) {
+    Renderer.drawDashedLine(context, lineFrom, y - 4, endX, y - 4, OCTAVE_DASH);
+    const hook = above ? OCTAVE_HOOK : -OCTAVE_HOOK;
+    Renderer.drawDashedLine(context, endX, y - 4, endX, y - 4 + hook, OCTAVE_DASH);
+  }
+  context.restore();
+}
+
 function colourFor(
   sourceIndex: number,
   results: readonly NoteResult[] | undefined,
@@ -246,12 +317,14 @@ function buildNote(
   key: MusicalKey,
   instrument: InstrumentDefinition,
   clef: string,
+  octaveShift = 0,
 ): StaveNote {
   const isRest = notated.midi === null;
-  // Sounding pitch in, written pitch on the page.
+  // Sounding pitch in, written pitch on the page — displaced by any octave sign
+  // covering this bar, which is what puts the passage back beside the staff.
   const spelled = isRest
     ? (REST_KEYS[clef] ?? REST_KEYS.treble)
-    : midiToVexKey(soundingToWritten(notated.midi!, instrument), key);
+    : midiToVexKey(soundingToWritten(notated.midi!, instrument) - 12 * octaveShift, key);
 
   const note = new StaveNote({
     keys: [spelled],
@@ -403,8 +476,15 @@ export function Score({
           const forThisStaff =
             side === null ? bar.notes : notesForStaff(bar.notes, side, instrument);
           const source = mergeRests(forThisStaff, exercise.timeSignature);
+          // One sign for the whole bar of this staff — see octaveShiftFor.
+          const octaveShift = octaveShiftFor(
+            clef,
+            source
+              .filter((notated) => notated.midi !== null)
+              .map((notated) => soundingToWritten(notated.midi!, instrument)),
+          );
           const notes = source.map((notated) => {
-            const note = buildNote(notated, writtenKey, instrument, clef);
+            const note = buildNote(notated, writtenKey, instrument, clef, octaveShift);
             const colour = colourFor(notated.sourceIndex, results, activeIndex, colours);
             note.setStyle({ fillStyle: colour, strokeStyle: colour });
             if (notated.sourceIndex === activeIndex && found.active === null) {
@@ -457,7 +537,24 @@ export function Score({
             .filter((g) => g.sounds && g.notes.length === g.num)
             .map((g) => new Tuplet(g.notes, { numNotes: g.num, notesOccupied: g.inSpaceOf }));
 
-          return { stave, voice, beams, tuplets, side, active: found.active, code: found.code };
+          // The sign spans the sounding notes; a rest at either end is not part
+          // of the passage and a bracket reaching over it reads as a mistake.
+          const sounding = notes.filter((_, i) => source[i].midi !== null);
+          const ends =
+            octaveShift !== 0 && sounding.length > 0
+              ? { start: sounding[0], stop: sounding[sounding.length - 1] }
+              : null;
+          return {
+            stave,
+            voice,
+            beams,
+            tuplets,
+            ends,
+            side,
+            octaveShift,
+            active: found.active,
+            code: found.code,
+          };
         };
 
         const staves = grand
@@ -483,6 +580,11 @@ export function Score({
           entry.voice.draw(context, entry.stave);
           for (const beam of entry.beams) beam.setContext(context).draw();
           for (const tuplet of entry.tuplets) tuplet.setContext(context).draw();
+          // After the voice: the sign is positioned from where its notes ended
+          // up, which formatting decides.
+          if (entry.ends) {
+            drawOctaveSign(context, entry.stave, entry.ends, entry.octaveShift, colours.idle);
+          }
         }
 
         // Formatting is what gives a note an x, so the ghost's position can only
@@ -494,6 +596,7 @@ export function Score({
             tickX: activeEntry.active.getTickContext().getX(),
             code: activeEntry.code,
             staves: new Map(built.map((entry) => [entry.side ?? 'single', entry.stave])),
+            octaveShifts: new Map(built.map((entry) => [entry.side ?? 'single', entry.octaveShift])),
           };
         }
 
@@ -590,13 +693,16 @@ export function Score({
     if (!stave) return;
 
     const clef = grand ? side : singleClef;
+    // Displaced with the bar it sits over, or a guide under an 8va passage
+    // would be drawn an octave away from the note it is guiding.
+    const shift = anchor.octaveShifts.get(side) ?? 0;
     // The played note's own duration, so the guide takes that note's notehead
     // and reads as it moved rather than as some other symbol. Its stem and flag
     // are hidden and its head is always filled: the rhythm is the page's to
     // state. The ledger lines stay, since without them a pitch well off the
     // staff cannot be read at all.
     const ghost = new StaveNote({
-      keys: [midiToVexKey(written, writtenKey)],
+      keys: [midiToVexKey(written - 12 * shift, writtenKey)],
       duration: anchor.code,
       clef,
     });
