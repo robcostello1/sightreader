@@ -87,6 +87,12 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
   const [micAsked, setMicAsked] = useState(false);
   const [theme, setTheme] = useState<ThemePreference>(loadTheme);
   const [keysShown, setKeysShown] = useState(false);
+  /**
+   * The greeting is owed once a visit, not once a session. It lives here
+   * because the card that carries it is unmounted every time an exercise takes
+   * the screen, and a stop would otherwise be greeted like an arrival.
+   */
+  const [welcomed, setWelcomed] = useState(false);
 
   useEffect(() => saveSetting('level', level), [level]);
   useEffect(() => saveSetting('instrument', instrumentId), [instrumentId]);
@@ -172,21 +178,17 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
    * there. Which one is live depends on the phase, and the one that is not is
    * disabled rather than removed — a control that comes and goes has to be
    * found again every time, and these three are the shape everyone already
-   * knows. The play button is the one that changes meaning: start, resume,
-   * next, retry. What it means now is its label, which is its title and the
-   * name a screen reader reads.
+   * knows.
+   *
+   * Play is called Play whatever it is about to do — start the first exercise,
+   * pick a held one back up, move on to the next, try again after a failure.
+   * It was named for each of those in turn, which meant the button the welcome
+   * tells you to hit was labelled Start, and the one that resumes was a second
+   * control called Resume sitting beside a pause that already resumes. One
+   * name, one shape, one place: that is what makes a transport legible.
    */
-  const play =
-    holdable && !lesson.paused
-      ? // Already playing. The button is lit and dead, and is just Play.
-        { label: 'Play', act: lesson.start }
-      : lesson.paused && holdable
-      ? { label: 'Resume', act: lesson.resume }
-      : lesson.phase === 'error'
-        ? { label: 'Retry', act: lesson.start }
-        : lesson.phase === 'results'
-          ? { label: 'Next exercise', act: lesson.start }
-          : { label: 'Start', act: lesson.start };
+  const play = lesson.paused && holdable ? lesson.resume : lesson.start;
+
   // Only while the music is actually running is there nothing for play to do.
   // In the gap after results it is how you skip the wait rather than sit it out.
   const canPlay = lesson.phase !== 'arming' && (!running || lesson.paused);
@@ -233,7 +235,7 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
             : canPause
               ? lesson.pause
               : canPlay
-                ? play.act
+                ? play
                 : undefined,
       next: lesson.milestone !== null ? lesson.acknowledgeMilestone : between ? lesson.start : undefined,
       stop: listening ? lesson.stop : undefined,
@@ -294,10 +296,10 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
                 <button
                   type="button"
                   className={`control ${running && !lesson.paused ? 'is-live' : ''}`}
-                  onClick={play.act}
+                  onClick={play}
                   disabled={!canPlay}
-                  title={`${play.label} (Space)`}
-                  aria-label={play.label}
+                  title="Play (Space)"
+                  aria-label="Play"
                   aria-keyshortcuts="Space"
                 >
                   <PlayIcon />
@@ -357,6 +359,8 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
                   instrument={instrument}
                   scoring={scoring}
                   onKeys={() => setKeysShown(true)}
+                  welcome={!welcomed}
+                  onWelcomed={() => setWelcomed(true)}
                 />
               )}
               {lesson.exercise && (

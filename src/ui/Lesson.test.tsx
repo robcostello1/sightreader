@@ -92,7 +92,7 @@ describe('the checklist', () => {
     await click(/^go$/i);
 
     expect(modalShown()).toBe(false);
-    expect(screen.getByRole('button', { name: /^start$/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Play' })).toBeTruthy();
   });
 
   it('does not switch the microphone on just because a previous visit allowed it', async () => {
@@ -145,7 +145,7 @@ describe('without a microphone', () => {
 
     expect(modalShown()).toBe(false);
     expect(startMicCapture).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: /^start$/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Play' })).toBeTruthy();
     expect(screen.getByText(/scoring is off/i)).toBeTruthy();
 
     // And the way back is the checklist again, not a silent retry.
@@ -252,7 +252,7 @@ describe('the transport', () => {
 
     expect(transport()).toHaveLength(3);
     expect(transport().every((b) => b.querySelector('svg.icon') !== null)).toBe(true);
-    await click(/start/i);
+    await click(/^play$/i);
     expect(transport()).toHaveLength(3);
   });
 
@@ -262,8 +262,9 @@ describe('the transport', () => {
     await settle();
 
     const [play] = transport();
-    expect(play.getAttribute('aria-label')).toBe('Start');
-    expect(play.title).toBe('Start (Space)');
+    // One name whatever it is about to do — start, resume, next, retry.
+    expect(play.getAttribute('aria-label')).toBe('Play');
+    expect(play.title).toBe('Play (Space)');
     expect(pause().title).toBe('Pause (Space)');
     expect(stop().title).toBe('Stop (Esc)');
   });
@@ -287,7 +288,7 @@ describe('the transport', () => {
     // Nothing running: only play is live.
     expect(transport().map((b) => b.disabled)).toEqual([false, true, true]);
 
-    await click(/start/i);
+    await click(/^play$/i);
     expect(transport().map((b) => b.disabled)).toEqual([true, false, false]);
 
     // Held, and pause stays live: pressing it again is how you let go.
@@ -305,7 +306,7 @@ describe('the transport', () => {
 
     expect(transport().map((b) => b.className.includes('is-live'))).toEqual([false, false, false]);
 
-    await click(/start/i);
+    await click(/^play$/i);
     expect(transport().map((b) => b.className.includes('is-live'))).toEqual([true, false, false]);
 
     await act(async () => {
@@ -322,7 +323,7 @@ describe('the transport', () => {
     render(<Lesson />);
     await settle();
 
-    await click(/start/i);
+    await click(/^play$/i);
     for (const press of [true, false]) {
       await act(async () => {
         fireEvent.click(pause());
@@ -337,14 +338,16 @@ describe('the transport', () => {
     render(<Lesson />);
     await settle();
 
-    await click(/start/i);
+    await click(/^play$/i);
     await act(async () => {
       fireEvent.click(pause());
       await Promise.resolve();
     });
-    expect(screen.getByRole('button', { name: 'Resume' })).not.toBeNull();
+    // Still Play, not a second button called Resume beside a pause that
+    // already resumes.
+    expect((screen.getByRole('button', { name: 'Play' }) as HTMLButtonElement).disabled).toBe(false);
 
-    await click(/resume/i);
+    await click(/^play$/i);
     expect(screen.getByRole('button', { name: 'Play' }).className).toContain('is-live');
   });
 });
@@ -367,7 +370,7 @@ describe('the keyboard', () => {
     expect(screen.getByRole('button', { name: /pause/i })).not.toBeNull();
 
     await pressSpace();
-    expect(screen.getByRole('button', { name: /resume/i })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Pause' }).getAttribute('aria-pressed')).toBe('true');
 
     await pressSpace();
     expect(screen.getByRole('button', { name: /pause/i })).not.toBeNull();
@@ -383,22 +386,39 @@ describe('the keyboard', () => {
       fireEvent.keyDown(document.body, { key: 'Escape' });
       await Promise.resolve();
     });
-    expect(screen.getByRole('button', { name: /^start$/i })).not.toBeNull();
+    expect((screen.getByRole('button', { name: 'Play' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('greets you first, and has the keys one press behind that', async () => {
+  it('greets you once a visit, and gives the space back to the music', async () => {
     asReturning();
     render(<Lesson />);
     await settle();
 
     expect(screen.getByLabelText('Welcome').textContent).toMatch(/choose your level and tempo/);
 
-    await click(/next tip/i);
-    expect(screen.getByLabelText('Tip').textContent).toMatch(/Use the Space bar to start/);
+    await click(/^play$/i);
+    expect(screen.queryByLabelText(/welcome|tip/i)).toBeNull();
 
-    // And gives the space back the moment there is something to read there.
-    await click(/start/i);
-    expect(screen.queryByLabelText('Tip')).toBeNull();
+    // Stopping is not arriving: what comes back is a tip, not the greeting.
+    await click(/^stop$/i);
+    expect(screen.queryByLabelText('Welcome')).toBeNull();
+    expect(screen.getByLabelText('Tip')).not.toBeNull();
+  });
+
+  it('has the keys behind the greeting', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    // The tip after the greeting is drawn at random, so this asks for the one
+    // it is looking for rather than assuming which comes up.
+    for (let i = 0; i < 8; i++) {
+      if (/Use the Space bar to start/.test(screen.getByLabelText(/welcome|tip/i).textContent!)) {
+        return;
+      }
+      await click(/next tip/i);
+    }
+    throw new Error('never reached the tip about the keys');
   });
 
   it('opens the rest of them on a question mark, and from the hint', async () => {
@@ -418,9 +438,10 @@ describe('the keyboard', () => {
     expect(screen.queryByRole('button', { name: /pause/i })).toBeNull();
 
     await click(/close/i);
-    // The link lives on the tip about the keys, which is the first one behind
-    // the welcome.
-    await click(/next tip/i);
+    // The link lives on the tip about the keys, which the rotation reaches.
+    for (let i = 0; i < 8 && screen.queryByRole('button', { name: /all shortcuts/i }) === null; i++) {
+      await click(/next tip/i);
+    }
     await click(/all shortcuts/i);
     expect(screen.getByRole('dialog')).not.toBeNull();
   });

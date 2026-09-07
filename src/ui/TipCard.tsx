@@ -1,18 +1,18 @@
 import { useEffect, useState } from 'react';
-import { loadSetting, saveSetting } from '../lib/storage';
 import type { InstrumentDefinition } from '../config/instruments';
 import { WELCOME, tipsFor } from './tips';
 import shotSizes from './tip-shots.json';
 import { Heading } from './Text';
 
-const readIndex = (value: unknown) =>
-  typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : null;
-
 export interface TipsProps {
   instrument: InstrumentDefinition;
   scoring: boolean;
-  /** Opens the full shortcut list, which the first tip points at. */
+  /** Opens the full shortcut list, which the tip about the keys points at. */
   onKeys: () => void;
+  /** Whether the greeting is still owed. False once it has been given. */
+  welcome: boolean;
+  /** Called when it has been, so it is not given twice in one visit. */
+  onWelcomed: () => void;
 }
 
 /**
@@ -23,21 +23,27 @@ export interface TipsProps {
  * exercise to draw. Transparent, on a hairline: it is a note in the margin, not
  * another panel competing with the two that are already there.
  *
- * Which tip comes up advances every time the idle screen is reached, so someone
- * who comes back tomorrow gets a different one. It starts at the controls,
- * because the first thing worth knowing is how to start without the mouse.
+ * The card is unmounted and rebuilt every time an exercise starts and stops, so
+ * which tip it opens on is not its own to remember — the greeting is owed once
+ * a visit and the lesson holds that, and the tip after it is drawn at random,
+ * which is what stops the same one greeting every stop of a long session.
  */
-export function Tips({ instrument, scoring, onKeys }: TipsProps) {
+export function Tips({ instrument, scoring, onKeys, welcome, onWelcomed }: TipsProps) {
   const tips = tipsFor(instrument, scoring);
-  // Every visit opens on the welcome; the tips are one press behind it. Which
-  // tip that press lands on moves along from visit to visit, so a player who
-  // reads them all sees a different one each time they come back.
-  const [seen] = useState(() => loadSetting('tipIndex', readIndex, 0));
+  // Taken once, at the mount: telling the lesson the greeting has been given
+  // comes straight back as a prop, and reading the prop would swap the card out
+  // from under the greeting on the very next render.
+  const [greeting] = useState(welcome);
+  const [from] = useState(() => Math.floor(Math.random() * tips.length));
   const [offset, setOffset] = useState(0);
 
-  useEffect(() => saveSetting('tipIndex', seen + 1), [seen]);
+  useEffect(() => {
+    if (welcome) onWelcomed();
+    // Once per appearance of the greeting, not once per render of the card.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const tip = offset === 0 ? WELCOME : tips[(seen + offset - 1) % tips.length];
+  const tip = greeting && offset === 0 ? WELCOME : tips[(from + offset) % tips.length];
   // Taken at twice this, for a retina screen. Drawn at the size the control
   // actually is, so it is recognisable as the same control. A tip with no entry
   // draws its picture at whatever size it is rather than taking the page down
