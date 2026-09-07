@@ -52,8 +52,8 @@ export function tipsFor(instrument: InstrumentDefinition, scoring: boolean): Tip
       shot: 'The instrument and range dropdowns inside Settings',
             body:
               instrument.id === 'guitar'
-                ? 'In settings you can choose different neck positions to work on.'
-                : 'In settings you can choose which part of the keyboard to work on.',
+                ? 'In Settings you can choose different neck positions to work on.'
+                : 'In Settings you can choose which part of the keyboard to work on.',
           },
         ]
       : []),
@@ -97,5 +97,5 @@ export const WELCOME: Tip = {
   title: 'Welcome',
   body:
     'To get started, choose your level and tempo, then hit play. ' +
-    'A series of unique sight reading exercises will be generated for you. Good luck!',
+    'A series of unique sight-reading exercises will be generated for you. Good luck!',
 };
