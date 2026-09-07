@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { tipsFor } from './tips';
+import { WELCOME, tipsFor } from './tips';
 import { instrumentById } from '../config/instruments';
 import { existsSync } from 'node:fs';
 import shotSizes from './tip-shots.json';
@@ -62,7 +62,20 @@ describe('the picture each tip points at', () => {
 
   it('describes itself for anyone who cannot see it', () => {
     for (const tip of tipsFor(instrumentById('guitar'), true)) {
-      expect(tip.shot.length).toBeGreaterThan(10);
+      expect(tip.shot!.length).toBeGreaterThan(10);
     }
+  });
+});
+
+describe('the welcome', () => {
+  it('says what to do rather than pointing at something', () => {
+    expect(WELCOME.title).toBe('Welcome');
+    expect(WELCOME.body).toMatch(/choose your level and tempo/);
+    // Nothing to point at: it is about the whole screen.
+    expect(WELCOME.shot).toBeUndefined();
+  });
+
+  it('is not one of the tips it sits in front of', () => {
+    expect(tipsFor(instrumentById('guitar'), true).map((t) => t.id)).not.toContain('welcome');
   });
 });

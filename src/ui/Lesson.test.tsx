@@ -386,12 +386,16 @@ describe('the keyboard', () => {
     expect(screen.getByRole('button', { name: /^start$/i })).not.toBeNull();
   });
 
-  it('names the keys in the tip that sits where the music will go', async () => {
+  it('greets you first, and has the keys one press behind that', async () => {
     asReturning();
     render(<Lesson />);
     await settle();
 
+    expect(screen.getByLabelText('Welcome').textContent).toMatch(/choose your level and tempo/);
+
+    await click(/next tip/i);
     expect(screen.getByLabelText('Tip').textContent).toMatch(/Use the Space bar to start/);
+
     // And gives the space back the moment there is something to read there.
     await click(/start/i);
     expect(screen.queryByLabelText('Tip')).toBeNull();
@@ -414,6 +418,9 @@ describe('the keyboard', () => {
     expect(screen.queryByRole('button', { name: /pause/i })).toBeNull();
 
     await click(/close/i);
+    // The link lives on the tip about the keys, which is the first one behind
+    // the welcome.
+    await click(/next tip/i);
     await click(/all shortcuts/i);
     expect(screen.getByRole('dialog')).not.toBeNull();
   });

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { loadSetting, saveSetting } from '../lib/storage';
 import type { InstrumentDefinition } from '../config/instruments';
-import { tipsFor } from './tips';
+import { WELCOME, tipsFor } from './tips';
 import shotSizes from './tip-shots.json';
 import { Heading } from './Text';
 
@@ -29,12 +29,15 @@ export interface TipsProps {
  */
 export function Tips({ instrument, scoring, onKeys }: TipsProps) {
   const tips = tipsFor(instrument, scoring);
-  const [start] = useState(() => loadSetting('tipIndex', readIndex, 0));
+  // Every visit opens on the welcome; the tips are one press behind it. Which
+  // tip that press lands on moves along from visit to visit, so a player who
+  // reads them all sees a different one each time they come back.
+  const [seen] = useState(() => loadSetting('tipIndex', readIndex, 0));
   const [offset, setOffset] = useState(0);
 
-  useEffect(() => saveSetting('tipIndex', start + 1), [start]);
+  useEffect(() => saveSetting('tipIndex', seen + 1), [seen]);
 
-  const tip = tips[(start + offset) % tips.length];
+  const tip = offset === 0 ? WELCOME : tips[(seen + offset - 1) % tips.length];
   // Taken at twice this, for a retina screen. Drawn at the size the control
   // actually is, so it is recognisable as the same control. A tip with no entry
   // draws its picture at whatever size it is rather than taking the page down
@@ -42,14 +45,15 @@ export function Tips({ instrument, scoring, onKeys }: TipsProps) {
   const size = shotSizes[tip.id as keyof typeof shotSizes] ?? { width: undefined, height: undefined };
 
   return (
-    <aside className="tip" aria-label="Tip">
+    <aside className="tip" aria-label={tip.title ?? 'Tip'}>
       <Heading level={2} size="small">
-        Tip
+        {tip.title ?? 'Tip'}
       </Heading>
       {/* The thing itself, rather than directions to it. Both crops are in the
           markup and CSS draws the one this scheme wants — a media query alone
           would ignore the player's own light/dark choice, which outranks the
           system's. Only one carries the alt text; two would read it twice. */}
+      {tip.shot && (
       <span className="tip-shot">
         <img
           className="on-light"
@@ -66,8 +70,9 @@ export function Tips({ instrument, scoring, onKeys }: TipsProps) {
           height={size.height}
         />
       </span>
+      )}
       <p className="tip-body">
-        {tip.body.split(/\[([^\]]+)\]/).map((part, i) =>
+        {tip.body.split(/\[([^\]]+)\]/).map((part: string, i: number) =>
           // The odd parts are what was inside the brackets: keys, drawn as keys.
           i % 2 === 1 ? <kbd key={i}>{part}</kbd> : part,
         )}

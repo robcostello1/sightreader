@@ -3,6 +3,8 @@ import type { InstrumentDefinition } from '../config/instruments';
 
 export interface Tip {
   id: string;
+  /** The card's label. Every tip is a tip, so it is only worth saying otherwise. */
+  title?: string;
   /**
    * What the tip says. Short — anything longer is a manual, and nobody came
    * here to read one. A key in square brackets, `[Space]`, is drawn as a key.
@@ -11,10 +13,11 @@ export interface Tip {
   /**
    * What the picture above the sentence is, for anyone who cannot see it. The
    * picture itself is a crop of the running app, one file per scheme under
-   * public/tips, named for the tip — regenerate with
-   * `node scripts/tip-shots.mjs` whenever the thing in shot changes.
+   * public/tips, named for the tip — regenerate with `npm run tip-shots`
+   * whenever the thing in shot changes. Omitted where a tip points at nothing
+   * in particular.
    */
-  shot: string;
+  shot?: string;
 }
 
 /**
@@ -71,3 +74,20 @@ export function tipsFor(instrument: InstrumentDefinition, scoring: boolean): Tip
       : []),
   ];
 }
+
+/**
+ * What sits in the card when a session has not started yet.
+ *
+ * Shown at the top of every visit rather than once ever: it is one sentence of
+ * orientation, and someone coming back after a week is as glad of it as someone
+ * arriving. The tips are behind it, one press away, and which one comes first
+ * still moves along from visit to visit. It carries no picture — what it
+ * describes is the whole screen.
+ */
+export const WELCOME: Tip = {
+  id: 'welcome',
+  title: 'Welcome',
+  body:
+    'To get started, choose your level and tempo, then hit play. ' +
+    'A series of unique sight reading exercises will be generated for you. Good luck!',
+};
