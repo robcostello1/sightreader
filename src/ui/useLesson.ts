@@ -477,14 +477,27 @@ export function useLesson(options: UseLessonOptions) {
    */
   const pause = useCallback(() => {
     const session = sessionRef.current;
-    if (frameRef.current !== null && session && scheduleRef.current) {
-      pausedAtRef.current = session.context.currentTime * 1000;
+    const held = scheduleRef.current;
+    if (frameRef.current !== null && session && held) {
+      const at = session.context.currentTime * 1000;
+      pausedAtRef.current = at;
       pausedRef.current = true;
       cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
       clicksRef.current?.stop();
       clicksRef.current = null;
-      setState((prev) => ({ ...prev, paused: true }));
+      // The cursor drops back to the note the music will pick up from, so what
+      // resume is about to do can be seen rather than remembered. Held during
+      // the count-in there is nothing to mark: the whole thing starts again.
+      const resumeAt =
+        at >= held.t0
+          ? (held.windows.find((window) => window.endMs > barStartAt(held, at)) ?? null)
+          : null;
+      setState((prev) => ({
+        ...prev,
+        paused: true,
+        activeIndex: resumeAt === null ? prev.activeIndex : resumeAt.index,
+      }));
       return;
     }
 
@@ -539,7 +552,16 @@ export function useLesson(options: UseLessonOptions) {
 
       clicksRef.current = scheduleClicks(
         session.context,
-        midExercise ? [...countInClicksBefore(schedule, gate), ...schedule.clicks] : schedule.clicks,
+        midExercise
+          ? // Only what is still to come, plus the bar that leads back in. The
+            // schedule moved bodily down the clock, so its original count-in
+            // moved with it and would otherwise sound a second time, over the
+            // top of the one being counted now.
+            [
+              ...countInClicksBefore(schedule, gate),
+              ...schedule.clicks.filter((click) => click.timeMs >= gate),
+            ]
+          : schedule.clicks,
       );
       setState((prev) => ({
         ...prev,

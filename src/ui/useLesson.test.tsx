@@ -7,9 +7,15 @@ import type { MicCaptureOptions, MicSession } from '../audio/capture';
 import type { PitchSample } from '../lib/types';
 
 // The metronome needs a real AudioContext; everything else under test is pure.
+/** What the metronome was last asked to play, so the clicks can be asserted on. */
+const scheduled: { timeMs: number }[] = [];
 vi.mock('../scheduler', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../scheduler')>()),
-  scheduleClicks: () => ({ stop: () => {} }),
+  scheduleClicks: (_context: unknown, clicks: readonly { timeMs: number }[]) => {
+    scheduled.length = 0;
+    scheduled.push(...clicks);
+    return { stop: () => {} };
+  },
 }));
 
 const startMicCapture = vi.hoisted(() => vi.fn());
@@ -314,6 +320,38 @@ describe('useLesson', () => {
       await advanceTo(schedule.t0 + 1000);
       expect(result.current.phase).toBe('count-in');
       expect(result.current.activeIndex).toBeNull();
+    });
+
+    it('marks the note it will pick up from, rather than the one it stopped on', async () => {
+      const { result } = renderLesson();
+      const schedule = await startAndGetSchedule(result);
+      const barTwo = schedule.t0 + schedule.barMs;
+      const resumesAt = schedule.windows.find((w) => w.endMs > barTwo)!;
+      // Well into the bar, on a later note than the one it will resume from.
+      await advanceTo(barTwo + schedule.barMs - schedule.beatMs);
+
+      act(() => result.current.pause());
+      expect(result.current.activeIndex).toBe(resumesAt.index);
+    });
+
+    it('does not count the interrupted count-in in a second time', async () => {
+      const { result } = renderLesson();
+      const schedule = await startAndGetSchedule(result);
+      const heldAt = schedule.t0 + schedule.barMs + schedule.beatMs;
+      await advanceTo(heldAt);
+
+      act(() => result.current.pause());
+      act(() => result.current.resume());
+
+      // The clicks still to sound are the bar leading back in and the exercise
+      // from there on — the schedule's own count-in moved down the clock with
+      // everything else, and must not sound again over the top of this one.
+      const gate = heldAt + schedule.barMs;
+      expect(scheduled.length).toBeGreaterThan(0);
+      expect(scheduled.every((click) => click.timeMs >= gate - schedule.barMs - 1)).toBe(true);
+      expect(scheduled.filter((c) => c.timeMs < gate)).toHaveLength(
+        schedule.barMs / schedule.clickMs,
+      );
     });
 
     it('picks up from the top of the interrupted bar, after a bar of count-in', async () => {
