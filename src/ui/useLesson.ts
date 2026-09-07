@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { startMicCapture, startSilentSession, type MicSession } from '../audio';
 import { generateExercise } from '../generator';
-import { buildSchedule, scheduleClicks, windowAt } from '../scheduler';
+import {
+  barStartAt,
+  buildSchedule,
+  countInClicksBefore,
+  scheduleClicks,
+  shiftSchedule,
+  windowAt,
+} from '../scheduler';
 import type { Schedule, ScheduledClicks } from '../scheduler';
 import { scoreWindow, summarise, type ExerciseSummary } from '../scoring';
 import { levelConfig } from '../config/levels';
@@ -152,6 +159,16 @@ export function useLesson(options: UseLessonOptions) {
   const unscoredRef = useRef(0);
   /** Whether the open session is the silent one, with a clock but no ear. */
   const silentRef = useRef(false);
+  /**
+   * When the music restarts, on the clock. Normally t0; after a pause it is the
+   * bar the exercise picks back up from, with clicks leading into it. Everything
+   * that asks "has the music started yet" asks this rather than t0.
+   */
+  const gateRef = useRef<number | null>(null);
+  /** Clock reading at a mid-exercise pause, and null when no exercise is held. */
+  const pausedAtRef = useRef<number | null>(null);
+  /** Read by the sample callback, which is not re-created per render. */
+  const pausedRef = useRef(false);
 
   // Read through refs inside the animation loop so it never restarts mid-exercise.
   const settingsRef = useRef({
@@ -210,6 +227,8 @@ export function useLesson(options: UseLessonOptions) {
     if (advanceRef.current !== null) clearTimeout(advanceRef.current);
     advanceRef.current = null;
     advanceRemainingRef.current = 0;
+    pausedAtRef.current = null;
+    pausedRef.current = false;
     clicksRef.current?.stop();
     clicksRef.current = null;
   }, []);
@@ -220,6 +239,7 @@ export function useLesson(options: UseLessonOptions) {
     sessionRef.current = null;
     silentRef.current = false;
     scheduleRef.current = null;
+    gateRef.current = null;
     samplesRef.current = [];
     onsetsRef.current = [];
     scoredRef.current = new Set();
@@ -239,159 +259,196 @@ export function useLesson(options: UseLessonOptions) {
     setState(INITIAL);
   }, [closeSession]);
 
-  const beginExercise = useCallback((session: MicSession) => {
-    const {
-      level: lvl,
-      instrumentId: instrId,
-      positionId: posId,
-      bpm: tempo,
-      leadInMs: lead,
-    } = settingsRef.current;
-    const config = levelConfig(lvl);
-    const instrument = instrumentById(instrId);
-    const pool = soundingPool(instrument, positionById(instrument, posId));
-    const seed = Math.floor(Math.random() * 1_000_000_000);
+  /**
+   * One frame of a running exercise: score whatever has closed, move the
+   * cursor, and decide whether the exercise is over.
+   *
+   * It lives out here rather than inside beginExercise because resuming a
+   * paused exercise has to start the loop again without generating a new one.
+   * Everything it reads is a ref, so it never has to be rebuilt mid-exercise.
+   */
+  const tick = useCallback<() => void>(function frame() {
+    const current = sessionRef.current;
+    if (!current || !scheduleRef.current) return;
 
-    let exercise: Exercise;
-    try {
-      exercise = generateExercise({ level: config, pool, bpm: tempo, seed });
-    } catch (cause) {
-      setState((prev) => ({
-        ...prev,
-        phase: 'error',
-        error: cause instanceof Error ? cause.message : String(cause),
-      }));
-      return;
+    const now = current.context.currentTime * 1000;
+    const samples = samplesRef.current;
+    const judging = settingsRef.current.scoringEnabled;
+    const scoring = levelConfig(settingsRef.current.level).scoring;
+
+    // Score every window that has closed since the last frame. With no
+    // microphone there is nothing to score against, and marking every note
+    // as silence would be a verdict rather than the absence of one.
+    const closed: NoteResult[] = [];
+    if (judging) {
+      for (const window of scheduleRef.current.windows) {
+        if (now < window.endMs || scoredRef.current.has(window.index)) continue;
+        scoredRef.current.add(window.index);
+        closed.push(scoreWindow(window, samples, scoring));
+      }
     }
 
-    samplesRef.current = [];
-    onsetsRef.current = [];
-    scoredRef.current = new Set();
-    resultsRef.current = [];
-    latestRef.current = null;
+    const active = scheduleRef.current;
+    // Where the music starts, which is t0 until a pause moves it to the bar
+    // the exercise is picking up from.
+    const gate = gateRef.current ?? active.t0;
+    const finished = now >= active.endMs;
+    const counting = now < gate;
+    const beatsLeft = counting ? Math.ceil((gate - now) / active.clickMs) : null;
 
-    // Anchored on the same AudioContext clock the samples are stamped with, so
-    // windows and detections cannot drift apart.
-    const schedule = buildSchedule(exercise, {
-      startMs: session.context.currentTime * 1000 + lead,
-      clickThroughExercise: Math.random() < config.clickThroughChance,
-      attackGuardMs: config.scoring.attackGuardMs,
-    });
-    scheduleRef.current = schedule;
-    clicksRef.current = scheduleClicks(session.context, schedule.clicks);
+    if (closed.length > 0) resultsRef.current = [...resultsRef.current, ...closed];
+    const results = resultsRef.current;
+    const summary = finished && judging ? summarise(results) : null;
+    if (finished && !judging) unscoredRef.current += 1;
+    if (summary) {
+      // Only the most recent exercises count towards the next step; the
+      // window is cleared outright when one is earned.
+      historyRef.current = [...historyRef.current, summary.accuracy].slice(
+        -DEFAULT_PROGRESSION.windowSize,
+      );
+    }
 
     setState((prev) => ({
       ...prev,
-      phase: 'count-in',
-      exercise,
-      seed,
-      activeIndex: null,
-      results: [],
-      summary: null,
-      paused: false,
-      onsetCount: 0,
-      beatsUntilStart: null,
-      error: null,
+      phase: finished ? 'results' : counting ? 'count-in' : 'playing',
+      // Nothing is being read during a count-in, including the one that leads
+      // back into a resumed bar — where the notes under it have already been
+      // played once and would otherwise light up a second time.
+      activeIndex: counting ? null : (windowAt(active, now)?.index ?? null),
+      results,
+      summary,
+      onsetCount: onsetsRef.current.length,
+      beatsUntilStart: beatsLeft,
+      history: historyRef.current,
+      unscoredCompleted: unscoredRef.current,
+      stats: summary
+        ? {
+            completed: prev.stats.completed + 1,
+            passed: prev.stats.passed + summary.passed,
+            scorable: prev.stats.scorable + (summary.total - summary.unscorable),
+          }
+        : finished && !judging
+          ? { ...prev.stats, completed: prev.stats.completed + 1 }
+          : prev.stats,
     }));
 
-    const tick = () => {
-      const current = sessionRef.current;
-      if (!current || !scheduleRef.current) return;
+    if (finished) {
+      haltExercise();
 
-      const now = current.context.currentTime * 1000;
-      const samples = samplesRef.current;
-      const judging = settingsRef.current.scoringEnabled;
-      const scoring = levelConfig(settingsRef.current.level).scoring;
-
-      // Score every window that has closed since the last frame. With no
-      // microphone there is nothing to score against, and marking every note
-      // as silence would be a verdict rather than the absence of one.
-      const closed: NoteResult[] = [];
-      if (judging) {
-        for (const window of scheduleRef.current.windows) {
-          if (now < window.endMs || scoredRef.current.has(window.index)) continue;
-          scoredRef.current.add(window.index);
-          closed.push(scoreWindow(window, samples, scoring));
+      // Decide progression here, at the completion that caused it. With
+      // nothing scored, exercises played is the only signal left.
+      const { level: playedAt, onAdvance: notify } = settingsRef.current;
+      const next = judging
+        ? advanceLevel(playedAt, historyRef.current)
+        : advanceUnscored(playedAt, unscoredRef.current);
+      if (next !== playedAt) {
+        // Start the count again, so the next step is earned at the new level
+        // rather than on results from the old one.
+        historyRef.current = [];
+        unscoredRef.current = 0;
+        setState((prev) => ({ ...prev, history: [], unscoredCompleted: 0 }));
+        notify?.(next);
+        // Crossing into a new whole level pauses here, so what is arriving can
+        // be read before it starts turning up mid-exercise.
+        if (Math.floor(next) > Math.floor(playedAt)) {
+          setState((prev) => ({ ...prev, milestone: Math.floor(next) }));
+          return;
         }
       }
+      if (settingsRef.current.autoAdvance) armAdvance(settingsRef.current.advanceDelayMs);
+      return;
+    }
+    frameRef.current = requestAnimationFrame(frame);
+  }, [armAdvance, haltExercise]);
 
-      const active = scheduleRef.current;
-      const finished = now >= active.endMs;
-      const beatsLeft =
-        now < active.t0 ? Math.ceil((active.t0 - now) / active.clickMs) : null;
+  const beginExercise = useCallback(
+    (session: MicSession) => {
+      const {
+        level: lvl,
+        instrumentId: instrId,
+        positionId: posId,
+        bpm: tempo,
+        leadInMs: lead,
+      } = settingsRef.current;
+      const config = levelConfig(lvl);
+      const instrument = instrumentById(instrId);
+      const pool = soundingPool(instrument, positionById(instrument, posId));
+      const seed = Math.floor(Math.random() * 1_000_000_000);
 
-      if (closed.length > 0) resultsRef.current = [...resultsRef.current, ...closed];
-      const results = resultsRef.current;
-      const summary = finished && judging ? summarise(results) : null;
-      if (finished && !judging) unscoredRef.current += 1;
-      if (summary) {
-        // Only the most recent exercises count towards the next step; the
-        // window is cleared outright when one is earned.
-        historyRef.current = [...historyRef.current, summary.accuracy].slice(
-          -DEFAULT_PROGRESSION.windowSize,
-        );
+      let exercise: Exercise;
+      try {
+        exercise = generateExercise({ level: config, pool, bpm: tempo, seed });
+      } catch (cause) {
+        setState((prev) => ({
+          ...prev,
+          phase: 'error',
+          error: cause instanceof Error ? cause.message : String(cause),
+        }));
+        return;
       }
+
+      samplesRef.current = [];
+      onsetsRef.current = [];
+      scoredRef.current = new Set();
+      resultsRef.current = [];
+      latestRef.current = null;
+      pausedAtRef.current = null;
+      pausedRef.current = false;
+
+      // Anchored on the same AudioContext clock the samples are stamped with, so
+      // windows and detections cannot drift apart.
+      const schedule = buildSchedule(exercise, {
+        startMs: session.context.currentTime * 1000 + lead,
+        clickThroughExercise: Math.random() < config.clickThroughChance,
+        attackGuardMs: config.scoring.attackGuardMs,
+      });
+      scheduleRef.current = schedule;
+      gateRef.current = schedule.t0;
+      clicksRef.current = scheduleClicks(session.context, schedule.clicks);
 
       setState((prev) => ({
         ...prev,
-        phase: finished ? 'results' : now >= active.t0 ? 'playing' : 'count-in',
-        activeIndex: windowAt(active, now)?.index ?? null,
-        results,
-        summary,
-        onsetCount: onsetsRef.current.length,
-        beatsUntilStart: beatsLeft,
-        history: historyRef.current,
-        unscoredCompleted: unscoredRef.current,
-        stats: summary
-          ? {
-              completed: prev.stats.completed + 1,
-              passed: prev.stats.passed + summary.passed,
-              scorable: prev.stats.scorable + (summary.total - summary.unscorable),
-            }
-          : finished && !judging
-            ? { ...prev.stats, completed: prev.stats.completed + 1 }
-            : prev.stats,
+        phase: 'count-in',
+        exercise,
+        seed,
+        activeIndex: null,
+        results: [],
+        summary: null,
+        paused: false,
+        onsetCount: 0,
+        beatsUntilStart: null,
+        error: null,
       }));
 
-      if (finished) {
-        haltExercise();
-
-        // Decide progression here, at the completion that caused it. With
-        // nothing scored, exercises played is the only signal left.
-        const { level: playedAt, onAdvance: notify } = settingsRef.current;
-        const next = judging
-          ? advanceLevel(playedAt, historyRef.current)
-          : advanceUnscored(playedAt, unscoredRef.current);
-        if (next !== playedAt) {
-          // Start the count again, so the next step is earned at the new level
-          // rather than on results from the old one.
-          historyRef.current = [];
-          unscoredRef.current = 0;
-          setState((prev) => ({ ...prev, history: [], unscoredCompleted: 0 }));
-          notify?.(next);
-          // Crossing into a new whole level pauses here, so what is arriving can
-          // be read before it starts turning up mid-exercise.
-          if (Math.floor(next) > Math.floor(playedAt)) {
-            setState((prev) => ({ ...prev, milestone: Math.floor(next) }));
-            return;
-          }
-        }
-        if (settingsRef.current.autoAdvance) armAdvance(settingsRef.current.advanceDelayMs);
-        return;
-      }
       frameRef.current = requestAnimationFrame(tick);
-    };
-
-    frameRef.current = requestAnimationFrame(tick);
-  }, [armAdvance, haltExercise]);
+    },
+    [tick],
+  );
 
   /**
-   * Holds the session between exercises. Only the gap is pausable: an exercise
-   * is a continuous reading against a fixed tempo, so there is no coherent way
-   * to stop partway and pick it up again. Nothing is scheduled during the gap,
-   * so this is only the wall-clock timer — the audio graph is left alone.
+   * Holds the session wherever it is: mid-count-in, mid-exercise, or in the gap
+   * before the next one.
+   *
+   * Mid-exercise the clock cannot be stopped — the AudioContext runs on — so
+   * what is held is the schedule's claim on it. The loop stops, the clicks
+   * already queued are cancelled, and where we got to is banked; resume moves
+   * the whole schedule down the clock by however long the pause turned out to
+   * be. In the gap there is nothing scheduled at all, so only the wall-clock
+   * timer needs banking and the audio graph is left alone.
    */
   const pause = useCallback(() => {
+    const session = sessionRef.current;
+    if (frameRef.current !== null && session && scheduleRef.current) {
+      pausedAtRef.current = session.context.currentTime * 1000;
+      pausedRef.current = true;
+      cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+      clicksRef.current?.stop();
+      clicksRef.current = null;
+      setState((prev) => ({ ...prev, paused: true }));
+      return;
+    }
+
     if (advanceRef.current === null) return;
     clearTimeout(advanceRef.current);
     advanceRef.current = null;
@@ -401,6 +458,63 @@ export function useLesson(options: UseLessonOptions) {
     );
     setState((prev) => ({ ...prev, paused: true }));
   }, []);
+
+  /**
+   * Picks the exercise back up from somewhere a player can re-enter.
+   *
+   * From the top of the bar that was in progress, with a bar of clicks leading
+   * into it — the same instruction a teacher would give. Dropping someone back
+   * mid-bar on the beat they left is not something anyone can play, and losing
+   * the whole exercise for a pause in the last bar is not something anyone
+   * would ask for twice. The bar being re-read is un-scored first, so it is
+   * judged on the reading that happens rather than on the one that was
+   * interrupted.
+   *
+   * A pause during the count-in gets the count-in over again: there is no music
+   * to pick up yet, and resuming into the last click of a count-in is the same
+   * problem in miniature.
+   */
+  const resumeExercise = useCallback(
+    (session: MicSession, pausedAt: number) => {
+      const held = scheduleRef.current;
+      if (!held) return;
+      const now = session.context.currentTime * 1000;
+      const midExercise = pausedAt >= held.t0;
+      // What the music picks up from, and how much clock to allow before it.
+      const from = midExercise ? barStartAt(held, pausedAt) : held.startMs;
+      const lead = midExercise ? held.barMs : settingsRef.current.leadInMs;
+
+      const schedule = shiftSchedule(held, now + lead - from);
+      const gate = Math.max(schedule.t0, from + (now + lead - from));
+      scheduleRef.current = schedule;
+      gateRef.current = gate;
+
+      // Everything from the resumed bar on is unread again.
+      for (const window of schedule.windows) {
+        if (window.startMs >= gate) scoredRef.current.delete(window.index);
+      }
+      resultsRef.current = resultsRef.current.filter((result) =>
+        scoredRef.current.has(result.index),
+      );
+
+      clicksRef.current = scheduleClicks(
+        session.context,
+        midExercise ? [...countInClicksBefore(schedule, gate), ...schedule.clicks] : schedule.clicks,
+      );
+      setState((prev) => ({
+        ...prev,
+        paused: false,
+        phase: 'count-in',
+        activeIndex: null,
+        results: resultsRef.current,
+        // Published here rather than left to the next frame, so the count
+        // appears on the press instead of a frame after it.
+        beatsUntilStart: Math.ceil((gate - now) / schedule.clickMs),
+      }));
+      frameRef.current = requestAnimationFrame(tick);
+    },
+    [tick],
+  );
 
   useEffect(() => {
     beginExerciseRef.current = beginExercise;
@@ -414,10 +528,20 @@ export function useLesson(options: UseLessonOptions) {
   }, [beginExercise]);
 
   const resume = useCallback(() => {
-    if (!sessionRef.current) return;
+    const session = sessionRef.current;
+    if (!session) return;
+
+    const pausedAt = pausedAtRef.current;
+    if (pausedAt !== null) {
+      pausedAtRef.current = null;
+      pausedRef.current = false;
+      resumeExercise(session, pausedAt);
+      return;
+    }
+
     setState((prev) => ({ ...prev, paused: false }));
     armAdvance(advanceRemainingRef.current || settingsRef.current.advanceDelayMs);
-  }, [armAdvance]);
+  }, [armAdvance, resumeExercise]);
 
   /**
    * Opens the microphone without starting anything, so the readout is live
@@ -470,9 +594,13 @@ export function useLesson(options: UseLessonOptions) {
           latestRef.current = sample;
 
           // Count-in audio is ignored entirely — not scored, not classified, not
-          // even retained — and nothing is collected while no exercise runs.
+          // even retained — and nothing is collected while no exercise runs or
+          // while one is held. The count-in leading back into a resumed bar is
+          // a count-in like any other, which is why this asks the gate rather
+          // than t0: after a pause, t0 is already behind us.
           const schedule = scheduleRef.current;
-          if (!schedule || sample.timestamp < schedule.t0) return;
+          if (!schedule || pausedRef.current) return;
+          if (sample.timestamp < (gateRef.current ?? schedule.t0)) return;
           samplesRef.current.push(sample);
         },
         onOnset: (onset) => onsetsRef.current.push(onset),

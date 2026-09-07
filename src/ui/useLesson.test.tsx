@@ -21,7 +21,7 @@ vi.mock('../audio', () => ({
 }));
 
 const { useLesson } = await import('./useLesson');
-const { buildSchedule } = await import('../scheduler');
+const { buildSchedule, shiftSchedule } = await import('../scheduler');
 
 const HOP_MS = 512 / 44.1;
 const LEAD_IN = 300;
@@ -288,14 +288,136 @@ describe('useLesson', () => {
       expect(result.current.phase).toBe('count-in');
     });
 
-    it('does nothing mid-exercise, where there is no coherent place to stop', async () => {
-      const { result } = renderLesson(LEVEL, true);
+    it('holds an exercise in flight, and the clock cannot carry it on', async () => {
+      const { result } = renderLesson();
       const schedule = await startAndGetSchedule(result);
       await advanceTo(schedule.t0 + 10);
       expect(result.current.phase).toBe('playing');
 
       act(() => result.current.pause());
+      expect(result.current.paused).toBe(true);
+
+      // The AudioContext runs on regardless; the exercise does not finish
+      // behind the pause.
+      await advanceTo(schedule.endMs + 5000);
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.summary).toBeNull();
+    });
+
+    it('holds the count-in too', async () => {
+      const { result } = renderLesson();
+      const schedule = await startAndGetSchedule(result);
+      await advanceTo(schedule.t0 - schedule.beatMs);
+      expect(result.current.phase).toBe('count-in');
+
+      act(() => result.current.pause());
+      await advanceTo(schedule.t0 + 1000);
+      expect(result.current.phase).toBe('count-in');
+      expect(result.current.activeIndex).toBeNull();
+    });
+
+    it('picks up from the top of the interrupted bar, after a bar of count-in', async () => {
+      const { result } = renderLesson();
+      const schedule = await startAndGetSchedule(result);
+      // Partway through the second bar.
+      const heldAt = schedule.t0 + schedule.barMs + schedule.beatMs;
+      await advanceTo(heldAt);
+
+      act(() => result.current.pause());
+      act(() => result.current.resume());
       expect(result.current.paused).toBe(false);
+
+      // A bar of clicks first, and nothing under the cursor while they run.
+      expect(result.current.phase).toBe('count-in');
+      expect(result.current.activeIndex).toBeNull();
+      expect(result.current.beatsUntilStart).toBe(schedule.barMs / schedule.clickMs);
+
+      // Then the bar that was interrupted, from its first note.
+      const resumed = schedule.windows.find((w) => w.startMs >= schedule.t0 + schedule.barMs)!;
+      await advanceTo(heldAt + schedule.barMs + 10);
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.activeIndex).toBe(resumed.index);
+    });
+
+    it('restarts the count-in when it is the count-in that was interrupted', async () => {
+      const { result } = renderLesson();
+      const schedule = await startAndGetSchedule(result);
+      const heldAt = schedule.t0 - schedule.beatMs;
+      await advanceTo(heldAt);
+
+      act(() => result.current.pause());
+      act(() => result.current.resume());
+
+      // A whole count-in again, not the one beat that was left of the last one.
+      const countIn = schedule.t0 - schedule.startMs;
+      expect(result.current.beatsUntilStart).toBeGreaterThan(1);
+      await advanceTo(heldAt + countIn + LEAD_IN + 10);
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.activeIndex).toBe(0);
+    });
+
+    it('gives up the verdicts of the bar it is about to read again', async () => {
+      // A fixed exercise: what matters is that a note closes partway through
+      // its own bar, so there is a verdict inside the interrupted bar to lose.
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      const { result } = renderLesson();
+      const schedule = await startAndGetSchedule(result);
+      const first = schedule.windows[0];
+      expect(first.endMs).toBeLessThan(schedule.t0 + schedule.barMs);
+
+      await advanceTo(first.endMs + 10);
+      expect(result.current.results.map((r) => r.index)).toEqual([0]);
+
+      act(() => result.current.pause());
+      act(() => result.current.resume());
+      expect(result.current.results).toEqual([]);
+    });
+
+    it('keeps the verdicts of the bars already read', async () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      const { result } = renderLesson();
+      const schedule = await startAndGetSchedule(result);
+      const firstBar = schedule.windows.filter(
+        (w) => w.endMs <= schedule.t0 + schedule.barMs,
+      );
+      expect(firstBar.length).toBeGreaterThan(0);
+
+      await advanceTo(schedule.t0 + schedule.barMs + schedule.beatMs);
+      const read = result.current.results.map((r) => r.index);
+      expect(read).toEqual(firstBar.map((w) => w.index));
+
+      act(() => result.current.pause());
+      act(() => result.current.resume());
+      expect(result.current.results.map((r) => r.index)).toEqual(read);
+    });
+
+    it('scores the interrupted bar on the reading that replaces it', async () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      const { result } = renderLesson();
+      const schedule = await startAndGetSchedule(result);
+      const heldAt = schedule.t0 + schedule.barMs + schedule.beatMs;
+      await advanceTo(heldAt);
+
+      act(() => result.current.pause());
+      // Nothing played into the pause counts for anything.
+      act(() => {
+        for (let t = heldAt; t < heldAt + 500; t += HOP_MS) {
+          emit({ hz: midiToHz(40), confidence: 0.95, timestamp: t });
+        }
+      });
+      act(() => result.current.resume());
+
+      // The exercise now sits a count-in further down the clock.
+      const moved = shiftSchedule(schedule, heldAt + schedule.barMs - (schedule.t0 + schedule.barMs));
+      playCorrectly(moved);
+      await advanceTo(moved.endMs + 10);
+
+      expect(result.current.phase).toBe('results');
+      const reread = moved.windows.filter((w) => w.startMs >= heldAt + schedule.barMs);
+      expect(reread.length).toBeGreaterThan(0);
+      for (const window of reread) {
+        expect(result.current.results.find((r) => r.index === window.index)!.verdict).toBe('pass');
+      }
     });
   });
 
