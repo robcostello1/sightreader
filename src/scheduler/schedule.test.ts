@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  barStartAt,
   beatDurationMs,
   buildSchedule,
   countInBarsFor,
+  countInClicksBefore,
   noteDurationMs,
+  shiftSchedule,
   windowAt,
 } from './schedule';
 import { NOTE_VALUES } from '../lib/types';
@@ -179,5 +182,68 @@ describe('windowAt', () => {
   it('returns null outside the exercise', () => {
     expect(windowAt(schedule, 4000)).toBeNull();
     expect(windowAt(schedule, 7000)).toBeNull();
+  });
+});
+
+describe('picking an interrupted exercise back up', () => {
+  const schedule = buildSchedule(
+    exercise([note(1 / 4), note(1 / 4), note(1 / 4), note(1 / 4), note(1), note(1)]),
+    { ...OPTIONS, clickThroughExercise: true },
+  );
+
+  it('measures a bar from the signature, not from the notes in it', () => {
+    // 4/4 at 60bpm: four beats of a second each, whatever fills them.
+    expect(schedule.barMs).toBe(4000);
+  });
+
+  it('moves every part of the schedule by the same offset', () => {
+    const moved = shiftSchedule(schedule, 5000);
+
+    expect(moved.t0).toBe(schedule.t0 + 5000);
+    expect(moved.startMs).toBe(schedule.startMs + 5000);
+    expect(moved.endMs).toBe(schedule.endMs + 5000);
+    expect(moved.windows.map((w) => w.startMs)).toEqual(
+      schedule.windows.map((w) => w.startMs + 5000),
+    );
+    expect(moved.windows.map((w) => w.scoreFromMs)).toEqual(
+      schedule.windows.map((w) => w.scoreFromMs + 5000),
+    );
+    expect(moved.clicks.map((c) => c.timeMs)).toEqual(
+      schedule.clicks.map((c) => c.timeMs + 5000),
+    );
+  });
+
+  it('leaves the original alone', () => {
+    const before = schedule.t0;
+    shiftSchedule(schedule, 5000);
+    expect(schedule.t0).toBe(before);
+  });
+
+  it('rounds a timestamp back to the top of its bar', () => {
+    expect(barStartAt(schedule, schedule.t0 + 1500)).toBe(schedule.t0);
+    expect(barStartAt(schedule, schedule.t0 + 4000)).toBe(schedule.t0 + 4000);
+    expect(barStartAt(schedule, schedule.t0 + 9999)).toBe(schedule.t0 + 8000);
+  });
+
+  it('never rewinds past the music into the count-in', () => {
+    expect(barStartAt(schedule, schedule.startMs)).toBe(schedule.t0);
+    expect(barStartAt(schedule, schedule.t0 - 1)).toBe(schedule.t0);
+  });
+
+  it('counts a resumed bar in at the same click spacing as the first one', () => {
+    const clicks = countInClicksBefore(schedule, 20_000);
+
+    expect(clicks.map((c) => c.timeMs)).toEqual([16_000, 17_000, 18_000, 19_000]);
+    expect(clicks.map((c) => c.accent)).toEqual([true, false, false, false]);
+    expect(clicks.every((c) => c.phase === 'count-in')).toBe(true);
+  });
+
+  it('counts a compound bar in two, as it was counted in to begin with', () => {
+    const compound = buildSchedule(
+      { ...exercise([note(1 / 4), note(1 / 4)]), timeSignature: [6, 8] },
+      OPTIONS,
+    );
+    // 6/8 at 60bpm: six quaver beats a second each, clicked every three.
+    expect(countInClicksBefore(compound, 20_000).map((c) => c.timeMs)).toEqual([14_000, 17_000]);
   });
 });

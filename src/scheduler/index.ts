@@ -4,11 +4,14 @@
  * AudioContext clock. Also drives the metronome click.
  */
 export {
+  barStartAt,
   beatDurationMs,
   buildSchedule,
   countInBarsFor,
+  countInClicksBefore,
   isCompound,
   noteDurationMs,
+  shiftSchedule,
   windowAt,
 } from './schedule';
 export type { ClickEvent, Schedule, ScheduleOptions } from './schedule';

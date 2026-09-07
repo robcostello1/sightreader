@@ -81,6 +81,8 @@ export interface Schedule {
   beatMs: number;
   /** Gap between clicks — three beat-units in a compound meter, one otherwise. */
   clickMs: number;
+  /** One bar. A paused exercise picks back up on one of these — see barStartAt. */
+  barMs: number;
   clicks: ClickEvent[];
   windows: NoteWindow[];
 }
@@ -95,6 +97,7 @@ export function buildSchedule(exercise: Exercise, options: ScheduleOptions): Sch
   const t0 = startMs + countInBeats * beatMs;
   const unitsPerClick = isCompound(exercise.timeSignature) ? 3 : 1;
   const clickMs = beatMs * unitsPerClick;
+  const barMs = beatsPerBar * beatMs;
 
   const windows: NoteWindow[] = [];
   let cursor = t0;
@@ -131,7 +134,7 @@ export function buildSchedule(exercise: Exercise, options: ScheduleOptions): Sch
     }
   }
 
-  return { startMs, t0, endMs, beatMs, clickMs, clicks, windows };
+  return { startMs, t0, endMs, beatMs, clickMs, barMs, clicks, windows };
 }
 
 /** The window containing `timestamp`, or null between/outside windows. */
@@ -139,4 +142,56 @@ export function windowAt(schedule: Schedule, timestamp: AudioTimeMs): NoteWindow
   return (
     schedule.windows.find((w) => timestamp >= w.startMs && timestamp < w.endMs) ?? null
   );
+}
+
+/**
+ * The same schedule moved bodily along the clock.
+ *
+ * Every timestamp in a schedule is on the AudioContext clock, and a pause
+ * spends clock the music did not. Shifting all of them by the same offset is
+ * what lets an exercise be picked up later without any of its parts — windows,
+ * clicks, t0 — drifting against the others.
+ */
+export function shiftSchedule(schedule: Schedule, offsetMs: number): Schedule {
+  return {
+    ...schedule,
+    startMs: schedule.startMs + offsetMs,
+    t0: schedule.t0 + offsetMs,
+    endMs: schedule.endMs + offsetMs,
+    clicks: schedule.clicks.map((click) => ({ ...click, timeMs: click.timeMs + offsetMs })),
+    windows: schedule.windows.map((window) => ({
+      ...window,
+      startMs: window.startMs + offsetMs,
+      endMs: window.endMs + offsetMs,
+      scoreFromMs: window.scoreFromMs + offsetMs,
+    })),
+  };
+}
+
+/**
+ * Start of the bar `timestamp` falls in, never earlier than the music itself.
+ *
+ * Where an interrupted exercise picks up from. A bar is the unit a player
+ * re-enters on — "from the top of bar three" is an instruction anyone can
+ * follow, where "from 1.4 seconds into bar three" is not.
+ */
+export function barStartAt(schedule: Schedule, timestamp: AudioTimeMs): AudioTimeMs {
+  if (timestamp <= schedule.t0) return schedule.t0;
+  return schedule.t0 + Math.floor((timestamp - schedule.t0) / schedule.barMs) * schedule.barMs;
+}
+
+/**
+ * A bar of count-in clicks landing immediately before `atMs`.
+ *
+ * The count-in a resumed exercise gets. It is built from the schedule's own
+ * click spacing rather than from the signature again, so a compound meter is
+ * counted in the same two-in-a-bar it was counted in to begin with.
+ */
+export function countInClicksBefore(schedule: Schedule, atMs: AudioTimeMs): ClickEvent[] {
+  const clicksPerBar = Math.max(1, Math.round(schedule.barMs / schedule.clickMs));
+  return Array.from({ length: clicksPerBar }, (_, i) => ({
+    timeMs: atMs - schedule.barMs + i * schedule.clickMs,
+    accent: i === 0,
+    phase: 'count-in' as const,
+  }));
 }
