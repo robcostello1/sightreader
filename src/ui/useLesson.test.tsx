@@ -334,6 +334,34 @@ describe('useLesson', () => {
       expect(result.current.activeIndex).toBe(resumesAt.index);
     });
 
+    it('keeps the same re-entry point however often it is held', async () => {
+      const { result } = renderLesson();
+      const schedule = await startAndGetSchedule(result);
+      const barTwo = schedule.t0 + schedule.barMs;
+      const resumesAt = schedule.windows.find((w) => w.endMs > barTwo)!;
+      await advanceTo(barTwo + schedule.beatMs);
+
+      act(() => result.current.pause());
+      expect(result.current.activeIndex).toBe(resumesAt.index);
+
+      // Let go and hold again while the bar is still being counted back in.
+      // The clock has moved on, but the music has not: it is still waiting to
+      // start from the same bar, and must not rewind to the one before it.
+      for (let i = 0; i < 3; i++) {
+        act(() => result.current.resume());
+        clock.currentTime += 0.3;
+        act(() => result.current.pause());
+        expect(result.current.activeIndex).toBe(resumesAt.index);
+      }
+
+      // And when it is finally let go, that is the bar that plays.
+      act(() => result.current.resume());
+      const startsAt = clock.currentTime * 1000 + schedule.barMs;
+      await advanceTo(startsAt + 10);
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.activeIndex).toBe(resumesAt.index);
+    });
+
     it('does not count the interrupted count-in in a second time', async () => {
       const { result } = renderLesson();
       const schedule = await startAndGetSchedule(result);

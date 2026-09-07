@@ -177,8 +177,13 @@ export function useLesson(options: UseLessonOptions) {
    * that asks "has the music started yet" asks this rather than t0.
    */
   const gateRef = useRef<number | null>(null);
-  /** Clock reading at a mid-exercise pause, and null when no exercise is held. */
-  const pausedAtRef = useRef<number | null>(null);
+  /**
+   * Where a held exercise will pick up from, on the schedule it was held on,
+   * and null when no exercise is held. Decided at the pause rather than at the
+   * resume, so pausing again while the music is still counting itself back in
+   * keeps the same re-entry point instead of walking another bar backwards.
+   */
+  const reentryRef = useRef<number | null>(null);
   /** Read by the sample callback, which is not re-created per render. */
   const pausedRef = useRef(false);
 
@@ -264,7 +269,7 @@ export function useLesson(options: UseLessonOptions) {
     advanceRef.current = null;
     advanceRemainingRef.current = 0;
     stopCountdown();
-    pausedAtRef.current = null;
+    reentryRef.current = null;
     pausedRef.current = false;
     clicksRef.current?.stop();
     clicksRef.current = null;
@@ -429,7 +434,7 @@ export function useLesson(options: UseLessonOptions) {
       scoredRef.current = new Set();
       resultsRef.current = [];
       latestRef.current = null;
-      pausedAtRef.current = null;
+      reentryRef.current = null;
       pausedRef.current = false;
 
       // Anchored on the same AudioContext clock the samples are stamped with, so
@@ -480,7 +485,25 @@ export function useLesson(options: UseLessonOptions) {
     const held = scheduleRef.current;
     if (frameRef.current !== null && session && held) {
       const at = session.context.currentTime * 1000;
-      pausedAtRef.current = at;
+      // Where the music is waiting to start from: t0 for an exercise that has
+      // not been held before, and the bar it was last held at for one that has.
+      const gate = gateRef.current ?? held.t0;
+      /*
+       * The bar being re-entered.
+       *
+       * Never earlier than the point the music is already waiting on. Pausing
+       * again while a resumed bar is still counting itself back in used to
+       * rewind from wherever the clock happened to be — which is behind the
+       * gate, in a bar already played — so a run of pause and resume walked
+       * steadily backwards through the exercise.
+       */
+      const reentry =
+        at < held.t0
+          ? // Held during the exercise's own count-in: nothing has been read
+            // yet, so the whole count-in starts again.
+            held.startMs
+          : Math.max(gate, barStartAt(held, at));
+      reentryRef.current = reentry;
       pausedRef.current = true;
       cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
@@ -490,8 +513,8 @@ export function useLesson(options: UseLessonOptions) {
       // resume is about to do can be seen rather than remembered. Held during
       // the count-in there is nothing to mark: the whole thing starts again.
       const resumeAt =
-        at >= held.t0
-          ? (held.windows.find((window) => window.endMs > barStartAt(held, at)) ?? null)
+        reentry >= held.t0
+          ? (held.windows.find((window) => window.endMs > reentry) ?? null)
           : null;
       setState((prev) => ({
         ...prev,
@@ -528,13 +551,13 @@ export function useLesson(options: UseLessonOptions) {
    * problem in miniature.
    */
   const resumeExercise = useCallback(
-    (session: MicSession, pausedAt: number) => {
+    (session: MicSession, from: number) => {
       const held = scheduleRef.current;
       if (!held) return;
       const now = session.context.currentTime * 1000;
-      const midExercise = pausedAt >= held.t0;
-      // What the music picks up from, and how much clock to allow before it.
-      const from = midExercise ? barStartAt(held, pausedAt) : held.startMs;
+      // A re-entry inside the music gets a bar of clicks; one at the very start
+      // is the exercise's own count-in, which needs no second count-in.
+      const midExercise = from >= held.t0;
       const lead = midExercise ? held.barMs : settingsRef.current.leadInMs;
 
       const schedule = shiftSchedule(held, now + lead - from);
@@ -593,11 +616,11 @@ export function useLesson(options: UseLessonOptions) {
     const session = sessionRef.current;
     if (!session) return;
 
-    const pausedAt = pausedAtRef.current;
-    if (pausedAt !== null) {
-      pausedAtRef.current = null;
+    const reentry = reentryRef.current;
+    if (reentry !== null) {
+      reentryRef.current = null;
       pausedRef.current = false;
-      resumeExercise(session, pausedAt);
+      resumeExercise(session, reentry);
       return;
     }
 
