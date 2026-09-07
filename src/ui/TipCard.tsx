@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { loadSetting, saveSetting } from '../lib/storage';
 import type { InstrumentDefinition } from '../config/instruments';
 import { tipsFor } from './tips';
+import shotSizes from './tip-shots.json';
 import { Heading } from './Text';
 
 const readIndex = (value: unknown) =>
@@ -34,12 +35,35 @@ export function Tips({ instrument, scoring, onKeys }: TipsProps) {
   useEffect(() => saveSetting('tipIndex', start + 1), [start]);
 
   const tip = tips[(start + offset) % tips.length];
+  // Taken at twice this, for a retina screen. Drawn at the size the control
+  // actually is, so it is recognisable as the same control.
+  const size = shotSizes[tip.id as keyof typeof shotSizes];
 
   return (
     <aside className="tip" aria-label="Tip">
       <Heading level={2} size="small">
         Tip
       </Heading>
+      {/* The thing itself, rather than directions to it. Both crops are in the
+          markup and CSS draws the one this scheme wants — a media query alone
+          would ignore the player's own light/dark choice, which outranks the
+          system's. Only one carries the alt text; two would read it twice. */}
+      <span className="tip-shot">
+        <img
+          className="on-light"
+          src={`/tips/${tip.id}-light.png`}
+          alt={tip.shot}
+          width={size.width}
+          height={size.height}
+        />
+        <img
+          className="on-dark"
+          src={`/tips/${tip.id}-dark.png`}
+          alt=""
+          width={size.width}
+          height={size.height}
+        />
+      </span>
       <p className="tip-body">{tip.body}</p>
       <div className="tip-actions">
         {tip.id === 'controls' && (

@@ -433,6 +433,61 @@ header .heading-1 {
   border-radius: 0.625rem;
 }
 
+/*
+ * A crop of the app itself, above the sentence about it.
+ *
+ * Drawn at the size it was taken at rather than stretched to the card: these
+ * are pictures of real controls, and a control shown larger than it is on the
+ * screen behind it stops being recognisable as the same thing. The hairline
+ * keeps a crop of a pale panel from bleeding into the page it sits on.
+ */
+.tip-shot {
+  display: block;
+  margin-bottom: 1rem;
+}
+
+/* Sized by the width and height attributes the manifest supplies, so it holds
+   its space before it loads and never draws larger than life. */
+.tip-shot img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 0.375rem;
+}
+
+/* The same three states the colour tokens use: an explicit choice wins in both
+   directions, and the system decides only when there has not been one. */
+.tip-shot .on-dark {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .tip-shot .on-light {
+    display: none;
+  }
+
+  :root:not([data-theme='light']) .tip-shot .on-dark {
+    display: block;
+  }
+}
+
+:root[data-theme='dark'] .tip-shot .on-light {
+  display: none;
+}
+
+:root[data-theme='dark'] .tip-shot .on-dark {
+  display: block;
+}
+
+:root[data-theme='light'] .tip-shot .on-light {
+  display: block;
+}
+
+:root[data-theme='light'] .tip-shot .on-dark {
+  display: none;
+}
+
 /* Bigger than body copy: it is one sentence with a whole card to itself, and
    it is being read from a music stand rather than from a desk. */
 .tip-body {

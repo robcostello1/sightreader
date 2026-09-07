@@ -1,0 +1,22 @@
+{
+  "controls": {
+    "width": 280,
+    "height": 61
+  },
+  "range": {
+    "width": 248,
+    "height": 169
+  },
+  "levelling": {
+    "width": 256,
+    "height": 96
+  },
+  "guide": {
+    "width": 248,
+    "height": 40
+  },
+  "tuning": {
+    "width": 228,
+    "height": 96
+  }
+}

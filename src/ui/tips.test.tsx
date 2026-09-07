@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { tipsFor } from './tips';
 import { instrumentById } from '../config/instruments';
+import { existsSync } from 'node:fs';
 
 const ids = (instrumentId: string, scoring = true) =>
   tipsFor(instrumentById(instrumentId), scoring).map((tip) => tip.id);
@@ -31,5 +32,27 @@ describe('which tips a player gets', () => {
   it('says nothing about the microphone when there is none', () => {
     expect(ids('guitar', false)).not.toContain('tuning');
     expect(ids('guitar', false)).not.toContain('guide');
+  });
+});
+
+describe('the picture each tip points at', () => {
+  it('exists in both schemes, for every tip any instrument can reach', () => {
+    const all = new Set(
+      ['guitar', 'piano', 'violin'].flatMap((id) =>
+        [true, false].flatMap((scoring) => tipsFor(instrumentById(id), scoring).map((t) => t.id)),
+      ),
+    );
+    for (const id of all) {
+      for (const scheme of ['light', 'dark']) {
+        // Regenerate with `node scripts/tip-shots.mjs`.
+        expect(existsSync(`public/tips/${id}-${scheme}.png`), `${id}-${scheme}.png`).toBe(true);
+      }
+    }
+  });
+
+  it('describes itself for anyone who cannot see it', () => {
+    for (const tip of tipsFor(instrumentById('guitar'), true)) {
+      expect(tip.shot.length).toBeGreaterThan(10);
+    }
   });
 });
