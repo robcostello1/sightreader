@@ -8,6 +8,13 @@ vi.mock('../audio', async (importOriginal) => ({
   startMicCapture,
 }));
 
+// The metronome wants a real AudioContext to hang oscillators off; nothing
+// here is listening to it.
+vi.mock('../scheduler', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../scheduler')>()),
+  scheduleClicks: () => ({ stop: () => {} }),
+}));
+
 const { Lesson } = await import('./Lesson');
 
 beforeEach(() => {
@@ -85,7 +92,7 @@ describe('the checklist', () => {
     await click(/^go$/i);
 
     expect(modalShown()).toBe(false);
-    expect(screen.getByRole('button', { name: /^start$/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Play' })).toBeTruthy();
   });
 
   it('does not switch the microphone on just because a previous visit allowed it', async () => {
@@ -138,7 +145,7 @@ describe('without a microphone', () => {
 
     expect(modalShown()).toBe(false);
     expect(startMicCapture).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: /^start$/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Play' })).toBeTruthy();
     expect(screen.getByText(/scoring is off/i)).toBeTruthy();
 
     // And the way back is the checklist again, not a silent retry.
@@ -229,5 +236,213 @@ describe('the settings panel', () => {
     fireEvent.click(toggle);
     await settle();
     expect(JSON.parse(localStorage.getItem('sightreader.showHeard') ?? 'null')).toBe(true);
+  });
+});
+
+describe('the transport', () => {
+  const transport = () =>
+    [...document.querySelectorAll('.transport button')] as HTMLButtonElement[];
+  const pause = () => screen.getByRole('button', { name: 'Pause' });
+  const stop = () => screen.getByRole('button', { name: 'Stop' });
+
+  it('shows all three at all times, drawn rather than spelled out', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    expect(transport()).toHaveLength(3);
+    expect(transport().every((b) => b.querySelector('svg.icon') !== null)).toBe(true);
+    await click(/^play$/i);
+    expect(transport()).toHaveLength(3);
+  });
+
+  it('names each one, since the shape is all there is to read', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    const [play] = transport();
+    // One name whatever it is about to do — start, resume, next, retry.
+    expect(play.getAttribute('aria-label')).toBe('Play');
+    expect(play.title).toBe('Play (Space)');
+    expect(pause().title).toBe('Pause (Space)');
+    expect(stop().title).toBe('Stop (Esc)');
+  });
+
+  it('leaves play live in the gap, so the wait can be skipped', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    // Nothing is running here, so play offers the next exercise rather than
+    // sitting dead while the countdown runs.
+    const [play] = transport();
+    expect(play.disabled).toBe(false);
+  });
+
+  it('disables what has nothing to do, rather than hiding it', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    // Nothing running: only play is live.
+    expect(transport().map((b) => b.disabled)).toEqual([false, true, true]);
+
+    await click(/^play$/i);
+    expect(transport().map((b) => b.disabled)).toEqual([true, false, false]);
+
+    // Held, and pause stays live: pressing it again is how you let go.
+    await act(async () => {
+      fireEvent.click(pause());
+      await Promise.resolve();
+    });
+    expect(transport().map((b) => b.disabled)).toEqual([false, false, false]);
+  });
+
+  it('lights the one the session is actually doing', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    expect(transport().map((b) => b.className.includes('is-live'))).toEqual([false, false, false]);
+
+    await click(/^play$/i);
+    expect(transport().map((b) => b.className.includes('is-live'))).toEqual([true, false, false]);
+
+    await act(async () => {
+      fireEvent.click(pause());
+      await Promise.resolve();
+    });
+    // The lit button is the whole of the announcement; nothing spells it out.
+    expect(transport().map((b) => b.className.includes('is-live'))).toEqual([false, true, false]);
+    expect(screen.queryByText(/paused/i)).toBeNull();
+  });
+
+  it('lets go again on a second press of pause', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    await click(/^play$/i);
+    for (const press of [true, false]) {
+      await act(async () => {
+        fireEvent.click(pause());
+        await Promise.resolve();
+      });
+      expect(pause().getAttribute('aria-pressed')).toBe(String(press));
+    }
+  });
+
+  it('picks an exercise back up from the play button it was started with', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    await click(/^play$/i);
+    await act(async () => {
+      fireEvent.click(pause());
+      await Promise.resolve();
+    });
+    // Still Play, not a second button called Resume beside a pause that
+    // already resumes.
+    expect((screen.getByRole('button', { name: 'Play' }) as HTMLButtonElement).disabled).toBe(false);
+
+    await click(/^play$/i);
+    expect(screen.getByRole('button', { name: 'Play' }).className).toContain('is-live');
+  });
+});
+
+describe('the keyboard', () => {
+  const pressSpace = async () => {
+    await act(async () => {
+      fireEvent.keyDown(document.body, { key: ' ' });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  };
+
+  it('runs the session from the space bar', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    await pressSpace();
+    expect(screen.getByRole('button', { name: /pause/i })).not.toBeNull();
+
+    await pressSpace();
+    expect(screen.getByRole('button', { name: 'Pause' }).getAttribute('aria-pressed')).toBe('true');
+
+    await pressSpace();
+    expect(screen.getByRole('button', { name: /pause/i })).not.toBeNull();
+  });
+
+  it('stops on escape', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    await pressSpace();
+    await act(async () => {
+      fireEvent.keyDown(document.body, { key: 'Escape' });
+      await Promise.resolve();
+    });
+    expect((screen.getByRole('button', { name: 'Play' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('greets you once a visit, and gives the space back to the music', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    expect(screen.getByLabelText('Welcome').textContent).toMatch(/choose your level and tempo/);
+
+    await click(/^play$/i);
+    expect(screen.queryByLabelText(/welcome|tip/i)).toBeNull();
+
+    // Stopping is not arriving: what comes back is a tip, not the greeting.
+    await click(/^stop$/i);
+    expect(screen.queryByLabelText('Welcome')).toBeNull();
+    expect(screen.getByLabelText('Tip')).not.toBeNull();
+  });
+
+  it('has the keys behind the greeting', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    // The tip after the greeting is drawn at random, so this asks for the one
+    // it is looking for rather than assuming which comes up.
+    for (let i = 0; i < 8; i++) {
+      if (/Use the Space bar to start/.test(screen.getByLabelText(/welcome|tip/i).textContent!)) {
+        return;
+      }
+      await click(/next tip/i);
+    }
+    throw new Error('never reached the tip about the keys');
+  });
+
+  it('opens the rest of them on a question mark, and from the hint', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    await act(async () => {
+      fireEvent.keyDown(document.body, { key: '?' });
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('dialog')).not.toBeNull();
+    expect(screen.getByText(/pick back up/i)).not.toBeNull();
+
+    // And the keyboard is the dialog's while it is up.
+    await pressSpace();
+    expect(screen.queryByRole('button', { name: /pause/i })).toBeNull();
+
+    await click(/close/i);
+    // The link lives on the tip about the keys, which the rotation reaches.
+    for (let i = 0; i < 8 && screen.queryByRole('button', { name: /all shortcuts/i }) === null; i++) {
+      await click(/next tip/i);
+    }
+    await click(/all shortcuts/i);
+    expect(screen.getByRole('dialog')).not.toBeNull();
   });
 });

@@ -1,9 +1,9 @@
 import { MAX_LEVEL, clampLevel } from './levels';
 
 export interface ProgressionConfig {
-  /** Exercises averaged before a decision is made. */
+  /** Exercises in a row that must clear the threshold before the level moves. */
   windowSize: number;
-  /** Mean note accuracy needed to move up. Deliberately short of perfect. */
+  /** Note accuracy an exercise must reach to count. Deliberately short of perfect. */
   threshold: number;
   /** How far a single advance moves the level. */
   step: number;
@@ -23,6 +23,14 @@ export interface ProgressionConfig {
  * difficulty it was set from — a full window of exercises at the new level
  * before the next nudge. Letting it roll instead meant one good run could carry
  * you up a step per exercise, outrunning the reading.
+ *
+ * Every exercise in the window has to clear the threshold, rather than the
+ * window averaging it. Averaging let a 60% reading be carried by four good ones
+ * either side of it, which moved the level up on a standard the player had not
+ * actually reached — and it made the row of pass/fail bars a poor account of
+ * itself, since a row with a failure in it could still be the row that levelled
+ * you up. Five in a row is also something a player can hold in their head,
+ * which a mean of five percentages is not.
  */
 export const DEFAULT_PROGRESSION: ProgressionConfig = {
   windowSize: 5,
@@ -35,8 +43,10 @@ export interface ProgressionState {
   accuracy: number | null;
   /** Exercises completed towards the next decision. */
   completed: number;
+  /** How many of those cleared the threshold — the number that has to reach `needed`. */
+  passed: number;
   needed: number;
-  /** True once the window is full and the threshold met. */
+  /** True once a full window has been played and every exercise in it cleared. */
   ready: boolean;
   atCeiling: boolean;
 }
@@ -49,24 +59,22 @@ export function progressionState(
   const window = recent.slice(-config.windowSize);
   const accuracy =
     window.length === 0 ? null : window.reduce((sum, value) => sum + value, 0) / window.length;
+  const passed = window.filter((value) => value >= config.threshold).length;
   const atCeiling = level >= MAX_LEVEL;
   return {
     accuracy,
     completed: window.length,
+    passed,
     needed: config.windowSize,
-    ready:
-      !atCeiling &&
-      window.length >= config.windowSize &&
-      accuracy !== null &&
-      accuracy >= config.threshold,
+    ready: !atCeiling && window.length >= config.windowSize && passed === window.length,
     atCeiling,
   };
 }
 
 /**
  * The level after taking `recent` into account. Returns the same level when the
- * window is not yet full or the average falls short, so the caller can apply the
- * result unconditionally.
+ * window is not yet full or any exercise in it fell short, so the caller can
+ * apply the result unconditionally.
  */
 export function advanceLevel(
   level: number,

@@ -7,9 +7,15 @@ import type { MicCaptureOptions, MicSession } from '../audio/capture';
 import type { PitchSample } from '../lib/types';
 
 // The metronome needs a real AudioContext; everything else under test is pure.
+/** What the metronome was last asked to play, so the clicks can be asserted on. */
+const scheduled: { timeMs: number }[] = [];
 vi.mock('../scheduler', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../scheduler')>()),
-  scheduleClicks: () => ({ stop: () => {} }),
+  scheduleClicks: (_context: unknown, clicks: readonly { timeMs: number }[]) => {
+    scheduled.length = 0;
+    scheduled.push(...clicks);
+    return { stop: () => {} };
+  },
 }));
 
 const startMicCapture = vi.hoisted(() => vi.fn());
@@ -21,7 +27,7 @@ vi.mock('../audio', () => ({
 }));
 
 const { useLesson } = await import('./useLesson');
-const { buildSchedule } = await import('../scheduler');
+const { buildSchedule, shiftSchedule } = await import('../scheduler');
 
 const HOP_MS = 512 / 44.1;
 const LEAD_IN = 300;
@@ -288,14 +294,196 @@ describe('useLesson', () => {
       expect(result.current.phase).toBe('count-in');
     });
 
-    it('does nothing mid-exercise, where there is no coherent place to stop', async () => {
-      const { result } = renderLesson(LEVEL, true);
+    it('holds an exercise in flight, and the clock cannot carry it on', async () => {
+      const { result } = renderLesson();
       const schedule = await startAndGetSchedule(result);
       await advanceTo(schedule.t0 + 10);
       expect(result.current.phase).toBe('playing');
 
       act(() => result.current.pause());
+      expect(result.current.paused).toBe(true);
+
+      // The AudioContext runs on regardless; the exercise does not finish
+      // behind the pause.
+      await advanceTo(schedule.endMs + 5000);
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.summary).toBeNull();
+    });
+
+    it('holds the count-in too', async () => {
+      const { result } = renderLesson();
+      const schedule = await startAndGetSchedule(result);
+      await advanceTo(schedule.t0 - schedule.beatMs);
+      expect(result.current.phase).toBe('count-in');
+
+      act(() => result.current.pause());
+      await advanceTo(schedule.t0 + 1000);
+      expect(result.current.phase).toBe('count-in');
+      expect(result.current.activeIndex).toBeNull();
+    });
+
+    it('marks the note it will pick up from, rather than the one it stopped on', async () => {
+      const { result } = renderLesson();
+      const schedule = await startAndGetSchedule(result);
+      const barTwo = schedule.t0 + schedule.barMs;
+      const resumesAt = schedule.windows.find((w) => w.endMs > barTwo)!;
+      // Well into the bar, on a later note than the one it will resume from.
+      await advanceTo(barTwo + schedule.barMs - schedule.beatMs);
+
+      act(() => result.current.pause());
+      expect(result.current.activeIndex).toBe(resumesAt.index);
+    });
+
+    it('keeps the same re-entry point however often it is held', async () => {
+      const { result } = renderLesson();
+      const schedule = await startAndGetSchedule(result);
+      const barTwo = schedule.t0 + schedule.barMs;
+      const resumesAt = schedule.windows.find((w) => w.endMs > barTwo)!;
+      await advanceTo(barTwo + schedule.beatMs);
+
+      act(() => result.current.pause());
+      expect(result.current.activeIndex).toBe(resumesAt.index);
+
+      // Let go and hold again while the bar is still being counted back in.
+      // The clock has moved on, but the music has not: it is still waiting to
+      // start from the same bar, and must not rewind to the one before it.
+      for (let i = 0; i < 3; i++) {
+        act(() => result.current.resume());
+        clock.currentTime += 0.3;
+        act(() => result.current.pause());
+        expect(result.current.activeIndex).toBe(resumesAt.index);
+      }
+
+      // And when it is finally let go, that is the bar that plays.
+      act(() => result.current.resume());
+      const startsAt = clock.currentTime * 1000 + schedule.barMs;
+      await advanceTo(startsAt + 10);
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.activeIndex).toBe(resumesAt.index);
+    });
+
+    it('does not count the interrupted count-in in a second time', async () => {
+      const { result } = renderLesson();
+      const schedule = await startAndGetSchedule(result);
+      const heldAt = schedule.t0 + schedule.barMs + schedule.beatMs;
+      await advanceTo(heldAt);
+
+      act(() => result.current.pause());
+      act(() => result.current.resume());
+
+      // The clicks still to sound are the bar leading back in and the exercise
+      // from there on — the schedule's own count-in moved down the clock with
+      // everything else, and must not sound again over the top of this one.
+      const gate = heldAt + schedule.barMs;
+      expect(scheduled.length).toBeGreaterThan(0);
+      expect(scheduled.every((click) => click.timeMs >= gate - schedule.barMs - 1)).toBe(true);
+      expect(scheduled.filter((c) => c.timeMs < gate)).toHaveLength(
+        schedule.barMs / schedule.clickMs,
+      );
+    });
+
+    it('picks up from the top of the interrupted bar, after a bar of count-in', async () => {
+      const { result } = renderLesson();
+      const schedule = await startAndGetSchedule(result);
+      // Partway through the second bar.
+      const heldAt = schedule.t0 + schedule.barMs + schedule.beatMs;
+      await advanceTo(heldAt);
+
+      act(() => result.current.pause());
+      act(() => result.current.resume());
       expect(result.current.paused).toBe(false);
+
+      // A bar of clicks first, and nothing under the cursor while they run.
+      expect(result.current.phase).toBe('count-in');
+      expect(result.current.activeIndex).toBeNull();
+      expect(result.current.beatsUntilStart).toBe(schedule.barMs / schedule.clickMs);
+
+      // Then the bar that was interrupted, from its first note.
+      const resumed = schedule.windows.find((w) => w.startMs >= schedule.t0 + schedule.barMs)!;
+      await advanceTo(heldAt + schedule.barMs + 10);
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.activeIndex).toBe(resumed.index);
+    });
+
+    it('restarts the count-in when it is the count-in that was interrupted', async () => {
+      const { result } = renderLesson();
+      const schedule = await startAndGetSchedule(result);
+      const heldAt = schedule.t0 - schedule.beatMs;
+      await advanceTo(heldAt);
+
+      act(() => result.current.pause());
+      act(() => result.current.resume());
+
+      // A whole count-in again, not the one beat that was left of the last one.
+      const countIn = schedule.t0 - schedule.startMs;
+      expect(result.current.beatsUntilStart).toBeGreaterThan(1);
+      await advanceTo(heldAt + countIn + LEAD_IN + 10);
+      expect(result.current.phase).toBe('playing');
+      expect(result.current.activeIndex).toBe(0);
+    });
+
+    it('gives up the verdicts of the bar it is about to read again', async () => {
+      // A fixed exercise: what matters is that a note closes partway through
+      // its own bar, so there is a verdict inside the interrupted bar to lose.
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      const { result } = renderLesson();
+      const schedule = await startAndGetSchedule(result);
+      const first = schedule.windows[0];
+      expect(first.endMs).toBeLessThan(schedule.t0 + schedule.barMs);
+
+      await advanceTo(first.endMs + 10);
+      expect(result.current.results.map((r) => r.index)).toEqual([0]);
+
+      act(() => result.current.pause());
+      act(() => result.current.resume());
+      expect(result.current.results).toEqual([]);
+    });
+
+    it('keeps the verdicts of the bars already read', async () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      const { result } = renderLesson();
+      const schedule = await startAndGetSchedule(result);
+      const firstBar = schedule.windows.filter(
+        (w) => w.endMs <= schedule.t0 + schedule.barMs,
+      );
+      expect(firstBar.length).toBeGreaterThan(0);
+
+      await advanceTo(schedule.t0 + schedule.barMs + schedule.beatMs);
+      const read = result.current.results.map((r) => r.index);
+      expect(read).toEqual(firstBar.map((w) => w.index));
+
+      act(() => result.current.pause());
+      act(() => result.current.resume());
+      expect(result.current.results.map((r) => r.index)).toEqual(read);
+    });
+
+    it('scores the interrupted bar on the reading that replaces it', async () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      const { result } = renderLesson();
+      const schedule = await startAndGetSchedule(result);
+      const heldAt = schedule.t0 + schedule.barMs + schedule.beatMs;
+      await advanceTo(heldAt);
+
+      act(() => result.current.pause());
+      // Nothing played into the pause counts for anything.
+      act(() => {
+        for (let t = heldAt; t < heldAt + 500; t += HOP_MS) {
+          emit({ hz: midiToHz(40), confidence: 0.95, timestamp: t });
+        }
+      });
+      act(() => result.current.resume());
+
+      // The exercise now sits a count-in further down the clock.
+      const moved = shiftSchedule(schedule, heldAt + schedule.barMs - (schedule.t0 + schedule.barMs));
+      playCorrectly(moved);
+      await advanceTo(moved.endMs + 10);
+
+      expect(result.current.phase).toBe('results');
+      const reread = moved.windows.filter((w) => w.startMs >= heldAt + schedule.barMs);
+      expect(reread.length).toBeGreaterThan(0);
+      for (const window of reread) {
+        expect(result.current.results.find((r) => r.index === window.index)!.verdict).toBe('pass');
+      }
     });
   });
 
@@ -543,6 +731,47 @@ describe('useLesson', () => {
         await advanceTo(schedule.endMs + 10);
       }
       expect(result.current.milestone).toBeNull();
+    });
+  });
+
+  describe('the wait between exercises', () => {
+    it('counts itself down, so the gap is a wait rather than a hold', async () => {
+      const { result } = renderLesson(LEVEL, true);
+      const schedule = await startAndGetSchedule(result);
+      await advanceTo(schedule.endMs + 10);
+
+      expect(result.current.phase).toBe('results');
+      expect(result.current.secondsUntilNext).toBe(1);
+
+      // Held, it stops where it is rather than running on behind the pause.
+      act(() => result.current.pause());
+      const held = result.current.secondsUntilNext;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ADVANCE_MS * 4);
+      });
+      expect(result.current.secondsUntilNext).toBe(held);
+    });
+
+    it('stops counting once the next exercise is under way', async () => {
+      const { result } = renderLesson(LEVEL, true);
+      const schedule = await startAndGetSchedule(result);
+      await advanceTo(schedule.endMs + 10);
+      expect(result.current.secondsUntilNext).not.toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ADVANCE_MS + 50);
+      });
+      expect(result.current.phase).toBe('count-in');
+      expect(result.current.secondsUntilNext).toBeNull();
+    });
+
+    it('has nothing to count when nothing is coming', async () => {
+      const { result } = renderLesson();
+      const schedule = await startAndGetSchedule(result);
+      await advanceTo(schedule.endMs + 10);
+
+      expect(result.current.phase).toBe('results');
+      expect(result.current.secondsUntilNext).toBeNull();
     });
   });
 

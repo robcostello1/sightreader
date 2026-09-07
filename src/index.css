@@ -295,6 +295,9 @@ header .heading-1 {
 .score-area {
   flex: 1;
   min-height: 23rem;
+  /* A column, so an empty one can centre what it is holding instead. */
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   overflow-x: hidden;
   /* The bar sits over the staff and the view moves itself as the music wraps,
@@ -349,13 +352,216 @@ header .heading-1 {
   }
 }
 
+/*
+ * Three slots of fixed width: go, stop, and what is happening.
+ *
+ * It was a wrapping flex row, which meant its geometry was decided by whatever
+ * happened to be in it. Start is narrower than Pause beside Stop, so the row
+ * changed width as a session began, and at a narrow window the count-in wrapped
+ * onto a second line and pushed the music down by the height of one. Columns
+ * sized by the row rather than by its contents cannot do either: a slot that is
+ * empty this phase is still exactly as wide as it was last phase.
+ */
 .stage-controls {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: var(--gap);
-  flex-wrap: wrap;
   min-height: 2.75rem;
   flex: none;
+}
+
+/*
+ * Play, pause and stop, together and always. Three shapes nobody has to be
+ * taught, so the labels move to the title and the accessible name and the
+ * buttons carry the glyph alone.
+ */
+.transport {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Square, and big enough to hit without looking at it. The glyph is sized
+     like the other figures in the app rather than like text: it is read at a
+     glance from a music stand, not word by word. */
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  font-size: var(--figure-sm);
+}
+
+/*
+ * What the session is doing, rather than what you may press. The lit button is
+ * the one describing the state — play while it runs, pause while it is held —
+ * and it is deliberately the disabled one, since a transport shows you where
+ * you are as much as it offers you somewhere to go.
+ */
+.control.is-live {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Nothing to do in this phase. Still there, still in the same place: a control
+   that comes and goes has to be found again every time. */
+.control:disabled {
+  color: var(--fg-muted);
+  border-color: var(--line);
+  cursor: not-allowed;
+}
+
+.control.is-live:disabled {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.icon {
+  flex: none;
+}
+
+/*
+ * The count-in, a notice, a hint — whatever the phase has to say, on one line.
+ * Wrapping is what it must not do, so a long message is clipped with an
+ * ellipsis and carries the whole of itself in its title attribute instead.
+ */
+.control-status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.control-message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * A tip, in the middle of the space the music will take.
+ *
+ * Transparent on a hairline rather than on the card surface: the two cards
+ * below it are furniture that stays, and this is a note in the margin that
+ * leaves the moment there is an exercise to draw. Centred both ways, because it
+ * is alone on that half of the screen and anything else looks like it fell
+ * there.
+ */
+.tip {
+  max-width: 26rem;
+  margin: auto;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.625rem;
+}
+
+/*
+ * A crop of the app itself, above the sentence about it.
+ *
+ * Drawn at the size it was taken at rather than stretched to the card: these
+ * are pictures of real controls, and a control shown larger than it is on the
+ * screen behind it stops being recognisable as the same thing. The hairline
+ * keeps a crop of a pale panel from bleeding into the page it sits on.
+ */
+.tip-shot {
+  display: block;
+  margin-bottom: 1rem;
+}
+
+/* Sized by the width and height attributes the manifest supplies, so it holds
+   its space before it loads and never draws larger than life. */
+.tip-shot img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 0.375rem;
+}
+
+/* The same three states the colour tokens use: an explicit choice wins in both
+   directions, and the system decides only when there has not been one. */
+.tip-shot .on-dark {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .tip-shot .on-light {
+    display: none;
+  }
+
+  :root:not([data-theme='light']) .tip-shot .on-dark {
+    display: block;
+  }
+}
+
+:root[data-theme='dark'] .tip-shot .on-light {
+  display: none;
+}
+
+:root[data-theme='dark'] .tip-shot .on-dark {
+  display: block;
+}
+
+:root[data-theme='light'] .tip-shot .on-light {
+  display: block;
+}
+
+:root[data-theme='light'] .tip-shot .on-dark {
+  display: none;
+}
+
+/* Bigger than body copy: it is one sentence with a whole card to itself, and
+   it is being read from a music stand rather than from a desk. */
+.tip-body {
+  font-size: var(--heading-3);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.tip-actions {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+/* Off to the right on its own: it acts on the card rather than on anything in
+   the app, which is a different kind of thing from the link beside it. */
+.tip-next {
+  margin-left: auto;
+}
+
+/* A key as it looks on a keyboard, so it reads as something to press rather
+   than as a word in a sentence. */
+kbd {
+  font: inherit;
+  font-size: var(--text-size-small);
+  line-height: 1.2;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 0.25rem;
+  color: var(--fg-muted);
+}
+
+/* The list behind the hint. A grid rather than a row per key, so every action
+   starts at the same place however wide its key is. */
+.keys {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.6rem 0.9rem;
+  margin: 1.25rem 0 0;
+}
+
+.key-row {
+  display: contents;
+}
+
+.keys dd {
+  margin: 0;
+  color: var(--fg-muted);
 }
 
 /* Grouped onto their own surface so the settings read as a panel beside the
@@ -887,6 +1093,24 @@ input[type='range'] {
   .score-area {
     flex: none;
     height: 23rem;
+  }
+}
+
+/*
+ * Too narrow for three slots side by side. The status moves to its own row
+ * rather than squeezing, and that row is reserved whether or not anything is in
+ * it — the point of the whole arrangement is that the music below never moves,
+ * and a row that appears with the count-in would move it. Two rem is the
+ * count-in numeral's own height, which is the tallest thing that lands here.
+ */
+@media (max-width: 560px) {
+  .stage-controls {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 0.5rem;
+  }
+
+  .control-status {
+    min-height: 2rem;
   }
 }
 
