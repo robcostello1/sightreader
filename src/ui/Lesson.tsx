@@ -35,6 +35,7 @@ import { Troubleshooting } from './Troubleshooting';
 import { Heading, Text } from './Text';
 import { PauseIcon, PlayIcon, StopIcon } from './Icon';
 import { Shortcuts } from './Shortcuts';
+import { Tips } from './TipCard';
 import { useShortcuts } from './keys';
 import { Waveform } from './Waveform';
 import { useLesson } from './useLesson';
@@ -188,8 +189,7 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
   /** Where there is another exercise to move on to rather than one in flight. */
   const between =
     lesson.phase === 'idle' || lesson.phase === 'results' || lesson.phase === 'error';
-  // A hint is worth its space between exercises and is clutter during one.
-  const hinting = primary !== null && (lesson.phase === 'idle' || lesson.phase === 'results');
+
 
   useEffect(() => {
     void import('../notation');
@@ -313,29 +313,20 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
                   <span className="count-in">
                     Count-in <strong>{lesson.beatsUntilStart}</strong>
                   </span>
-                ) : hinting ? (
-                  /* The one key worth knowing, named where it is about to be
-                     useful, with the rest of them one press or one click
-                     further on. */
-                  <span className="key-hint">
-                    <kbd>Space</kbd>
-                    <Text as="span" size="small" tone="muted">
-                      {primary.label}
-                    </Text>
-                    <button
-                      type="button"
-                      className="link"
-                      onClick={() => setKeysShown(true)}
-                      aria-keyshortcuts="Shift+?"
-                    >
-                      More keys
-                    </button>
-                  </span>
                 ) : null}
               </div>
             </div>
 
             <div className="score-area">
+              {/* Nothing to read yet, so the space says something useful
+                  instead of sitting empty. */}
+              {!lesson.exercise && (
+                <Tips
+                  instrument={instrument}
+                  scoring={scoring}
+                  onKeys={() => setKeysShown(true)}
+                />
+              )}
               {lesson.exercise && (
                 <Suspense fallback={<Text tone="muted">Loading notation…</Text>}>
                   <Score

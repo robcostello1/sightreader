@@ -323,14 +323,15 @@ describe('the keyboard', () => {
     expect(screen.getByRole('button', { name: /^start$/i })).not.toBeNull();
   });
 
-  it('names the one key that matters between exercises, and hides it during one', async () => {
+  it('names the keys in the tip that sits where the music will go', async () => {
     asReturning();
     render(<Lesson />);
     await settle();
 
-    expect(screen.getByText('Space')).not.toBeNull();
+    expect(screen.getByLabelText('Tip').textContent).toMatch(/Space starts a session/);
+    // And gives the space back the moment there is something to read there.
     await click(/start/i);
-    expect(screen.queryByText('Space')).toBeNull();
+    expect(screen.queryByLabelText('Tip')).toBeNull();
   });
 
   it('opens the rest of them on a question mark, and from the hint', async () => {
@@ -350,7 +351,7 @@ describe('the keyboard', () => {
     expect(screen.queryByRole('button', { name: /pause/i })).toBeNull();
 
     await click(/close/i);
-    await click(/more keys/i);
+    await click(/all shortcuts/i);
     expect(screen.getByRole('dialog')).not.toBeNull();
   });
 });

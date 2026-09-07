@@ -295,6 +295,9 @@ header .heading-1 {
 .score-area {
   flex: 1;
   min-height: 23rem;
+  /* A column, so an empty one can centre what it is holding instead. */
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   overflow-x: hidden;
   /* The bar sits over the staff and the view moves itself as the music wraps,
@@ -368,23 +371,26 @@ header .heading-1 {
   flex: none;
 }
 
-/* Buttons fill their slot rather than sizing to their label, so Start and
-   Resume are the same button in the same place. */
+/*
+ * The icon sits against its label, and the pair sits in a button not much
+ * wider than they are. Stretched to fill its slot the button was half again
+ * the width of what was in it, which left the icon marooned out in the middle
+ * of the padding rather than reading as part of the word.
+ *
+ * A floor rather than a fixed width: Start is shorter than Resume, and a button
+ * that hugged its text exactly would jump about between phases. Nothing after
+ * it moves either way — the slot it sits in is the fixed thing.
+ */
 .control {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  width: 100%;
+  min-width: 6.5rem;
+  justify-self: start;
   /* The label is what is read; the icon repeats it for the eye scanning the
      row, and neither is allowed to wrap it onto two lines. */
   white-space: nowrap;
-}
-
-/* Even padding: the primary button's generous sides are for a button that
-   sizes to its text, and this one no longer does. */
-.control.primary {
-  padding: 0.6rem 1rem;
 }
 
 .icon {
@@ -410,12 +416,33 @@ header .heading-1 {
   text-overflow: ellipsis;
 }
 
-/* The one key worth naming, where it is about to be useful. Quiet enough to
-   ignore: it is an offer, not an instruction. */
-.key-hint {
+/*
+ * A tip, in the middle of the space the music will take.
+ *
+ * Transparent on a hairline rather than on the card surface: the two cards
+ * below it are furniture that stays, and this is a note in the margin that
+ * leaves the moment there is an exercise to draw. Centred both ways, because it
+ * is alone on that half of the screen and anything else looks like it fell
+ * there.
+ */
+.tip {
+  max-width: 26rem;
+  margin: auto;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.625rem;
+  text-align: center;
+}
+
+.tip > :last-child {
+  margin-bottom: 0;
+}
+
+.tip-actions {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 0.75rem;
 }
 
 /* A key as it looks on a keyboard, so it reads as something to press rather

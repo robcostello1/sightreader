@@ -1,0 +1,58 @@
+import { useEffect, useState } from 'react';
+import { loadSetting, saveSetting } from '../lib/storage';
+import type { InstrumentDefinition } from '../config/instruments';
+import { tipsFor } from './tips';
+import { Heading, Text } from './Text';
+
+const readIndex = (value: unknown) =>
+  typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : null;
+
+export interface TipsProps {
+  instrument: InstrumentDefinition;
+  scoring: boolean;
+  /** Opens the full shortcut list, which the first tip points at. */
+  onKeys: () => void;
+}
+
+/**
+ * One tip, in the space the notation will take.
+ *
+ * It sits where the music goes because that is the only part of the screen that
+ * is empty while nothing is playing, and it leaves as soon as there is an
+ * exercise to draw. Transparent, on a hairline: it is a note in the margin, not
+ * another panel competing with the two that are already there.
+ *
+ * Which tip comes up advances every time the idle screen is reached, so someone
+ * who comes back tomorrow gets a different one. It starts at the controls,
+ * because the first thing worth knowing is how to start without the mouse.
+ */
+export function Tips({ instrument, scoring, onKeys }: TipsProps) {
+  const tips = tipsFor(instrument, scoring);
+  const [start] = useState(() => loadSetting('tipIndex', readIndex, 0));
+  const [offset, setOffset] = useState(0);
+
+  useEffect(() => saveSetting('tipIndex', start + 1), [start]);
+
+  const tip = tips[(start + offset) % tips.length];
+
+  return (
+    <aside className="tip" aria-label="Tip">
+      <Heading level={2} size="small">
+        {tip.title}
+      </Heading>
+      <Text size="small" tone="muted">
+        {tip.body}
+      </Text>
+      <div className="tip-actions">
+        {tip.id === 'controls' && (
+          <button type="button" className="link" onClick={onKeys}>
+            All shortcuts
+          </button>
+        )}
+        <button type="button" className="link" onClick={() => setOffset(offset + 1)}>
+          Next tip
+        </button>
+      </div>
+    </aside>
+  );
+}
