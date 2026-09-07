@@ -349,13 +349,65 @@ header .heading-1 {
   }
 }
 
+/*
+ * Three slots of fixed width: go, stop, and what is happening.
+ *
+ * It was a wrapping flex row, which meant its geometry was decided by whatever
+ * happened to be in it. Start is narrower than Pause beside Stop, so the row
+ * changed width as a session began, and at a narrow window the count-in wrapped
+ * onto a second line and pushed the music down by the height of one. Columns
+ * sized by the row rather than by its contents cannot do either: a slot that is
+ * empty this phase is still exactly as wide as it was last phase.
+ */
 .stage-controls {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 9rem) minmax(0, 7rem) minmax(0, 1fr);
   align-items: center;
   gap: var(--gap);
-  flex-wrap: wrap;
   min-height: 2.75rem;
   flex: none;
+}
+
+/* Buttons fill their slot rather than sizing to their label, so Start and
+   Resume are the same button in the same place. */
+.control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  /* The label is what is read; the icon repeats it for the eye scanning the
+     row, and neither is allowed to wrap it onto two lines. */
+  white-space: nowrap;
+}
+
+/* Even padding: the primary button's generous sides are for a button that
+   sizes to its text, and this one no longer does. */
+.control.primary {
+  padding: 0.6rem 1rem;
+}
+
+.icon {
+  flex: none;
+}
+
+/*
+ * The count-in, a notice, a hint — whatever the phase has to say, on one line.
+ * Wrapping is what it must not do, so a long message is clipped with an
+ * ellipsis and carries the whole of itself in its title attribute instead.
+ */
+.control-status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.control-message {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Grouped onto their own surface so the settings read as a panel beside the
@@ -887,6 +939,25 @@ input[type='range'] {
   .score-area {
     flex: none;
     height: 23rem;
+  }
+}
+
+/*
+ * Too narrow for three slots side by side. The status moves to its own row
+ * rather than squeezing, and that row is reserved whether or not anything is in
+ * it — the point of the whole arrangement is that the music below never moves,
+ * and a row that appears with the count-in would move it. Two rem is the
+ * count-in numeral's own height, which is the tallest thing that lands here.
+ */
+@media (max-width: 560px) {
+  .stage-controls {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    row-gap: 0.5rem;
+  }
+
+  .control-status {
+    grid-column: 1 / -1;
+    min-height: 2rem;
   }
 }
 

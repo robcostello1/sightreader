@@ -33,6 +33,7 @@ import { useCurrentReading, useSteadyPitch } from './useSteadyPitch';
 import { Onboarding } from './Onboarding';
 import { Troubleshooting } from './Troubleshooting';
 import { Heading, Text } from './Text';
+import { PauseIcon, PlayIcon, StopIcon } from './Icon';
 import { Waveform } from './Waveform';
 import { useLesson } from './useLesson';
 
@@ -155,6 +156,31 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
   const threshold = Math.round(DEFAULT_PROGRESSION.threshold * 100);
   const running = lesson.phase === 'count-in' || lesson.phase === 'playing';
   const listening = running || lesson.phase === 'results';
+  /**
+   * Whether there is anything to hold: an exercise in flight, or the gap before
+   * the next one when one is coming. With auto-advance off, results sit there
+   * until asked to move on, which is already a kind of held.
+   */
+  const holdable = running || (lesson.phase === 'results' && autoAdvance);
+
+  /**
+   * What the go button does right now. One slot rather than a button per
+   * phase — the action changes, the affordance does not, and the player who
+   * has just pressed Start should find Pause under the same finger.
+   */
+  const primary =
+    lesson.phase === 'arming'
+      ? null
+      : holdable
+        ? lesson.paused
+          ? { label: 'Resume', icon: <PlayIcon />, act: lesson.resume }
+          : { label: 'Pause', icon: <PauseIcon />, act: lesson.pause }
+        : {
+            label:
+              lesson.phase === 'error' ? 'Retry' : lesson.phase === 'results' ? 'Next' : 'Start',
+            icon: <PlayIcon />,
+            act: lesson.start,
+          };
 
   useEffect(() => {
     void import('../notation');
@@ -217,35 +243,54 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
           </section>
         ) : (
           <>
+            {/* Three fixed slots — go, stop, and what is happening. Which
+                button is in the first one changes constantly; where it is and
+                how wide it is never does, so nothing below the row moves as a
+                session runs. */}
             <div className="stage-controls">
-              {lesson.phase === 'idle' && (
-                <button className="primary" onClick={lesson.start}>
-                  Start
-                </button>
-              )}
-              {lesson.phase === 'arming' && <Text as="span" tone="muted">Requesting microphone…</Text>}
-              {listening && <button onClick={lesson.stop}>Stop</button>}
-              {lesson.phase === 'results' && !autoAdvance && (
-                <button className="primary" onClick={lesson.start}>
-                  Next
-                </button>
-              )}
-              {lesson.phase === 'results' && autoAdvance && (
-                <button onClick={lesson.paused ? lesson.resume : lesson.pause}>
-                  {lesson.paused ? 'Resume' : 'Pause'}
-                </button>
-              )}
-              {lesson.phase === 'error' && (
-                <>
-                  <span role="alert">Could not start: {lesson.error}</span>
-                  <button onClick={lesson.start}>Retry</button>
-                </>
-              )}
-              {lesson.phase === 'count-in' && (
-                <span className="count-in">
-                  Count-in <strong>{lesson.beatsUntilStart}</strong>
-                </span>
-              )}
+              <div className="control-slot">
+                {primary && (
+                  <button
+                    type="button"
+                    className="control primary"
+                    onClick={primary.act}
+                    title={`${primary.label} (Space)`}
+                    aria-keyshortcuts="Space"
+                  >
+                    {primary.icon}
+                    {primary.label}
+                  </button>
+                )}
+              </div>
+              <div className="control-slot">
+                {listening && (
+                  <button
+                    type="button"
+                    className="control"
+                    onClick={lesson.stop}
+                    title="Stop (Esc)"
+                    aria-keyshortcuts="Escape"
+                  >
+                    <StopIcon />
+                    Stop
+                  </button>
+                )}
+              </div>
+              <div className="control-status">
+                {lesson.phase === 'error' ? (
+                  <span role="alert" className="control-message">
+                    Could not start: {lesson.error}
+                  </span>
+                ) : lesson.phase === 'arming' ? (
+                  <Text as="span" tone="muted">Requesting microphone…</Text>
+                ) : lesson.paused ? (
+                  <Text as="span" tone="muted">Paused</Text>
+                ) : lesson.phase === 'count-in' ? (
+                  <span className="count-in">
+                    Count-in <strong>{lesson.beatsUntilStart}</strong>
+                  </span>
+                ) : null}
+              </div>
             </div>
 
             <div className="score-area">

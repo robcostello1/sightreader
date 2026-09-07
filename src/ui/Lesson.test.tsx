@@ -8,6 +8,13 @@ vi.mock('../audio', async (importOriginal) => ({
   startMicCapture,
 }));
 
+// The metronome wants a real AudioContext to hang oscillators off; nothing
+// here is listening to it.
+vi.mock('../scheduler', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../scheduler')>()),
+  scheduleClicks: () => ({ stop: () => {} }),
+}));
+
 const { Lesson } = await import('./Lesson');
 
 beforeEach(() => {
@@ -229,5 +236,51 @@ describe('the settings panel', () => {
     fireEvent.click(toggle);
     await settle();
     expect(JSON.parse(localStorage.getItem('sightreader.showHeard') ?? 'null')).toBe(true);
+  });
+});
+
+describe('the control row', () => {
+  /** Every slot is present in every phase, which is what stops the row moving. */
+  const slots = () => document.querySelectorAll('.stage-controls > *').length;
+
+  it('keeps its slots whether or not there is a button in them', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    expect(slots()).toBe(3);
+    await click(/start/i);
+    expect(slots()).toBe(3);
+  });
+
+  it('offers the go button as a hold once a session is running', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    const go = screen.getByRole('button', { name: /start/i });
+    expect(go.title).toBe('Start (Space)');
+    // Drawn, not typed.
+    expect(go.querySelector('svg.icon')).not.toBeNull();
+
+    await click(/start/i);
+    expect(screen.queryByRole('button', { name: /^start$/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /pause/i })).not.toBeNull();
+    expect(screen.getByRole('button', { name: /stop/i })).not.toBeNull();
+  });
+
+  it('holds an exercise in flight and says so', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    await click(/start/i);
+    await click(/pause/i);
+
+    expect(screen.getByRole('button', { name: /resume/i })).not.toBeNull();
+    expect(screen.getByText('Paused')).not.toBeNull();
+
+    await click(/resume/i);
+    expect(screen.getByRole('button', { name: /pause/i })).not.toBeNull();
   });
 });
