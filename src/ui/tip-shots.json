@@ -14,5 +14,9 @@
   "tuning": {
     "width": 228,
     "height": 96
+  },
+  "guide": {
+    "width": 232,
+    "height": 106
   }
 }

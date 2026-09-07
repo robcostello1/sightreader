@@ -36,8 +36,10 @@ export function Tips({ instrument, scoring, onKeys }: TipsProps) {
 
   const tip = tips[(start + offset) % tips.length];
   // Taken at twice this, for a retina screen. Drawn at the size the control
-  // actually is, so it is recognisable as the same control.
-  const size = shotSizes[tip.id as keyof typeof shotSizes];
+  // actually is, so it is recognisable as the same control. A tip with no entry
+  // draws its picture at whatever size it is rather than taking the page down
+  // with it — tips.test.tsx is what stops that shipping.
+  const size = shotSizes[tip.id as keyof typeof shotSizes] ?? { width: undefined, height: undefined };
 
   return (
     <aside className="tip" aria-label="Tip">

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { tipsFor } from './tips';
 import { instrumentById } from '../config/instruments';
 import { existsSync } from 'node:fs';
+import shotSizes from './tip-shots.json';
 
 const ids = (instrumentId: string, scoring = true) =>
   tipsFor(instrumentById(instrumentId), scoring).map((tip) => tip.id);
@@ -50,9 +51,12 @@ describe('the picture each tip points at', () => {
     );
     for (const id of all) {
       for (const scheme of ['light', 'dark']) {
-        // Regenerate with `node scripts/tip-shots.mjs`.
+        // Regenerate with `npm run tip-shots`.
         expect(existsSync(`public/tips/${id}-${scheme}.png`), `${id}-${scheme}.png`).toBe(true);
       }
+      // And a size to draw it at. Without one the card used to read width off
+      // undefined and take the whole page down with it.
+      expect(Object.keys(shotSizes), `${id} size`).toContain(id);
     }
   });
 

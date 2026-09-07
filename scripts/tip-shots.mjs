@@ -15,7 +15,7 @@
  * player chose and a light crop on a dark page reads as a hole in it.
  */
 import { spawn } from 'node:child_process';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 
 const BASE = process.argv[2] ?? 'http://localhost:5173';
 const OUT = new URL('../public/tips/', import.meta.url).pathname;
@@ -100,8 +100,14 @@ async function open(theme) {
 }
 
 mkdirSync(OUT, { recursive: true });
-/** CSS size of each crop, so the card can draw it life-size rather than blown up. */
-const sizes = {};
+/**
+ * CSS size of each crop, so the card can draw it life-size rather than blown
+ * up. Merged into what is already there rather than written fresh: not every
+ * tip's picture is taken by this script, and dropping the ones that are not
+ * left the card reading a size that did not exist.
+ */
+const MANIFEST = new URL('../src/ui/tip-shots.json', import.meta.url).pathname;
+const sizes = JSON.parse(readFileSync(MANIFEST, 'utf8'));
 for (const theme of ['light', 'dark']) {
   for (const shot of SHOTS) {
     await open(theme);
@@ -139,10 +145,7 @@ for (const theme of ['light', 'dark']) {
   }
 }
 
-writeFileSync(
-  new URL('../src/ui/tip-shots.json', import.meta.url).pathname,
-  `${JSON.stringify(sizes, null, 2)}\n`,
-);
+writeFileSync(MANIFEST, `${JSON.stringify(sizes, null, 2)}\n`);
 
 ws.close();
 chrome.kill();
