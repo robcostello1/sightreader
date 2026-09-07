@@ -3,7 +3,7 @@ import type { InstrumentDefinition } from '../config/instruments';
 
 export interface Tip {
   id: string;
-  title: string;
+  /** One sentence. Anything longer is a manual, and nobody came here to read one. */
   body: string;
 }
 
@@ -21,32 +21,28 @@ export function tipsFor(instrument: InstrumentDefinition, scoring: boolean): Tip
   return [
     {
       id: 'controls',
-      title: 'Hands on the instrument',
-      body: 'Space starts a session, holds it wherever it has got to, and picks it back up from the top of the bar. Esc stops. Press ? for the rest.',
+      body: 'Space starts a session and holds it wherever it has got to; press ? for the other keys.',
     },
     ...(instrument.hasPositions
       ? [
           {
             id: 'range',
-            title: 'Where you are playing',
             body:
               instrument.id === 'guitar'
-                ? 'Settings holds every fretboard position, and the whole neck in both lengths a guitar comes in. Moving up the neck changes what is under your hand, not how hard the reading is.'
-                : 'Settings holds a five-finger position for each hand, one staff at a time, and the grand staff at three widths.',
+                ? 'Settings changes which part of the neck you read, from a four-fret position to the whole thing.'
+                : 'Settings changes how much of the keyboard you read, from five notes under one hand to the full range.',
           },
         ]
       : []),
     {
       id: 'levelling',
-      title: 'Moving up',
-      body: `The row of bars below the staff is your last ${window} exercises. Averaging ${threshold}% across them moves you up a tenth of a level, and starts the window again.`,
+      body: `${window} exercises averaging ${threshold}% moves you up a tenth of a level.`,
     },
     ...(scoring
       ? [
           {
             id: 'guide',
-            title: 'Seeing what it hears',
-            body: 'Show guide note, in Settings, draws the note the microphone is hearing on the staff beside the one you are meant to be playing.',
+            body: 'Turn on Show guide note in Settings to see what the microphone is hearing on the staff.',
           },
         ]
       : []),
@@ -54,8 +50,7 @@ export function tipsFor(instrument: InstrumentDefinition, scoring: boolean): Tip
       ? [
           {
             id: 'tuning',
-            title: 'Tuning first',
-            body: 'The readout under the staff names what it hears and shows how far sharp or flat. Play an open string into it before you start — a note scored against the wrong tuning is scored wrong.',
+            body: 'Tune to the readout below the staff first: it names the note it hears and shows how far off it is.',
           },
         ]
       : []),

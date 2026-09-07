@@ -26,8 +26,7 @@ export function Shortcuts({ open, onOpenChange }: ShortcutsProps) {
           </Dialog.Title>
           <Dialog.Description asChild>
             <Text tone="muted">
-              Both hands are on an instrument, so the session can be run without
-              reaching for the mouse.
+              Every part of a session can be run from the keyboard.
             </Text>
           </Dialog.Description>
 

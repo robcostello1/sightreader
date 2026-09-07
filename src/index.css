@@ -431,18 +431,27 @@ header .heading-1 {
   padding: 1.25rem 1.5rem;
   border: 1px solid var(--line);
   border-radius: 0.625rem;
-  text-align: center;
 }
 
-.tip > :last-child {
-  margin-bottom: 0;
+/* Bigger than body copy: it is one sentence with a whole card to itself, and
+   it is being read from a music stand rather than from a desk. */
+.tip-body {
+  font-size: var(--heading-3);
+  line-height: 1.45;
+  margin: 0;
 }
 
 .tip-actions {
   display: flex;
-  justify-content: center;
+  align-items: baseline;
   gap: 1rem;
-  margin-top: 0.75rem;
+  margin-top: 1rem;
+}
+
+/* Off to the right on its own: it acts on the card rather than on anything in
+   the app, which is a different kind of thing from the link beside it. */
+.tip-next {
+  margin-left: auto;
 }
 
 /* A key as it looks on a keyboard, so it reads as something to press rather

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { loadSetting, saveSetting } from '../lib/storage';
 import type { InstrumentDefinition } from '../config/instruments';
 import { tipsFor } from './tips';
-import { Heading, Text } from './Text';
+import { Heading } from './Text';
 
 const readIndex = (value: unknown) =>
   typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : null;
@@ -38,18 +38,20 @@ export function Tips({ instrument, scoring, onKeys }: TipsProps) {
   return (
     <aside className="tip" aria-label="Tip">
       <Heading level={2} size="small">
-        {tip.title}
+        Tip
       </Heading>
-      <Text size="small" tone="muted">
-        {tip.body}
-      </Text>
+      <p className="tip-body">{tip.body}</p>
       <div className="tip-actions">
         {tip.id === 'controls' && (
           <button type="button" className="link" onClick={onKeys}>
             All shortcuts
           </button>
         )}
-        <button type="button" className="link" onClick={() => setOffset(offset + 1)}>
+        <button
+          type="button"
+          className="link tip-next"
+          onClick={() => setOffset(offset + 1)}
+        >
           Next tip
         </button>
       </div>

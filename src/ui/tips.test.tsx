@@ -11,6 +11,13 @@ describe('which tips a player gets', () => {
     expect(ids('guitar')[0]).toBe('controls');
   });
 
+  it('says one thing, in one sentence', () => {
+    for (const tip of tipsFor(instrumentById('guitar'), true)) {
+      expect(tip.body.split('. ').length).toBe(1);
+      expect(tip.body.length).toBeLessThan(110);
+    }
+  });
+
   it('offers the range only where there is one to change', () => {
     expect(ids('guitar')).toContain('range');
     expect(ids('violin')).not.toContain('range');
