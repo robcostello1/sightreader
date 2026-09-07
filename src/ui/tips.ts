@@ -44,8 +44,8 @@ export function tipsFor(instrument: InstrumentDefinition, scoring: boolean): Tip
       shot: 'The instrument and range dropdowns inside Settings',
             body:
               instrument.id === 'guitar'
-                ? 'Settings changes which part of the neck you read, from a four-fret position to the whole thing.'
-                : 'Settings changes how much of the keyboard you read, from five notes under one hand to the full range.',
+                ? 'In settings you can change different neck positions to work on.'
+                : 'In settings you can change which part of the keyboard to work on.',
           },
         ]
       : []),
