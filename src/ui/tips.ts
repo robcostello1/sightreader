@@ -28,6 +28,14 @@ export interface Tip {
  * apply: there is no range to change on a fixed-range instrument, nothing to
  * tune to without a microphone, and a piano is not tuned by its player.
  */
+/**
+ * Small counts read better as words in a sentence, and the window is a small
+ * count. It still comes from the progression config rather than the copy, so
+ * changing what earns a level changes what the tip says.
+ */
+const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+const inWords = (n: number) => WORDS[n] ?? String(n);
+
 export function tipsFor(instrument: InstrumentDefinition, scoring: boolean): Tip[] {
   const window = DEFAULT_PROGRESSION.windowSize;
   const threshold = Math.round(DEFAULT_PROGRESSION.threshold * 100);
@@ -52,7 +60,7 @@ export function tipsFor(instrument: InstrumentDefinition, scoring: boolean): Tip
     {
       id: 'levelling',
       shot: 'The Levelling up card, showing a row of five slots',
-      body: `You level up a little each time you hit ${threshold}% ${window} times in a row.`,
+      body: `Hit ${threshold}% ${inWords(window)} times in a row, and you level up a little.`,
     },
     ...(scoring
       ? [
