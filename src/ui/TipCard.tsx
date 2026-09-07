@@ -64,7 +64,12 @@ export function Tips({ instrument, scoring, onKeys }: TipsProps) {
           height={size.height}
         />
       </span>
-      <p className="tip-body">{tip.body}</p>
+      <p className="tip-body">
+        {tip.body.split(/\[([^\]]+)\]/).map((part, i) =>
+          // The odd parts are what was inside the brackets: keys, drawn as keys.
+          i % 2 === 1 ? <kbd key={i}>{part}</kbd> : part,
+        )}
+      </p>
       <div className="tip-actions">
         {tip.id === 'controls' && (
           <button type="button" className="link" onClick={onKeys}>

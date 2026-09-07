@@ -27,9 +27,13 @@ describe('progression', () => {
     expect(advanceLevel(3, fill(5, 0.79))).toBe(3);
   });
 
-  it('averages the window rather than requiring every exercise to clear it', () => {
-    // 60, 90, 90, 90, 90 averages 84% — one bad reading should not stall you.
-    expect(advanceLevel(3, [0.6, 0.9, 0.9, 0.9, 0.9])).toBe(3.1);
+  it('asks every exercise in the window to clear it, not the average of them', () => {
+    // 60, 90, 90, 90, 90 averages 84%, which used to be enough. It should not
+    // be: the level moves on a standard reached five times running, so the one
+    // that fell short has to leave the window first.
+    expect(advanceLevel(3, [0.6, 0.9, 0.9, 0.9, 0.9])).toBe(3);
+    expect(advanceLevel(3, [0.9, 0.9, 0.9, 0.9, 0.6])).toBe(3);
+    expect(advanceLevel(3, [0.6, 0.9, 0.9, 0.9, 0.9, 0.9])).toBe(3.1);
   });
 
   it('only considers the most recent exercises', () => {
@@ -44,8 +48,17 @@ describe('progression', () => {
   });
 
   it('reports progress towards the next decision', () => {
-    expect(progressionState(3, [])).toMatchObject({ accuracy: null, completed: 0, needed: 5 });
-    expect(progressionState(3, [0.5, 1])).toMatchObject({ accuracy: 0.75, completed: 2 });
+    expect(progressionState(3, [])).toMatchObject({
+      accuracy: null,
+      completed: 0,
+      passed: 0,
+      needed: 5,
+    });
+    expect(progressionState(3, [0.5, 1])).toMatchObject({
+      accuracy: 0.75,
+      completed: 2,
+      passed: 1,
+    });
   });
 
   it('uses the agreed thresholds by default', () => {

@@ -239,49 +239,113 @@ describe('the settings panel', () => {
   });
 });
 
-describe('the control row', () => {
-  /** Every slot is present in every phase, which is what stops the row moving. */
-  const slots = () => document.querySelectorAll('.stage-controls > *').length;
+describe('the transport', () => {
+  const transport = () =>
+    [...document.querySelectorAll('.transport button')] as HTMLButtonElement[];
+  const pause = () => screen.getByRole('button', { name: 'Pause' });
+  const stop = () => screen.getByRole('button', { name: 'Stop' });
 
-  it('keeps its slots whether or not there is a button in them', async () => {
+  it('shows all three at all times, drawn rather than spelled out', async () => {
     asReturning();
     render(<Lesson />);
     await settle();
 
-    expect(slots()).toBe(3);
+    expect(transport()).toHaveLength(3);
+    expect(transport().every((b) => b.querySelector('svg.icon') !== null)).toBe(true);
     await click(/start/i);
-    expect(slots()).toBe(3);
+    expect(transport()).toHaveLength(3);
   });
 
-  it('offers the go button as a hold once a session is running', async () => {
+  it('names each one, since the shape is all there is to read', async () => {
     asReturning();
     render(<Lesson />);
     await settle();
 
-    const go = screen.getByRole('button', { name: /start/i });
-    expect(go.title).toBe('Start (Space)');
-    // Drawn, not typed.
-    expect(go.querySelector('svg.icon')).not.toBeNull();
-
-    await click(/start/i);
-    expect(screen.queryByRole('button', { name: /^start$/i })).toBeNull();
-    expect(screen.getByRole('button', { name: /pause/i })).not.toBeNull();
-    expect(screen.getByRole('button', { name: /stop/i })).not.toBeNull();
+    const [play] = transport();
+    expect(play.getAttribute('aria-label')).toBe('Start');
+    expect(play.title).toBe('Start (Space)');
+    expect(pause().title).toBe('Pause (Space)');
+    expect(stop().title).toBe('Stop (Esc)');
   });
 
-  it('holds an exercise in flight and says so', async () => {
+  it('leaves play live in the gap, so the wait can be skipped', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    // Nothing is running here, so play offers the next exercise rather than
+    // sitting dead while the countdown runs.
+    const [play] = transport();
+    expect(play.disabled).toBe(false);
+  });
+
+  it('disables what has nothing to do, rather than hiding it', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    // Nothing running: only play is live.
+    expect(transport().map((b) => b.disabled)).toEqual([false, true, true]);
+
+    await click(/start/i);
+    expect(transport().map((b) => b.disabled)).toEqual([true, false, false]);
+
+    // Held, and pause stays live: pressing it again is how you let go.
+    await act(async () => {
+      fireEvent.click(pause());
+      await Promise.resolve();
+    });
+    expect(transport().map((b) => b.disabled)).toEqual([false, false, false]);
+  });
+
+  it('lights the one the session is actually doing', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    expect(transport().map((b) => b.className.includes('is-live'))).toEqual([false, false, false]);
+
+    await click(/start/i);
+    expect(transport().map((b) => b.className.includes('is-live'))).toEqual([true, false, false]);
+
+    await act(async () => {
+      fireEvent.click(pause());
+      await Promise.resolve();
+    });
+    // The lit button is the whole of the announcement; nothing spells it out.
+    expect(transport().map((b) => b.className.includes('is-live'))).toEqual([false, true, false]);
+    expect(screen.queryByText(/paused/i)).toBeNull();
+  });
+
+  it('lets go again on a second press of pause', async () => {
     asReturning();
     render(<Lesson />);
     await settle();
 
     await click(/start/i);
-    await click(/pause/i);
+    for (const press of [true, false]) {
+      await act(async () => {
+        fireEvent.click(pause());
+        await Promise.resolve();
+      });
+      expect(pause().getAttribute('aria-pressed')).toBe(String(press));
+    }
+  });
 
-    expect(screen.getByRole('button', { name: /resume/i })).not.toBeNull();
-    expect(screen.getByText('Paused')).not.toBeNull();
+  it('picks an exercise back up from the play button it was started with', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    await click(/start/i);
+    await act(async () => {
+      fireEvent.click(pause());
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('button', { name: 'Resume' })).not.toBeNull();
 
     await click(/resume/i);
-    expect(screen.getByRole('button', { name: /pause/i })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Play' }).className).toContain('is-live');
   });
 });
 
@@ -304,7 +368,6 @@ describe('the keyboard', () => {
 
     await pressSpace();
     expect(screen.getByRole('button', { name: /resume/i })).not.toBeNull();
-    expect(screen.getByText('Paused')).not.toBeNull();
 
     await pressSpace();
     expect(screen.getByRole('button', { name: /pause/i })).not.toBeNull();
@@ -328,7 +391,7 @@ describe('the keyboard', () => {
     render(<Lesson />);
     await settle();
 
-    expect(screen.getByLabelText('Tip').textContent).toMatch(/Space starts a session/);
+    expect(screen.getByLabelText('Tip').textContent).toMatch(/Use the Space bar to start/);
     // And gives the space back the moment there is something to read there.
     await click(/start/i);
     expect(screen.queryByLabelText('Tip')).toBeNull();

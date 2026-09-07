@@ -668,6 +668,47 @@ describe('useLesson', () => {
     });
   });
 
+  describe('the wait between exercises', () => {
+    it('counts itself down, so the gap is a wait rather than a hold', async () => {
+      const { result } = renderLesson(LEVEL, true);
+      const schedule = await startAndGetSchedule(result);
+      await advanceTo(schedule.endMs + 10);
+
+      expect(result.current.phase).toBe('results');
+      expect(result.current.secondsUntilNext).toBe(1);
+
+      // Held, it stops where it is rather than running on behind the pause.
+      act(() => result.current.pause());
+      const held = result.current.secondsUntilNext;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ADVANCE_MS * 4);
+      });
+      expect(result.current.secondsUntilNext).toBe(held);
+    });
+
+    it('stops counting once the next exercise is under way', async () => {
+      const { result } = renderLesson(LEVEL, true);
+      const schedule = await startAndGetSchedule(result);
+      await advanceTo(schedule.endMs + 10);
+      expect(result.current.secondsUntilNext).not.toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ADVANCE_MS + 50);
+      });
+      expect(result.current.phase).toBe('count-in');
+      expect(result.current.secondsUntilNext).toBeNull();
+    });
+
+    it('has nothing to count when nothing is coming', async () => {
+      const { result } = renderLesson();
+      const schedule = await startAndGetSchedule(result);
+      await advanceTo(schedule.endMs + 10);
+
+      expect(result.current.phase).toBe('results');
+      expect(result.current.secondsUntilNext).toBeNull();
+    });
+  });
+
   describe('auto-advance', () => {
     it('starts another exercise after the results pause', async () => {
       const { result } = renderLesson(LEVEL, true);

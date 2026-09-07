@@ -364,7 +364,7 @@ header .heading-1 {
  */
 .stage-controls {
   display: grid;
-  grid-template-columns: minmax(0, 9rem) minmax(0, 7rem) minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: var(--gap);
   min-height: 2.75rem;
@@ -372,25 +372,50 @@ header .heading-1 {
 }
 
 /*
- * The icon sits against its label, and the pair sits in a button not much
- * wider than they are. Stretched to fill its slot the button was half again
- * the width of what was in it, which left the icon marooned out in the middle
- * of the padding rather than reading as part of the word.
- *
- * A floor rather than a fixed width: Start is shorter than Resume, and a button
- * that hugged its text exactly would jump about between phases. Nothing after
- * it moves either way — the slot it sits in is the fixed thing.
+ * Play, pause and stop, together and always. Three shapes nobody has to be
+ * taught, so the labels move to the title and the accessible name and the
+ * buttons carry the glyph alone.
  */
+.transport {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .control {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  min-width: 6.5rem;
-  justify-self: start;
-  /* The label is what is read; the icon repeats it for the eye scanning the
-     row, and neither is allowed to wrap it onto two lines. */
-  white-space: nowrap;
+  /* Square, and big enough to hit without looking at it. The glyph is sized
+     like the other figures in the app rather than like text: it is read at a
+     glance from a music stand, not word by word. */
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  font-size: var(--figure-sm);
+}
+
+/*
+ * What the session is doing, rather than what you may press. The lit button is
+ * the one describing the state — play while it runs, pause while it is held —
+ * and it is deliberately the disabled one, since a transport shows you where
+ * you are as much as it offers you somewhere to go.
+ */
+.control.is-live {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Nothing to do in this phase. Still there, still in the same place: a control
+   that comes and goes has to be found again every time. */
+.control:disabled {
+  color: var(--fg-muted);
+  border-color: var(--line);
+  cursor: not-allowed;
+}
+
+.control.is-live:disabled {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .icon {
@@ -1080,12 +1105,11 @@ input[type='range'] {
  */
 @media (max-width: 560px) {
   .stage-controls {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     row-gap: 0.5rem;
   }
 
   .control-status {
-    grid-column: 1 / -1;
     min-height: 2rem;
   }
 }

@@ -30,11 +30,11 @@ const PORT = 9444;
 const SHOTS = [
   {
     id: 'controls',
-    setup: `document.querySelector('.control.primary').click()`,
+    setup: `document.querySelector('.transport [aria-label="Start"]').click()`,
     settle: 900,
-    // The buttons, not the slots they sit in: the row is a third of the screen
+    // The transport, not the row it sits in: the row is a third of the screen
     // wide and mostly empty, which would shrink the buttons to nothing.
-    elements: `document.querySelectorAll('.stage-controls .control')`,
+    elements: `[document.querySelector('.transport')]`,
   },
   {
     id: 'range',
@@ -42,11 +42,9 @@ const SHOTS = [
     elements: `[...document.querySelectorAll('.accordion .field')].slice(0, 2)`,
   },
   { id: 'levelling', elements: `[document.querySelector('.progress-card')]` },
-  {
-    id: 'guide',
-    setup: `document.querySelector('.accordion').open = true`,
-    elements: `[[...document.querySelectorAll('.accordion .toggle')].find((l) => /guide/i.test(l.textContent))]`,
-  },
+  // 'guide' is not here: the guide note only appears against live playing, and
+  // the crop of it in public/tips was drawn by hand from the notation preview.
+  // Leave it alone — this script will not overwrite what it does not generate.
   { id: 'tuning', elements: `[document.querySelector('.monitor')]` },
 ];
 

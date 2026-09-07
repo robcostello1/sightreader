@@ -3,7 +3,10 @@ import type { InstrumentDefinition } from '../config/instruments';
 
 export interface Tip {
   id: string;
-  /** One sentence. Anything longer is a manual, and nobody came here to read one. */
+  /**
+   * What the tip says. Short — anything longer is a manual, and nobody came
+   * here to read one. A key in square brackets, `[Space]`, is drawn as a key.
+   */
   body: string;
   /**
    * What the picture above the sentence is, for anyone who cannot see it. The
@@ -29,7 +32,7 @@ export function tipsFor(instrument: InstrumentDefinition, scoring: boolean): Tip
     {
       id: 'controls',
       shot: 'The Pause and Stop buttons above the staff',
-      body: 'Space starts a session and holds it wherever it has got to; press ? for the other keys.',
+      body: 'Use the [Space] bar to start or pause. Press [?] to see other shortcuts.',
     },
     ...(instrument.hasPositions
       ? [
@@ -46,14 +49,14 @@ export function tipsFor(instrument: InstrumentDefinition, scoring: boolean): Tip
     {
       id: 'levelling',
       shot: 'The Levelling up card, showing a row of five slots',
-      body: `${window} exercises averaging ${threshold}% moves you up a tenth of a level.`,
+      body: `You level up a little each time you hit ${threshold}% ${window} times in a row.`,
     },
     ...(scoring
       ? [
           {
             id: 'guide',
-      shot: 'The Show guide note checkbox inside Settings',
-            body: 'Turn on Show guide note in Settings to see what the microphone is hearing on the staff.',
+      shot: 'A staff with a faint guide note beside the note being read',
+            body: 'Turn on \u201cShow guide note\u201d in Settings to see what note you\u2019re playing.',
           },
         ]
       : []),
@@ -62,7 +65,7 @@ export function tipsFor(instrument: InstrumentDefinition, scoring: boolean): Tip
           {
             id: 'tuning',
       shot: 'The note readout and its tuning meter, below the staff',
-            body: 'Tune to the readout below the staff first: it names the note it hears and shows how far off it is.',
+            body: 'You can use the note readout to tune your instrument.',
           },
         ]
       : []),

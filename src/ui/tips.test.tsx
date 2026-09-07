@@ -12,11 +12,17 @@ describe('which tips a player gets', () => {
     expect(ids('guitar')[0]).toBe('controls');
   });
 
-  it('says one thing, in one sentence', () => {
+  it('says one thing, briefly', () => {
     for (const tip of tipsFor(instrumentById('guitar'), true)) {
-      expect(tip.body.split('. ').length).toBe(1);
+      expect(tip.body.split('. ').length).toBeLessThanOrEqual(2);
       expect(tip.body.length).toBeLessThan(110);
     }
+  });
+
+  it('writes a key as a key, so the card can draw it as one', () => {
+    const controls = tipsFor(instrumentById('guitar'), true)[0];
+    expect(controls.body).toContain('[Space]');
+    expect(controls.body).toContain('[?]');
   });
 
   it('offers the range only where there is one to change', () => {

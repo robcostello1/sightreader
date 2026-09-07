@@ -55,6 +55,12 @@ export interface LessonState {
   livePitch: PitchSample | null;
   onsetCount: number;
   beatsUntilStart: number | null;
+  /**
+   * Whole seconds until the next exercise starts itself, or null when none is
+   * coming. Counts down through the gap after results and stops where it is
+   * when the session is held.
+   */
+  secondsUntilNext: number | null;
   stats: SessionStats;
   /** Exercises finished since the last level change. Drives progress when
    *  there is no accuracy to gate on. */
@@ -80,7 +86,7 @@ export interface UseLessonOptions {
   scoring?: boolean;
   /** Roll straight into another exercise once results are in. */
   autoAdvance?: boolean;
-  /** How long results stay up before the next exercise starts. */
+  /** How long results stay up before the next exercise starts. Counted down. */
   advanceDelayMs?: number;
   /**
    * Called when accuracy over the recent window earns a level change. Fired from
@@ -106,6 +112,7 @@ const INITIAL: LessonState = {
   livePitch: null,
   onsetCount: 0,
   beatsUntilStart: null,
+  secondsUntilNext: null,
   stats: EMPTY_STATS,
   unscoredCompleted: 0,
   error: null,
@@ -134,7 +141,10 @@ export function useLesson(options: UseLessonOptions) {
     scoring: scoringEnabled = true,
     leadInMs = 300,
     autoAdvance = false,
-    advanceDelayMs = 2500,
+    // Long enough to read the verdict on the last line and see the count reach
+    // one. At two and a half seconds the number barely settled before the
+    // count-in took the screen back.
+    advanceDelayMs = 5000,
     onAdvance,
   } = options;
 
@@ -152,6 +162,8 @@ export function useLesson(options: UseLessonOptions) {
   /** Wall-clock bookkeeping for the gap between exercises, so it can be paused. */
   const advanceArmedAtRef = useRef(0);
   const advanceRemainingRef = useRef(0);
+  /** Publishes the gap as a count of seconds, so the wait can be seen. */
+  const countdownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Mirrored outside React state so completion can act on them immediately.
   const resultsRef = useRef<NoteResult[]>([]);
   const historyRef = useRef<number[]>([]);
@@ -209,16 +221,40 @@ export function useLesson(options: UseLessonOptions) {
   // Lets the loop queue the next exercise without beginExercise capturing itself.
   const beginExerciseRef = useRef<((session: MicSession) => void) | null>(null);
 
-  /** Arms the gap before the next exercise, tracking it so pause can bank it. */
-  const armAdvance = useCallback((delayMs: number) => {
-    advanceArmedAtRef.current = Date.now();
-    advanceRemainingRef.current = delayMs;
-    advanceRef.current = setTimeout(() => {
-      advanceRemainingRef.current = 0;
-      const open = sessionRef.current;
-      if (open) beginExerciseRef.current?.(open);
-    }, delayMs);
+  /** Stops the countdown, leaving whatever number it last published on screen. */
+  const stopCountdown = useCallback(() => {
+    if (countdownRef.current !== null) clearTimeout(countdownRef.current);
+    countdownRef.current = null;
   }, []);
+
+  /**
+   * Arms the gap before the next exercise, tracking it so pause can bank it,
+   * and counts it down out loud.
+   *
+   * The count is on a timeout that re-arms rather than an interval, because it
+   * has to stop and start with the same handle the gap itself does — and
+   * because the rest of this hook's clockwork is timeouts, which is what the
+   * tests drive.
+   */
+  const armAdvance = useCallback(
+    (delayMs: number) => {
+      advanceArmedAtRef.current = Date.now();
+      advanceRemainingRef.current = delayMs;
+      advanceRef.current = setTimeout(() => {
+        advanceRemainingRef.current = 0;
+        const open = sessionRef.current;
+        if (open) beginExerciseRef.current?.(open);
+      }, delayMs);
+
+      const publish = () => {
+        const left = advanceRemainingRef.current - (Date.now() - advanceArmedAtRef.current);
+        setState((prev) => ({ ...prev, secondsUntilNext: Math.max(1, Math.ceil(left / 1000)) }));
+        countdownRef.current = setTimeout(publish, 200);
+      };
+      publish();
+    },
+    [],
+  );
 
   /** Stops the loop and any queued advance, leaving the microphone open. */
   const haltExercise = useCallback(() => {
@@ -227,11 +263,12 @@ export function useLesson(options: UseLessonOptions) {
     if (advanceRef.current !== null) clearTimeout(advanceRef.current);
     advanceRef.current = null;
     advanceRemainingRef.current = 0;
+    stopCountdown();
     pausedAtRef.current = null;
     pausedRef.current = false;
     clicksRef.current?.stop();
     clicksRef.current = null;
-  }, []);
+  }, [stopCountdown]);
 
   const closeSession = useCallback(() => {
     haltExercise();
@@ -404,6 +441,7 @@ export function useLesson(options: UseLessonOptions) {
       });
       scheduleRef.current = schedule;
       gateRef.current = schedule.t0;
+      stopCountdown();
       clicksRef.current = scheduleClicks(session.context, schedule.clicks);
 
       setState((prev) => ({
@@ -417,12 +455,13 @@ export function useLesson(options: UseLessonOptions) {
         paused: false,
         onsetCount: 0,
         beatsUntilStart: null,
+        secondsUntilNext: null,
         error: null,
       }));
 
       frameRef.current = requestAnimationFrame(tick);
     },
-    [tick],
+    [stopCountdown, tick],
   );
 
   /**
@@ -452,12 +491,13 @@ export function useLesson(options: UseLessonOptions) {
     if (advanceRef.current === null) return;
     clearTimeout(advanceRef.current);
     advanceRef.current = null;
+    stopCountdown();
     advanceRemainingRef.current = Math.max(
       0,
       advanceRemainingRef.current - (Date.now() - advanceArmedAtRef.current),
     );
     setState((prev) => ({ ...prev, paused: true }));
-  }, []);
+  }, [stopCountdown]);
 
   /**
    * Picks the exercise back up from somewhere a player can re-enter.

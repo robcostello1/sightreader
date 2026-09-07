@@ -168,23 +168,32 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
   const holdable = running || (lesson.phase === 'results' && autoAdvance);
 
   /**
-   * What the go button does right now. One slot rather than a button per
-   * phase — the action changes, the affordance does not, and the player who
-   * has just pressed Start should find Pause under the same finger.
+   * The transport, as a transport: play, pause and stop, all three always
+   * there. Which one is live depends on the phase, and the one that is not is
+   * disabled rather than removed — a control that comes and goes has to be
+   * found again every time, and these three are the shape everyone already
+   * knows. The play button is the one that changes meaning: start, resume,
+   * next, retry. What it means now is its label, which is its title and the
+   * name a screen reader reads.
    */
-  const primary =
-    lesson.phase === 'arming'
-      ? null
-      : holdable
-        ? lesson.paused
-          ? { label: 'Resume', icon: <PlayIcon />, act: lesson.resume }
-          : { label: 'Pause', icon: <PauseIcon />, act: lesson.pause }
-        : {
-            label:
-              lesson.phase === 'error' ? 'Retry' : lesson.phase === 'results' ? 'Next' : 'Start',
-            icon: <PlayIcon />,
-            act: lesson.start,
-          };
+  const play =
+    holdable && !lesson.paused
+      ? // Already playing. The button is lit and dead, and is just Play.
+        { label: 'Play', act: lesson.start }
+      : lesson.paused && holdable
+      ? { label: 'Resume', act: lesson.resume }
+      : lesson.phase === 'error'
+        ? { label: 'Retry', act: lesson.start }
+        : lesson.phase === 'results'
+          ? { label: 'Next exercise', act: lesson.start }
+          : { label: 'Start', act: lesson.start };
+  // Only while the music is actually running is there nothing for play to do.
+  // In the gap after results it is how you skip the wait rather than sit it out.
+  const canPlay = lesson.phase !== 'arming' && (!running || lesson.paused);
+  // Pause is a toggle, as it is on anything else with a transport: pressing it
+  // again lets the music go. It stays live while the session is held, which is
+  // both how you get out of a hold and how the hold shows itself.
+  const canPause = holdable;
 
   /** Where there is another exercise to move on to rather than one in flight. */
   const between =
@@ -215,8 +224,17 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
   // arrives over a lesson that has not started yet.
   useShortcuts(
     {
-      // On the milestone panel there is only one thing to do, and space does it.
-      toggle: lesson.milestone !== null ? lesson.acknowledgeMilestone : primary?.act,
+      // Space is the transport: whichever of play and pause is live takes it.
+      toggle:
+        lesson.milestone !== null
+          ? lesson.acknowledgeMilestone
+          : lesson.paused
+            ? lesson.resume
+            : canPause
+              ? lesson.pause
+              : canPlay
+                ? play.act
+                : undefined,
       next: lesson.milestone !== null ? lesson.acknowledgeMilestone : between ? lesson.start : undefined,
       stop: listening ? lesson.stop : undefined,
       keys: () => setKeysShown(true),
@@ -272,33 +290,43 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
                 how wide it is never does, so nothing below the row moves as a
                 session runs. */}
             <div className="stage-controls">
-              <div className="control-slot">
-                {primary && (
-                  <button
-                    type="button"
-                    className="control primary"
-                    onClick={primary.act}
-                    title={`${primary.label} (Space)`}
-                    aria-keyshortcuts="Space"
-                  >
-                    {primary.icon}
-                    {primary.label}
-                  </button>
-                )}
-              </div>
-              <div className="control-slot">
-                {listening && (
-                  <button
-                    type="button"
-                    className="control"
-                    onClick={lesson.stop}
-                    title="Stop (Esc)"
-                    aria-keyshortcuts="Escape"
-                  >
-                    <StopIcon />
-                    Stop
-                  </button>
-                )}
+              <div className="transport">
+                <button
+                  type="button"
+                  className={`control ${running && !lesson.paused ? 'is-live' : ''}`}
+                  onClick={play.act}
+                  disabled={!canPlay}
+                  title={`${play.label} (Space)`}
+                  aria-label={play.label}
+                  aria-keyshortcuts="Space"
+                >
+                  <PlayIcon />
+                </button>
+                <button
+                  type="button"
+                  className={`control ${lesson.paused ? 'is-live' : ''}`}
+                  onClick={lesson.paused ? lesson.resume : lesson.pause}
+                  disabled={!canPause}
+                  title={lesson.paused ? 'Unpause (Space)' : 'Pause (Space)'}
+                  aria-label="Pause"
+                  // A toggle, so it keeps one name and reports its state
+                  // rather than becoming a second button called Resume.
+                  aria-pressed={lesson.paused}
+                  aria-keyshortcuts="Space"
+                >
+                  <PauseIcon />
+                </button>
+                <button
+                  type="button"
+                  className="control"
+                  onClick={lesson.stop}
+                  disabled={!listening}
+                  title="Stop (Esc)"
+                  aria-label="Stop"
+                  aria-keyshortcuts="Escape"
+                >
+                  <StopIcon />
+                </button>
               </div>
               <div className="control-status">
                 {lesson.phase === 'error' ? (
@@ -307,11 +335,15 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
                   </span>
                 ) : lesson.phase === 'arming' ? (
                   <Text as="span" tone="muted">Requesting microphone…</Text>
-                ) : lesson.paused ? (
-                  <Text as="span" tone="muted">Paused</Text>
-                ) : lesson.phase === 'count-in' ? (
+                ) : lesson.phase === 'count-in' && !lesson.paused ? (
                   <span className="count-in">
                     Count-in <strong>{lesson.beatsUntilStart}</strong>
+                  </span>
+                ) : lesson.secondsUntilNext !== null ? (
+                  /* The gap after results, so the wait is a wait rather than a
+                     hold of unknown length. */
+                  <span className="count-in">
+                    Next exercise in <strong>{lesson.secondsUntilNext}</strong>
                   </span>
                 ) : null}
               </div>
