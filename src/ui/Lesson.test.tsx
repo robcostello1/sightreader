@@ -284,3 +284,73 @@ describe('the control row', () => {
     expect(screen.getByRole('button', { name: /pause/i })).not.toBeNull();
   });
 });
+
+describe('the keyboard', () => {
+  const pressSpace = async () => {
+    await act(async () => {
+      fireEvent.keyDown(document.body, { key: ' ' });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  };
+
+  it('runs the session from the space bar', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    await pressSpace();
+    expect(screen.getByRole('button', { name: /pause/i })).not.toBeNull();
+
+    await pressSpace();
+    expect(screen.getByRole('button', { name: /resume/i })).not.toBeNull();
+    expect(screen.getByText('Paused')).not.toBeNull();
+
+    await pressSpace();
+    expect(screen.getByRole('button', { name: /pause/i })).not.toBeNull();
+  });
+
+  it('stops on escape', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    await pressSpace();
+    await act(async () => {
+      fireEvent.keyDown(document.body, { key: 'Escape' });
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('button', { name: /^start$/i })).not.toBeNull();
+  });
+
+  it('names the one key that matters between exercises, and hides it during one', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    expect(screen.getByText('Space')).not.toBeNull();
+    await click(/start/i);
+    expect(screen.queryByText('Space')).toBeNull();
+  });
+
+  it('opens the rest of them on a question mark, and from the hint', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    await act(async () => {
+      fireEvent.keyDown(document.body, { key: '?' });
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('dialog')).not.toBeNull();
+    expect(screen.getByText(/pick back up/i)).not.toBeNull();
+
+    // And the keyboard is the dialog's while it is up.
+    await pressSpace();
+    expect(screen.queryByRole('button', { name: /pause/i })).toBeNull();
+
+    await click(/close/i);
+    await click(/more keys/i);
+    expect(screen.getByRole('dialog')).not.toBeNull();
+  });
+});

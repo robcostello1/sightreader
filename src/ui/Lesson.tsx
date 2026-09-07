@@ -34,6 +34,8 @@ import { Onboarding } from './Onboarding';
 import { Troubleshooting } from './Troubleshooting';
 import { Heading, Text } from './Text';
 import { PauseIcon, PlayIcon, StopIcon } from './Icon';
+import { Shortcuts } from './Shortcuts';
+import { useShortcuts } from './keys';
 import { Waveform } from './Waveform';
 import { useLesson } from './useLesson';
 
@@ -83,6 +85,7 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
    */
   const [micAsked, setMicAsked] = useState(false);
   const [theme, setTheme] = useState<ThemePreference>(loadTheme);
+  const [keysShown, setKeysShown] = useState(false);
 
   useEffect(() => saveSetting('level', level), [level]);
   useEffect(() => saveSetting('instrument', instrumentId), [instrumentId]);
@@ -182,6 +185,12 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
             act: lesson.start,
           };
 
+  /** Where there is another exercise to move on to rather than one in flight. */
+  const between =
+    lesson.phase === 'idle' || lesson.phase === 'results' || lesson.phase === 'error';
+  // A hint is worth its space between exercises and is clutter during one.
+  const hinting = primary !== null && (lesson.phase === 'idle' || lesson.phase === 'results');
+
   useEffect(() => {
     void import('../notation');
   }, []);
@@ -201,6 +210,19 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
     if (onboarding || micPermission !== 'granted') return;
     listen();
   }, [listen, micPermission, onboarding]);
+
+  // A dialog owns the keyboard while it is up, including the checklist that
+  // arrives over a lesson that has not started yet.
+  useShortcuts(
+    {
+      // On the milestone panel there is only one thing to do, and space does it.
+      toggle: lesson.milestone !== null ? lesson.acknowledgeMilestone : primary?.act,
+      next: lesson.milestone !== null ? lesson.acknowledgeMilestone : between ? lesson.start : undefined,
+      stop: listening ? lesson.stop : undefined,
+      keys: () => setKeysShown(true),
+    },
+    !onboarding && !troubleshooting && !keysShown,
+  );
 
   return (
     <div className="layout">
@@ -227,6 +249,8 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
         onOpenChange={(open) => onTroubleshooting?.(open)}
         instrument={instrument}
       />
+
+      <Shortcuts open={keysShown} onOpenChange={setKeysShown} />
 
       <div className="stage">
         {lesson.milestone !== null ? (
@@ -288,6 +312,24 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
                 ) : lesson.phase === 'count-in' ? (
                   <span className="count-in">
                     Count-in <strong>{lesson.beatsUntilStart}</strong>
+                  </span>
+                ) : hinting ? (
+                  /* The one key worth knowing, named where it is about to be
+                     useful, with the rest of them one press or one click
+                     further on. */
+                  <span className="key-hint">
+                    <kbd>Space</kbd>
+                    <Text as="span" size="small" tone="muted">
+                      {primary.label}
+                    </Text>
+                    <button
+                      type="button"
+                      className="link"
+                      onClick={() => setKeysShown(true)}
+                      aria-keyshortcuts="Shift+?"
+                    >
+                      More keys
+                    </button>
                   </span>
                 ) : null}
               </div>

@@ -410,6 +410,44 @@ header .heading-1 {
   text-overflow: ellipsis;
 }
 
+/* The one key worth naming, where it is about to be useful. Quiet enough to
+   ignore: it is an offer, not an instruction. */
+.key-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* A key as it looks on a keyboard, so it reads as something to press rather
+   than as a word in a sentence. */
+kbd {
+  font: inherit;
+  font-size: var(--text-size-small);
+  line-height: 1.2;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 0.25rem;
+  color: var(--fg-muted);
+}
+
+/* The list behind the hint. A grid rather than a row per key, so every action
+   starts at the same place however wide its key is. */
+.keys {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.6rem 0.9rem;
+  margin: 1.25rem 0 0;
+}
+
+.key-row {
+  display: contents;
+}
+
+.keys dd {
+  margin: 0;
+  color: var(--fg-muted);
+}
+
 /* Grouped onto their own surface so the settings read as a panel beside the
    exercise rather than as more of the page. */
 .card {
