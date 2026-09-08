@@ -1117,6 +1117,12 @@ input[type='range'] {
   .control-status {
     min-height: 2rem;
   }
+
+  /* Taller, because a phone fits one bar to a line and needs the lines. The
+     page scrolls at this width anyway, so the room costs nothing above it. */
+  .score-area {
+    height: 30rem;
+  }
 }
 
 /* Stacking is the narrow case only: a wide, short window still has room for

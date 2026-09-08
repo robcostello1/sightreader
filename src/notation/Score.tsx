@@ -77,15 +77,13 @@ const STAVE_TOP = 40;
 /** Vertical pitch between systems when the music wraps onto several lines. */
 const SYSTEM_HEIGHT = 175;
 /** A grand staff is two staves and needs room for both, plus their ledger lines. */
-const GRAND_SYSTEM_HEIGHT = 300;
-/** Treble stave top to bass stave top. */
-const GRAND_STAFF_GAP = 120;
+const GRAND_SYSTEM_HEIGHT = 230;
+/** Treble stave top to bass stave top: sixty pixels between them, six ledger lines. */
+const GRAND_STAFF_GAP = 100;
 /** Where the hands divide. Middle C and above is the right hand's. */
 const MIDDLE_C = 60;
 const FALLBACK_WIDTH = 720;
-/** Horizontal room a single note needs before it starts colliding. */
-const WIDTH_PER_NOTE = 34;
-/** And the least, before the system is scaled down instead. Two beamed quavers still read. */
+/** The least room a note can have and still be read: two beamed quavers, snugly. */
 const MIN_WIDTH_PER_NOTE = 18;
 /**
  * And the most it should get. Filling the width with a sparse bar pushes its
@@ -431,21 +429,25 @@ export function Score({
       available - leadingModifierWidth(writtenKey.accidentals, true),
     );
 
-    // Width follows how many notes a bar holds, squeezed towards the floor
-    // when the column cannot hold them — a bar cannot be wrapped.
-    const barMinWidth = (bar: (typeof bars)[number]) => {
-      const notes = Math.max(1, bar.notes.length);
-      const ideal = BAR_PADDING + notes * WIDTH_PER_NOTE;
-      const floor = BAR_PADDING + notes * MIN_WIDTH_PER_NOTE;
-      return Math.min(ideal, Math.max(floor, roomForOneBar));
-    };
+    const noteCount = (bar: (typeof bars)[number]) => Math.max(1, bar.notes.length);
+    /** The least a bar can be given and still be read. */
+    const barFloorWidth = (bar: (typeof bars)[number]) =>
+      Math.min(
+        BAR_PADDING + noteCount(bar) * MIN_WIDTH_PER_NOTE,
+        // Bounded, for the bar so busy it cannot fit even squeezed.
+        Math.max(BAR_PADDING + MIN_WIDTH_PER_NOTE, roomForOneBar),
+      );
+    /** And the most, past which its notes stop reading as a phrase. */
+    const barMaxWidth = (bar: (typeof bars)[number]) =>
+      BAR_PADDING + noteCount(bar) * MAX_WIDTH_PER_NOTE;
 
-    // Pack bars into systems, wrapping rather than shrinking past legibility.
+    // Packed by what a bar needs, not by what it would like: a line that fits
+    // three bars snugly beats two roomy ones and a third on a line of its own.
     const systems: (typeof bars)[] = [];
     let current: typeof bars = [];
     let currentWidth = leadingModifierWidth(writtenKey.accidentals, true);
     for (const bar of bars) {
-      const width = barMinWidth(bar);
+      const width = barFloorWidth(bar);
       if (current.length > 0 && currentWidth + width > available) {
         systems.push(current);
         current = [];
@@ -462,7 +464,7 @@ export function Score({
       ...systems.map(
         (system, index) =>
           leadingModifierWidth(writtenKey.accidentals, index === 0) +
-          system.reduce((sum, bar) => sum + barMinWidth(bar), 0),
+          system.reduce((sum, bar) => sum + barFloorWidth(bar), 0),
       ),
     );
     const drawWidth = Math.max(renderWidth, needed + MARGIN * 2);
@@ -481,20 +483,20 @@ export function Score({
 
     systems.forEach((system, systemIndex) => {
       const leading = leadingModifierWidth(writtenKey.accidentals, systemIndex === 0);
-      const minWidths = system.map(barMinWidth);
-      const maxWidths = system.map(
-        (bar) => BAR_PADDING + Math.max(1, bar.notes.length) * MAX_WIDTH_PER_NOTE,
-      );
+      const minWidths = system.map(barFloorWidth);
+      const maxWidths = system.map(barMaxWidth);
       const totalMin = minWidths.reduce((sum, w) => sum + w, 0);
-      // Every bar keeps its minimum; only what is left over is shared out, and
-      // no bar grows past what its notes can use. A purely proportional split
-      // starves a busy bar and stretches an empty one.
+      // Every bar keeps its floor; only what is left over is shared out, by
+      // note count, and no bar grows past what its notes can use. A purely
+      // proportional split starves a busy bar and stretches an empty one.
       const spare = Math.max(0, drawAvailable - leading - totalMin);
+      const weights = system.map(noteCount);
+      const totalWeight = weights.reduce((sum, w) => sum + w, 0);
       const y = STAVE_TOP + systemIndex * systemHeight;
       let x = MARGIN;
 
       system.forEach((bar, barIndex) => {
-        const share = minWidths[barIndex] + (spare * minWidths[barIndex]) / totalMin;
+        const share = minWidths[barIndex] + (spare * weights[barIndex]) / totalWeight;
         const width = Math.min(share, maxWidths[barIndex]) + (barIndex === 0 ? leading : 0);
         const first = barIndex === 0;
         const last = barIndex === system.length - 1;
