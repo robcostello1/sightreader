@@ -54,6 +54,25 @@ piece by another composer.
 
 So: nothing imported is committed. `excerpts.json`, `public/excerpts.json` and
 `scores/` are ignored, and the importer prints what each file claims so the
-question can be asked per file rather than per folder. Shipping any of this
-needs a corpus whose provenance is established — Mutopia and IMSLP state theirs
-per edition, which this one does not.
+question can be asked per file rather than per folder.
+
+## Corpora whose provenance holds up
+
+The importer does not care where the MusicXML came from. These state their
+licensing per score rather than per folder:
+
+| source | licence | size | format |
+|---|---|---|---|
+| [OpenScore Lieder](https://github.com/OpenScore/Lieder) | CC0, stated per score | 1,200+ songs | MusicXML per score |
+| [OpenScore String Quartets](https://github.com/OpenScore/StringQuartets) | CC0 | 100+ quartets | MusicXML per score |
+| [PDMX](https://github.com/pnlong/PDMX) | filtered on each upload's own CC0 field | 250K+ scores | `.mxl` |
+| [KernScores](http://kern.humdrum.org/) | free for research, scholarly provenance | Bach, Beethoven, Chopin, Mozart | `**kern`, converts with `hum2xml` |
+
+The two OpenScore corpora are the direct answer to what sank the one above:
+they are MuseScore exports too, but transcribed deliberately from public domain
+sources and dedicated CC0 by the transcribers — the arrangement's own copyright
+waived rather than assumed.
+
+Not music21's bundled corpus, easy as it is to load: it is licensed by
+permission of individual encoders, some non-commercially, with terms varying by
+directory.
