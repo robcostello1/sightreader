@@ -76,9 +76,15 @@ const STAVE_TOP = 12;
 /** Vertical pitch between systems when the music wraps onto several lines. */
 const SYSTEM_HEIGHT = 175;
 /** A grand staff is two staves and needs room for both, plus their ledger lines. */
-const GRAND_SYSTEM_HEIGHT = 230;
-/** Treble stave top to bass stave top: sixty pixels between them, six ledger lines. */
-const GRAND_STAFF_GAP = 100;
+const GRAND_SYSTEM_HEIGHT = 250;
+/**
+ * Treble stave top to bass stave top: eighty pixels of air between them.
+ *
+ * Tightened to sixty once, which was too far — a right hand written under its
+ * own staff reaches into the gap, and at sixty it reached into the left hand's
+ * notes.
+ */
+const GRAND_STAFF_GAP = 120;
 const FALLBACK_WIDTH = 720;
 /** Room a note wants where there is room to give it. */
 const WIDTH_PER_NOTE = 34;
@@ -551,18 +557,23 @@ export function Score({
       const minWidths = system.map(barFloorWidth);
       const maxWidths = system.map(barMaxWidth);
       const totalMin = minWidths.reduce((sum, w) => sum + w, 0);
-      // Every bar keeps its floor; only what is left over is shared out, by
-      // note count, and no bar grows past what its notes can use. A purely
-      // proportional split starves a busy bar and stretches an empty one.
+      /*
+       * Every bar keeps its floor; what is left over is shared equally.
+       *
+       * Equally, because every bar holds the same amount of music — that is
+       * what a bar is. Shared by note count instead, a bar of eight quavers
+       * took more than twice the extra a bar of three crotchets did, so the
+       * quavers ended up further apart than the crotchets, which reads as
+       * though the long notes were the quick ones.
+       */
       const spare = Math.max(0, drawAvailable - leading - totalMin);
-      const weights = system.map(noteCount);
-      const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+      const share = spare / system.length;
       const y = STAVE_TOP + systemIndex * systemHeight;
       let x = MARGIN;
 
       system.forEach((bar, barIndex) => {
-        const share = minWidths[barIndex] + (spare * weights[barIndex]) / totalWeight;
-        const width = Math.min(share, maxWidths[barIndex]) + (barIndex === 0 ? leading : 0);
+        const given = minWidths[barIndex] + share;
+        const width = Math.min(given, maxWidths[barIndex]) + (barIndex === 0 ? leading : 0);
         const first = barIndex === 0;
         const last = barIndex === system.length - 1;
 
