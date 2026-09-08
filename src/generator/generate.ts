@@ -225,14 +225,20 @@ export function generateExercise(options: GenerateOptions): Exercise {
   /**
    * The unit values idioms may be rendered at.
    *
-   * Compound time gets the dotted ones too: its beat is three quavers, and no
-   * plain value multiplied by a count of events ever adds up to that, so
-   * without them only the three- and six-event idioms could land on a beat.
+   * Compound time gets one dotted value: the one that is exactly its beat, so a
+   * shape can be written a beat to a note. Every other dotted value was a
+   * mistake — offered the lot, half the notes on the page came out dotted, and
+   * a beam of dotted semiquavers is not how anyone writes six-eight.
    */
-  const unitsFor = (signature: [number, number]) =>
-    isCompound(signature)
-      ? noteValues.flatMap((entry) => [entry, { ...entry, value: entry.value * 1.5 }])
-      : noteValues;
+  const unitsFor = (signature: [number, number]) => {
+    if (!isCompound(signature)) return noteValues;
+    const beat = beatGroupDuration(signature);
+    return noteValues.flatMap((entry) =>
+      Math.abs(entry.value * 1.5 - beat) < 1e-9
+        ? [entry, { ...entry, value: beat }]
+        : [entry],
+    );
+  };
   let units = unitsFor(timeSignature);
 
   let phraseCandidates = buildCandidates(phrase, units, constraints, barSize);
@@ -269,6 +275,9 @@ export function generateExercise(options: GenerateOptions): Exercise {
     }
   }
 
+  /** The finest plain value in play, for telling a dotted unit from a plain one. */
+  const smallestPlain = Math.min(...noteValues.map((entry) => entry.value));
+
   const budget = Math.max(0, target - (cadence?.duration ?? 0));
   const notes: ExerciseNote[] = [];
 
@@ -283,19 +292,40 @@ export function generateExercise(options: GenerateOptions): Exercise {
     // three-four reads as common time written over the top of a triple bar.
     const inBar = used % barSize;
     const restOfBar = barSize - (inBar < 1e-9 ? 0 : inBar);
+    const intoBeat = used % beatGroup;
+    const restOfBeat = intoBeat < 1e-9 ? beatGroup : beatGroup - intoBeat;
     // First choice: fits the bar and ends on a beat, so the remainder is
     // something another idiom can tile.
+    const shortest = Math.min(...phraseCandidates.map((candidate) => candidate.duration));
+    /**
+     * Whether a shape sits properly against the beat: either inside one beat,
+     * or filling whole ones end to end. Anything else runs past a beat line and
+     * stops short, which in compound time is the duple-over-triple feel this is
+     * all here to stop, and in simple time is a shape starting off the beat.
+     */
     const lands = (candidate: Candidate) => {
       const end = inBar + candidate.duration;
-      return end <= restOfBar + inBar + 1e-9 && Math.abs((end / beatGroup) % 1) < 1e-6;
+      if (end > barSize + 1e-9) return false;
+      const startsOnBeat = Math.abs(inBar % beatGroup) < 1e-6;
+      const endsOnBeat = Math.abs(end % beatGroup) < 1e-6;
+      const insideOneBeat =
+        Math.ceil(end / beatGroup - 1e-9) - Math.floor(inBar / beatGroup + 1e-9) <= 1;
+      return insideOneBeat || (startsOnBeat && endsOnBeat);
     };
     const landing = fitting.filter(lands);
-    // And of those, the ones that leave room for something to follow.
-    const shortest = Math.min(...phraseCandidates.map((candidate) => candidate.duration));
-    const metrical = landing.filter((candidate) => {
-      const left = restOfBar - candidate.duration;
-      return left < 1e-9 || left >= shortest - 1e-9;
+    // And of those, the ones that do not strand the rest of the beat they end
+    // in: a gap too small for anything to fill is how the next shape ends up
+    // starting inside it and finishing in the beat after.
+    const roomLeft = landing.filter((candidate) => {
+      const into = (inBar + candidate.duration) % beatGroup;
+      return into < 1e-6 || beatGroup - into >= shortest - 1e-9;
     });
+    // A dotted unit is for the shape that cannot land on a beat without one; a
+    // plain one that lands is always the better way to write the same beat.
+    const plain = roomLeft.filter(
+      (candidate) => Math.abs((candidate.unitValue / smallestPlain) % 1) < 1e-6,
+    );
+    const metrical = plain.length > 0 ? plain : roomLeft;
     const withinBar = fitting.filter((candidate) => candidate.duration <= restOfBar + 1e-9);
     // The first idiom always goes in. If none fits the budget, take the
     // shortest available and let the bar count round up rather than emit
@@ -307,14 +337,14 @@ export function generateExercise(options: GenerateOptions): Exercise {
       landing.length === 0 &&
       withinBar.length === 0 &&
       used > 0 &&
-      restOfBar > 1e-9 &&
+      restOfBeat > 1e-9 &&
       // Only where rests are taught already — level three, before three-four.
       config.restChance > 0 &&
       // And only when something follows: an exercise must not end on silence.
-      remaining - restOfBar >= shortest - 1e-9
+      remaining - restOfBeat >= shortest - 1e-9
     ) {
-      padTo(notes, restOfBar, instance, barSize, true);
-      used += restOfBar;
+      padTo(notes, restOfBeat, instance, barSize, true);
+      used += restOfBeat;
       previous = null;
       instance++;
       continue;

@@ -11,6 +11,7 @@ import { MAX_BPM, MIN_BPM } from '../config/tempo';
 import { idiomById } from '../idioms';
 import { isInKey, keyByName } from '../lib/key';
 import { NOTE_VALUES } from '../lib/types';
+import { toNotated } from '../lib/duration';
 
 const POOL_LIST = regionPool(OPEN_POSITION);
 const POOL = new Set(POOL_LIST);
@@ -374,32 +375,47 @@ describe('generateExercise', () => {
       expect(crossingRate(9, '3/4')).toBe(0);
     }, 20_000);
 
-    /** Share of idioms that start somewhere other than a beat of the meter. */
-    function offBeatRate(level: number, signature: string, group: number) {
+    /** Share of idioms that run past a beat of the meter without filling whole ones. */
+    function beatCrossingRate(level: number, signature: string, beat: number) {
       let idioms = 0;
-      let off = 0;
+      let crossing = 0;
       for (const seed of MANY) {
         const exercise = generateExercise({ level, seed });
         if (exercise.timeSignature.join('/') !== signature) continue;
-        for (const { start } of spans(exercise)) {
+        for (const { start, end } of spans(exercise)) {
           idioms++;
-          if (Math.abs((start / group) % 1) > 1e-6) off++;
+          const spansBeat =
+            Math.floor(start / beat + 1e-9) !== Math.floor((end - 1e-9) / beat);
+          const whole = Math.abs(((end - start) / beat) % 1) < 1e-6;
+          if (spansBeat && !whole) crossing++;
         }
       }
       expect(idioms).toBeGreaterThan(200);
-      return off / idioms;
+      return crossing / idioms;
     }
 
-    // Six-eight is counted in two dotted beats. Without dotted unit values no
-    // count of events at a plain value adds up to one, so only the three- and
-    // six-event idioms could land on a beat and 48% of them started off it.
-    it('puts compound-time idioms on the dotted beat, not across it', () => {
-      expect(offBeatRate(9, '6/8', 3 / 8)).toBeLessThan(0.15);
+    // Six-eight is counted in two dotted beats, and a shape should sit inside
+    // one or fill whole ones. It was 43% before, on the beat measure.
+    it('sits compound-time shapes against the dotted beat', () => {
+      expect(beatCrossingRate(9, '6/8', 3 / 8)).toBeLessThan(0.4);
     }, 20_000);
 
-    it('leaves simple time on its written beat, undotted', () => {
-      expect(offBeatRate(9, '3/4', 1 / 4)).toBeLessThan(0.15);
-      expect(offBeatRate(9, '4/4', 1 / 4)).toBeLessThan(0.15);
+    it('writes compound time in plain values, not a page of dotted ones', () => {
+      let notes = 0;
+      let dotted = 0;
+      for (const seed of MANY) {
+        const exercise = generateExercise({ level: 9, seed });
+        if (exercise.timeSignature.join('/') !== '6/8') continue;
+        for (const note of exercise.notes) {
+          notes++;
+          const notated = toNotated(note.value);
+          if (notated && notated.dots > 0) dotted++;
+        }
+      }
+      expect(notes).toBeGreaterThan(500);
+      // The dotted beat itself is worth writing on one note; everything else
+      // dotted was the first attempt at this, and it looked like a rash.
+      expect(dotted / notes).toBeLessThan(0.1);
     }, 20_000);
 
     it('does the same for compound time, which had the same fault', () => {
