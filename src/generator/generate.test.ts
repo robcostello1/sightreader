@@ -374,9 +374,38 @@ describe('generateExercise', () => {
       expect(crossingRate(9, '3/4')).toBe(0);
     }, 20_000);
 
+    /** Share of idioms that start somewhere other than a beat of the meter. */
+    function offBeatRate(level: number, signature: string, group: number) {
+      let idioms = 0;
+      let off = 0;
+      for (const seed of MANY) {
+        const exercise = generateExercise({ level, seed });
+        if (exercise.timeSignature.join('/') !== signature) continue;
+        for (const { start } of spans(exercise)) {
+          idioms++;
+          if (Math.abs((start / group) % 1) > 1e-6) off++;
+        }
+      }
+      expect(idioms).toBeGreaterThan(200);
+      return off / idioms;
+    }
+
+    // Six-eight is counted in two dotted beats. Without dotted unit values no
+    // count of events at a plain value adds up to one, so only the three- and
+    // six-event idioms could land on a beat and 48% of them started off it.
+    it('puts compound-time idioms on the dotted beat, not across it', () => {
+      expect(offBeatRate(9, '6/8', 3 / 8)).toBeLessThan(0.15);
+    }, 20_000);
+
+    it('leaves simple time on its written beat, undotted', () => {
+      expect(offBeatRate(9, '3/4', 1 / 4)).toBeLessThan(0.15);
+      expect(offBeatRate(9, '4/4', 1 / 4)).toBeLessThan(0.15);
+    }, 20_000);
+
     it('does the same for compound time, which had the same fault', () => {
-      // 43% before. The dotted beat inside the bar is a separate issue.
-      expect(crossingRate(9, '6/8')).toBe(0);
+      // 43% before dotted unit values; a little over none since, because what
+      // fits a dotted beat does not always fit what is left of the bar.
+      expect(crossingRate(9, '6/8')).toBeLessThan(0.05);
     }, 20_000);
 
     it('leaves common time at least as metrical as it was', () => {

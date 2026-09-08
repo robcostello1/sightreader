@@ -222,7 +222,20 @@ export function generateExercise(options: GenerateOptions): Exercise {
   });
   let constraints = withViability(timeSignature);
 
-  let phraseCandidates = buildCandidates(phrase, noteValues, constraints, barSize);
+  /**
+   * The unit values idioms may be rendered at.
+   *
+   * Compound time gets the dotted ones too: its beat is three quavers, and no
+   * plain value multiplied by a count of events ever adds up to that, so
+   * without them only the three- and six-event idioms could land on a beat.
+   */
+  const unitsFor = (signature: [number, number]) =>
+    isCompound(signature)
+      ? noteValues.flatMap((entry) => [entry, { ...entry, value: entry.value * 1.5 }])
+      : noteValues;
+  let units = unitsFor(timeSignature);
+
+  let phraseCandidates = buildCandidates(phrase, units, constraints, barSize);
   // A shorter bar can rule out every idiom when the exercise happens to admit
   // only long note values. Common time always leaves a candidate, so fall back
   // to it rather than emit nothing.
@@ -231,7 +244,8 @@ export function generateExercise(options: GenerateOptions): Exercise {
     barSize = barDuration(timeSignature);
     beatGroup = beatGroupDuration(timeSignature);
     constraints = withViability(timeSignature);
-    phraseCandidates = buildCandidates(phrase, noteValues, constraints, barSize);
+    units = unitsFor(timeSignature);
+    phraseCandidates = buildCandidates(phrase, units, constraints, barSize);
   }
 
   const target = config.targetBars * barSize;
@@ -240,7 +254,7 @@ export function generateExercise(options: GenerateOptions): Exercise {
   // room to land, which is the whole point of having one.
   let cadence: { placement: IdiomPlacement; duration: NoteValue } | null = null;
   if (cadential.length > 0 && rng() < config.cadenceChance) {
-    const candidates = buildCandidates(cadential, noteValues, constraints, barSize)
+    const candidates = buildCandidates(cadential, units, constraints, barSize)
       // Cadential idioms resolve to their anchor degree, so only a tonic anchor
       // actually lands the phrase on the tonic.
       .map((c) => ({ ...c, placements: c.placements.filter((p) => p.startDegree % 7 === 0) }))
