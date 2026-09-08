@@ -162,8 +162,7 @@ describe('Score', () => {
       const { container } = render(<Score exercise={dense} width={320} />);
       const { width } = box(container);
 
-      // Every stave ends inside the drawn width. It used to end well past it,
-      // and an SVG clips: the last notes of the bar were simply missing.
+      // Staves used to end past it, and an SVG clips: those notes went missing.
       const staves = [...container.querySelectorAll('.vf-stave')];
       expect(staves.length).toBeGreaterThan(0);
       for (const stave of staves) {

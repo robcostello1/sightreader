@@ -331,8 +331,7 @@ describe('generateExercise', () => {
   });
 
   describe('laying idioms against the bar', () => {
-    // Enough seeds for a few hundred idioms in each signature, which is what
-    // the rate is measured over; more only makes the suite slower.
+    // A few hundred idioms per signature; more only slows the suite.
     const MANY = Array.from({ length: 1200 }, (_, i) => i + 1);
 
     /** Where each idiom instance starts and ends, in whole-note units. */
@@ -367,15 +366,8 @@ describe('generateExercise', () => {
       return crossing / idioms;
     }
 
-    /*
-     * The bug this exists to stop: idioms used to be laid end to end against
-     * one total, with the bar line consulted only at the end to round the
-     * length up. Four-four hid it — its idioms are two, four and eight events
-     * long, and tile a four-beat bar anyway — but in three-four a four-crotchet
-     * run ran a beat into the next bar and the run after it started on beat
-     * two, which reads as common time written over the top of a triple bar.
-     * Sixty-two per cent of idioms in three-four crossed a bar line.
-     */
+    // The bug this exists to stop: shapes laid end to end read as common time
+    // written over the top of a triple bar.
     it('keeps idioms inside the bar in triple time', () => {
       // 62% before this rule, on the same measure and the same seeds.
       expect(crossingRate(6, '3/4')).toBeLessThan(0.12);
@@ -383,8 +375,7 @@ describe('generateExercise', () => {
     }, 20_000);
 
     it('does the same for compound time, which had the same fault', () => {
-      // 43% before. What remains for compound time is not the bar line but the
-      // dotted beat inside it — see the follow-up issue on 6/8 grouping.
+      // 43% before. The dotted beat inside the bar is a separate issue.
       expect(crossingRate(9, '6/8')).toBe(0);
     }, 20_000);
 
@@ -405,13 +396,7 @@ describe('generateExercise', () => {
       }
     });
 
-    /*
-     * The bar rule has to give way twice, and both are load-bearing. At the
-     * first levels an exercise can admit nothing shorter than a semibreve, so
-     * every idiom in the library outlasts its bar and one has to be used
-     * anyway; and below level three a rest has never been seen, so a bar cannot
-     * be tidied up with one.
-     */
+    // The two documented fallbacks, both load-bearing.
     it('still writes an exercise where every idiom outlasts the bar', () => {
       for (const level of [1, 1.5, 2]) {
         for (const seed of SEEDS) {

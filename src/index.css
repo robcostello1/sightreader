@@ -317,13 +317,7 @@ header .heading-1 {
   position: relative;
 }
 
-/*
- * Both layers scale to the column rather than keeping the width they were drawn
- * at — the width itself is set inline, over VexFlow's own. Ordinarily the two
- * numbers agree and this does nothing; where a single bar needs more room than
- * a phone has, it is what shrinks the music to fit instead of running it off
- * the edge.
- */
+/* Both layers scale to the column; the width itself is set inline, over VexFlow's. */
 .score svg {
   display: block;
 }

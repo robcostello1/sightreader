@@ -85,16 +85,7 @@ const MIDDLE_C = 60;
 const FALLBACK_WIDTH = 720;
 /** Horizontal room a single note needs before it starts colliding. */
 const WIDTH_PER_NOTE = 34;
-/**
- * And the least it can be given before the bar is drawn wider than the screen
- * instead.
- *
- * A bar is indivisible — it cannot be wrapped like a line of text — so a busy
- * one on a phone has to be squeezed, and past some point squeezing stops
- * helping and starts printing noteheads on top of each other. Eighteen pixels
- * still separates two quavers under a beam; below that the bar is drawn at the
- * width it needs and the whole system is scaled down to fit instead.
- */
+/** And the least, before the system is scaled down instead. Two beamed quavers still read. */
 const MIN_WIDTH_PER_NOTE = 18;
 /**
  * And the most it should get. Filling the width with a sparse bar pushes its
@@ -131,13 +122,7 @@ const MARGIN = 12;
  * signature — none of which is available to notes. A key signature grows with
  * its accidental count, so this is measured rather than fixed.
  */
-/**
- * Lets an SVG VexFlow has just sized scale to whatever room it is given.
- *
- * VexFlow writes fixed width and height attributes, which is what put a stave
- * wider than the screen off the edge of it. A viewBox over the same numbers
- * keeps every coordinate VexFlow computed and leaves the fitting to CSS.
- */
+/** Swaps VexFlow's fixed width for a viewBox, so the drawing fits whatever room it has. */
 function fitToContainer(host: HTMLElement, width: number, height: number): void {
   const svg = host.querySelector('svg');
   if (!svg) return;
@@ -145,8 +130,7 @@ function fitToContainer(host: HTMLElement, width: number, height: number): void 
   svg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
   svg.removeAttribute('width');
   svg.removeAttribute('height');
-  // Written inline, because VexFlow writes its own width inline too and a
-  // stylesheet cannot outrank that.
+  // Inline, because VexFlow's own width is inline and a stylesheet cannot outrank it.
   svg.style.width = '100%';
   svg.style.height = 'auto';
 }
@@ -447,16 +431,8 @@ export function Score({
       available - leadingModifierWidth(writtenKey.accidentals, true),
     );
 
-    /*
-     * Width is driven by how many notes a bar holds. Giving every bar an equal
-     * share crams the busy ones until their notes overlap the bar line.
-     *
-     * A bar wider than the screen is squeezed towards MIN_WIDTH_PER_NOTE first.
-     * It used to keep its full width regardless, which on a phone drew a stave
-     * running off the right-hand edge — clipped by the SVG, so the last notes
-     * of the bar simply were not there. Wrapping is no answer: bars break
-     * between bar lines and this is one bar.
-     */
+    // Width follows how many notes a bar holds, squeezed towards the floor
+    // when the column cannot hold them — a bar cannot be wrapped.
     const barMinWidth = (bar: (typeof bars)[number]) => {
       const notes = Math.max(1, bar.notes.length);
       const ideal = BAR_PADDING + notes * WIDTH_PER_NOTE;
@@ -480,12 +456,8 @@ export function Score({
     }
     if (current.length > 0) systems.push(current);
 
-    /*
-     * And where even the floor does not fit — sixteen semiquavers on a phone —
-     * the music is drawn at the width it needs and the whole thing is scaled to
-     * the container by its viewBox. Small is legible; cut off is not, and a
-     * score you have to scroll sideways cannot be sight-read at all.
-     */
+    // And where even the floor does not fit, draw at the width it needs and
+    // let the viewBox scale it: small is legible, cut off is not.
     const needed = Math.max(
       ...systems.map(
         (system, index) =>
@@ -706,8 +678,7 @@ export function Score({
       anchor: heardAnchor,
       width: drawWidth,
       height: renderHeight,
-      // What the viewBox is doing to it, so the guide can move in the same
-      // units the eye sees rather than in the ones VexFlow drew in.
+      // So the guide travels in the units the eye sees, not the ones VexFlow drew in.
       scale: renderWidth / drawWidth,
       grand,
       singleClef,
