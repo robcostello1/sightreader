@@ -315,6 +315,14 @@ header .heading-1 {
    and something rebuilt that often can neither fade nor travel. */
 .score {
   position: relative;
+  /* Its own height, not the scroll area's: shrunk to fit, there is nothing for
+     the area to scroll and the music below the fold cannot be reached. */
+  flex: none;
+}
+
+/* Both layers scale to the column; the width itself is set inline, over VexFlow's. */
+.score svg {
+  display: block;
 }
 
 .guide-note {
@@ -1111,6 +1119,12 @@ input[type='range'] {
 
   .control-status {
     min-height: 2rem;
+  }
+
+  /* Taller, because a phone fits one bar to a line and needs the lines. The
+     page scrolls at this width anyway, so the room costs nothing above it. */
+  .score-area {
+    height: 30rem;
   }
 }
 

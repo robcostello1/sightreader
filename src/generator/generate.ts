@@ -3,6 +3,7 @@ import { levelConfig, type LevelConfig, type ScoringConfig } from '../config/lev
 import { DEFAULT_VIABILITY, isViable, type ViabilityConfig } from '../config/viability';
 import { IDIOM_LIBRARY, idiomDuration, instantiateIdiom, placementPitches } from '../idioms';
 import type { IdiomPlacement } from '../idioms';
+import { isCompound } from '../scheduler';
 import { decompose } from '../lib/duration';
 import { keysUpTo, type MusicalKey } from '../lib/key';
 import { midiToHz } from '../lib/pitch';
@@ -50,6 +51,12 @@ interface Candidate {
 
 function barDuration([beatsPerBar, beatUnit]: [number, number]): NoteValue {
   return beatsPerBar / beatUnit;
+}
+
+/** One beat as the meter is counted: three written beats in compound time, one otherwise. */
+function beatGroupDuration(signature: [number, number]): NoteValue {
+  const [, beatUnit] = signature;
+  return (isCompound(signature) ? 3 : 1) / beatUnit;
 }
 
 /**
@@ -126,6 +133,8 @@ function buildCandidates(
   barSize: NoteValue,
 ): Candidate[] {
   const candidates: Candidate[] = [];
+  /** Only used at the first levels, where every idiom outlasts its bar. */
+  const oversized: Candidate[] = [];
   for (const idiom of idioms) {
     const longestEvent = Math.max(...idiom.events.map((event) => event.beats));
     for (const { value, weight } of noteValues) {
@@ -134,18 +143,16 @@ function buildCandidates(
       // tie across the bar line — dead time, and the reason this rule exists.
       if (longestEvent * value > barSize + 1e-9) continue;
       const placements = validPlacements(idiom, value, constraints);
-      if (placements.length > 0) {
-        candidates.push({
-          idiom,
-          unitValue: value,
-          weight,
-          placements,
-          duration: idiomDuration(idiom, value),
-        });
-      }
+      if (placements.length === 0) continue;
+      const duration = idiomDuration(idiom, value);
+      // Nor may the whole idiom: a shape crossing a bar line is heard against
+      // it, and the density dial offers the same shape at a value that fits.
+      const candidate = { idiom, unitValue: value, weight, placements, duration };
+      if (duration > barSize + 1e-9) oversized.push(candidate);
+      else candidates.push(candidate);
     }
   }
-  return candidates;
+  return candidates.length > 0 ? candidates : oversized;
 }
 
 function choosePlacement(
@@ -204,6 +211,8 @@ export function generateExercise(options: GenerateOptions): Exercise {
   // One signature per exercise, weighted, so a new one arrives gradually.
   let timeSignature = weightedPick(rng, config.timeSignatures, (entry) => entry.weight).value;
   let barSize = barDuration(timeSignature);
+  /** What idioms are laid against: see beatGroupDuration. */
+  let beatGroup = beatGroupDuration(timeSignature);
 
   // Viability is measured in beats, so it cannot be settled until the beat unit
   // is known: the same quaver lasts twice as long in 6/8 as in 4/4.
@@ -220,6 +229,7 @@ export function generateExercise(options: GenerateOptions): Exercise {
   if (phraseCandidates.length === 0 && barSize !== barDuration([4, 4])) {
     timeSignature = [4, 4];
     barSize = barDuration(timeSignature);
+    beatGroup = beatGroupDuration(timeSignature);
     constraints = withViability(timeSignature);
     phraseCandidates = buildCandidates(phrase, noteValues, constraints, barSize);
   }
@@ -255,15 +265,59 @@ export function generateExercise(options: GenerateOptions): Exercise {
   while (used === 0 || budget - used > 1e-9) {
     const remaining = budget - used;
     const fitting = phraseCandidates.filter((candidate) => candidate.duration <= remaining);
+    // Laid end to end against one total, idioms straddled bar lines — which in
+    // three-four reads as common time written over the top of a triple bar.
+    const inBar = used % barSize;
+    const restOfBar = barSize - (inBar < 1e-9 ? 0 : inBar);
+    // First choice: fits the bar and ends on a beat, so the remainder is
+    // something another idiom can tile.
+    const lands = (candidate: Candidate) => {
+      const end = inBar + candidate.duration;
+      return end <= restOfBar + inBar + 1e-9 && Math.abs((end / beatGroup) % 1) < 1e-6;
+    };
+    const landing = fitting.filter(lands);
+    // And of those, the ones that leave room for something to follow.
+    const shortest = Math.min(...phraseCandidates.map((candidate) => candidate.duration));
+    const metrical = landing.filter((candidate) => {
+      const left = restOfBar - candidate.duration;
+      return left < 1e-9 || left >= shortest - 1e-9;
+    });
+    const withinBar = fitting.filter((candidate) => candidate.duration <= restOfBar + 1e-9);
     // The first idiom always goes in. If none fits the budget, take the
     // shortest available and let the bar count round up rather than emit
     // nothing — an exercise is made of whole shapes.
+    // Nothing the bar can hold: fill what is left of it with a rest rather
+    // than hang a shape over the bar line.
+    if (
+      metrical.length === 0 &&
+      landing.length === 0 &&
+      withinBar.length === 0 &&
+      used > 0 &&
+      restOfBar > 1e-9 &&
+      // Only where rests are taught already — level three, before three-four.
+      config.restChance > 0 &&
+      // And only when something follows: an exercise must not end on silence.
+      remaining - restOfBar >= shortest - 1e-9
+    ) {
+      padTo(notes, restOfBar, instance, barSize, true);
+      used += restOfBar;
+      previous = null;
+      instance++;
+      continue;
+    }
+
     const fits =
-      fitting.length > 0
-        ? fitting
-        : used === 0
-          ? shortestOf(phraseCandidates)
-          : [];
+      metrical.length > 0
+        ? metrical
+        : landing.length > 0
+          ? landing
+          : withinBar.length > 0
+            ? withinBar
+            : fitting.length > 0
+              ? fitting
+              : used === 0
+                ? shortestOf(phraseCandidates)
+                : [];
     if (fits.length === 0) break;
 
     // A sequence repeats the previous shape on a new scale degree. It rewards

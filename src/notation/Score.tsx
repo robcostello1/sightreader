@@ -68,23 +68,25 @@ function followPageColour(root: Element): void {
 }
 
 /**
- * Vertical budget. A part can run several ledger lines either side of the staff
- * — a guitar's open position reaches from E3, three lines below, up to G#5 just
- * above — so there is headroom above and considerably more below, or the
- * extremes get clipped.
+ * Headroom above the first staff, on top of the four ledger lines' worth
+ * VexFlow already reserves — which together was eighty pixels of empty page.
  */
-const STAVE_TOP = 40;
+const STAVE_TOP = 12;
 /** Vertical pitch between systems when the music wraps onto several lines. */
 const SYSTEM_HEIGHT = 175;
 /** A grand staff is two staves and needs room for both, plus their ledger lines. */
-const GRAND_SYSTEM_HEIGHT = 300;
-/** Treble stave top to bass stave top. */
-const GRAND_STAFF_GAP = 120;
+const GRAND_SYSTEM_HEIGHT = 230;
+/** Treble stave top to bass stave top: sixty pixels between them, six ledger lines. */
+const GRAND_STAFF_GAP = 100;
 /** Where the hands divide. Middle C and above is the right hand's. */
 const MIDDLE_C = 60;
 const FALLBACK_WIDTH = 720;
-/** Horizontal room a single note needs before it starts colliding. */
+/** Room a note wants where there is room to give it. */
 const WIDTH_PER_NOTE = 34;
+/** And the least it can have and still be read: two beamed quavers, snugly. */
+const MIN_WIDTH_PER_NOTE = 18;
+/** Below this the column is a phone's, and bars are packed by the floor instead. */
+const CRAMPED_WIDTH = 560;
 /**
  * And the most it should get. Filling the width with a sparse bar pushes its
  * notes so far apart that they stop reading as a phrase — a two-note bar spread
@@ -120,6 +122,19 @@ const MARGIN = 12;
  * signature — none of which is available to notes. A key signature grows with
  * its accidental count, so this is measured rather than fixed.
  */
+/** Swaps VexFlow's fixed width for a viewBox, so the drawing fits whatever room it has. */
+function fitToContainer(host: HTMLElement, width: number, height: number): void {
+  const svg = host.querySelector('svg');
+  if (!svg) return;
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
+  svg.removeAttribute('width');
+  svg.removeAttribute('height');
+  // Inline, because VexFlow's own width is inline and a stylesheet cannot outrank it.
+  svg.style.width = '100%';
+  svg.style.height = 'auto';
+}
+
 function leadingModifierWidth(accidentals: number, withTimeSignature: boolean): number {
   return 46 + 11 * Math.abs(accidentals) + (withTimeSignature ? 28 : 0);
 }
@@ -246,6 +261,8 @@ interface GuidePlan {
   anchor: HeardAnchor | null;
   width: number;
   height: number;
+  /** Container width over drawn width: 1 unless the music had to be shrunk. */
+  scale: number;
   grand: boolean;
   singleClef: string;
   writtenKey: MusicalKey;
@@ -359,6 +376,8 @@ export function Score({
   const [measured, setMeasured] = useState<number | null>(null);
   /** Last system scrolled to, so the view moves on wrapping and not every frame. */
   const scrolledSystemRef = useRef<number | null>(null);
+  /** The exercise last drawn, so a new one can be recognised and scrolled back to. */
+  const engravedRef = useRef<Exercise | null>(null);
   /** What the last engraving left behind for the guide layer to draw against. */
   const planRef = useRef<GuidePlan | null>(null);
   /** Where the guide is now, so a move can start from where the eye left it. */
@@ -407,19 +426,44 @@ export function Score({
     const clefAnnotation = instrument.id === 'guitar' ? '8vb' : undefined;
     const bars = layoutExercise(exercise);
 
-    // Width is driven by how many notes a bar holds. Giving every bar an equal
-    // share crams the busy ones until their notes overlap the bar line.
-    const barMinWidth = (bar: (typeof bars)[number]) =>
-      BAR_PADDING + Math.max(1, bar.notes.length) * WIDTH_PER_NOTE;
-
     const available = renderWidth - MARGIN * 2;
+    /** What one bar can have, once the clef and key signature have taken theirs. */
+    const roomForOneBar = Math.max(
+      1,
+      available - leadingModifierWidth(writtenKey.accidentals, true),
+    );
 
-    // Pack bars into systems, wrapping rather than shrinking past legibility.
+    const noteCount = (bar: (typeof bars)[number]) => Math.max(1, bar.notes.length);
+    /** The least a bar can be given and still be read. */
+    const barFloorWidth = (bar: (typeof bars)[number]) =>
+      Math.min(
+        BAR_PADDING + noteCount(bar) * MIN_WIDTH_PER_NOTE,
+        // Bounded, for the bar so busy it cannot fit even squeezed.
+        Math.max(BAR_PADDING + MIN_WIDTH_PER_NOTE, roomForOneBar),
+      );
+    /** And the most, past which its notes stop reading as a phrase. */
+    const barMaxWidth = (bar: (typeof bars)[number]) =>
+      BAR_PADDING + noteCount(bar) * MAX_WIDTH_PER_NOTE;
+
+    /*
+     * What a bar is given when a line is packed. On a phone it is the floor —
+     * two bars snugly beats one bar and another on a line of its own — and
+     * anywhere with room it is what the bar would like, so a busy bar takes the
+     * next line rather than squeezing in beside a sparse one.
+     */
+    const packWidth = (bar: (typeof bars)[number]) =>
+      renderWidth < CRAMPED_WIDTH
+        ? barFloorWidth(bar)
+        : Math.min(
+            BAR_PADDING + noteCount(bar) * WIDTH_PER_NOTE,
+            Math.max(barFloorWidth(bar), roomForOneBar),
+          );
+
     const systems: (typeof bars)[] = [];
     let current: typeof bars = [];
     let currentWidth = leadingModifierWidth(writtenKey.accidentals, true);
     for (const bar of bars) {
-      const width = barMinWidth(bar);
+      const width = packWidth(bar);
       if (current.length > 0 && currentWidth + width > available) {
         systems.push(current);
         current = [];
@@ -430,9 +474,22 @@ export function Score({
     }
     if (current.length > 0) systems.push(current);
 
+    // And where even the floor does not fit, draw at the width it needs and
+    // let the viewBox scale it: small is legible, cut off is not.
+    const needed = Math.max(
+      ...systems.map(
+        (system, index) =>
+          leadingModifierWidth(writtenKey.accidentals, index === 0) +
+          system.reduce((sum, bar) => sum + barFloorWidth(bar), 0),
+      ),
+    );
+    const drawWidth = Math.max(renderWidth, needed + MARGIN * 2);
+    const drawAvailable = drawWidth - MARGIN * 2;
+
     const renderHeight = STAVE_TOP + systems.length * systemHeight;
     const renderer = new Renderer(staff, Renderer.Backends.SVG);
-    renderer.resize(renderWidth, renderHeight);
+    renderer.resize(drawWidth, renderHeight);
+    fitToContainer(staff, drawWidth, renderHeight);
     const context = renderer.getContext();
 
     /** Fragments of each source note, per system, so ties stay within a line. */
@@ -442,20 +499,20 @@ export function Score({
 
     systems.forEach((system, systemIndex) => {
       const leading = leadingModifierWidth(writtenKey.accidentals, systemIndex === 0);
-      const minWidths = system.map(barMinWidth);
-      const maxWidths = system.map(
-        (bar) => BAR_PADDING + Math.max(1, bar.notes.length) * MAX_WIDTH_PER_NOTE,
-      );
+      const minWidths = system.map(barFloorWidth);
+      const maxWidths = system.map(barMaxWidth);
       const totalMin = minWidths.reduce((sum, w) => sum + w, 0);
-      // Every bar keeps its minimum; only what is left over is shared out, and
-      // no bar grows past what its notes can use. A purely proportional split
-      // starves a busy bar and stretches an empty one.
-      const spare = Math.max(0, available - leading - totalMin);
+      // Every bar keeps its floor; only what is left over is shared out, by
+      // note count, and no bar grows past what its notes can use. A purely
+      // proportional split starves a busy bar and stretches an empty one.
+      const spare = Math.max(0, drawAvailable - leading - totalMin);
+      const weights = system.map(noteCount);
+      const totalWeight = weights.reduce((sum, w) => sum + w, 0);
       const y = STAVE_TOP + systemIndex * systemHeight;
       let x = MARGIN;
 
       system.forEach((bar, barIndex) => {
-        const share = minWidths[barIndex] + (spare * minWidths[barIndex]) / totalMin;
+        const share = minWidths[barIndex] + (spare * weights[barIndex]) / totalWeight;
         const width = Math.min(share, maxWidths[barIndex]) + (barIndex === 0 ? leading : 0);
         const first = barIndex === 0;
         const last = barIndex === system.length - 1;
@@ -637,8 +694,10 @@ export function Score({
     // played. Handed over rather than drawn here: see GuidePlan.
     planRef.current = {
       anchor: heardAnchor,
-      width: renderWidth,
+      width: drawWidth,
       height: renderHeight,
+      // So the guide travels in the units the eye sees, not the ones VexFlow drew in.
+      scale: renderWidth / drawWidth,
       grand,
       singleClef,
       writtenKey,
@@ -652,6 +711,14 @@ export function Score({
     // the top rather than centred, so the line after it is visible — a reader
     // needs to see what is coming, not just where they are.
     const scroller = host.parentElement;
+    // A new exercise starts at its first line, wherever the last one was read to.
+    if (exercise !== engravedRef.current) {
+      engravedRef.current = exercise;
+      scrolledSystemRef.current = null;
+      // Set rather than animated: the first line should be there already, not
+      // arriving.
+      if (scroller) scroller.scrollTop = 0;
+    }
     if (activeIndex === undefined) {
       scrolledSystemRef.current = null;
     } else if (scroller && scroller.scrollHeight > scroller.clientHeight) {
@@ -731,6 +798,7 @@ export function Score({
     layer.replaceChildren();
     const renderer = new Renderer(layer, Renderer.Backends.SVG);
     renderer.resize(plan.width, plan.height);
+    fitToContainer(layer, plan.width, plan.height);
     const context = renderer.getContext();
     context.openGroup('heard-note');
     // setStave took the score's context; this layer has its own.
@@ -746,8 +814,8 @@ export function Score({
     // else: the layer is drawn at the destination, offset back to where the eye
     // last had it, and then let go of. A pitch that has only just arrived has
     // nowhere to travel from and simply fades in.
-    const dx = from === null ? 0 : from.x - to.x;
-    const dy = from === null ? 0 : from.y - to.y;
+    const dx = from === null ? 0 : (from.x - to.x) * plan.scale;
+    const dy = from === null ? 0 : (from.y - to.y) * plan.scale;
     const travels = Math.abs(dx) <= GUIDE_JUMP_PX && Math.abs(dy) <= GUIDE_JUMP_PX;
     layer.classList.toggle('is-still', !travels || (dx === 0 && dy === 0));
     if (travels && (dx !== 0 || dy !== 0)) {

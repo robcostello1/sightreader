@@ -330,6 +330,91 @@ describe('generateExercise', () => {
     expect(restsAt(3.9)).toBeGreaterThan(restsAt(3));
   });
 
+  describe('laying idioms against the bar', () => {
+    // A few hundred idioms per signature; more only slows the suite.
+    const MANY = Array.from({ length: 1200 }, (_, i) => i + 1);
+
+    /** Where each idiom instance starts and ends, in whole-note units. */
+    function spans(exercise: ReturnType<typeof generateExercise>) {
+      const found = new Map<number, { start: number; end: number }>();
+      let at = 0;
+      for (const note of exercise.notes) {
+        if (note.idiomId !== PADDING_IDIOM_ID) {
+          const span = found.get(note.instance);
+          if (span) span.end = at + note.value;
+          else found.set(note.instance, { start: at, end: at + note.value });
+        }
+        at += note.value;
+      }
+      return [...found.values()];
+    }
+
+    /** Share of idioms that start in one bar and finish in another. */
+    function crossingRate(level: number, signature: string) {
+      let idioms = 0;
+      let crossing = 0;
+      for (const seed of MANY) {
+        const exercise = generateExercise({ level, seed });
+        if (exercise.timeSignature.join('/') !== signature) continue;
+        const bar = exercise.timeSignature[0] / exercise.timeSignature[1];
+        for (const { start, end } of spans(exercise)) {
+          idioms++;
+          if (Math.floor(start / bar + 1e-9) !== Math.floor((end - 1e-9) / bar)) crossing++;
+        }
+      }
+      expect(idioms).toBeGreaterThan(200);
+      return crossing / idioms;
+    }
+
+    // The bug this exists to stop: shapes laid end to end read as common time
+    // written over the top of a triple bar.
+    it('keeps idioms inside the bar in triple time', () => {
+      // 62% before this rule, on the same measure and the same seeds.
+      expect(crossingRate(6, '3/4')).toBeLessThan(0.12);
+      expect(crossingRate(9, '3/4')).toBe(0);
+    }, 20_000);
+
+    it('does the same for compound time, which had the same fault', () => {
+      // 43% before. The dotted beat inside the bar is a separate issue.
+      expect(crossingRate(9, '6/8')).toBe(0);
+    }, 20_000);
+
+    it('leaves common time at least as metrical as it was', () => {
+      // It was 39% at level 6 and 25% at level 9, under the same measure.
+      expect(crossingRate(6, '4/4')).toBeLessThan(0.06);
+      expect(crossingRate(9, '4/4')).toBe(0);
+    }, 20_000);
+
+    it('never writes a shape longer than the bar it starts in, where one fits', () => {
+      for (const seed of MANY.slice(0, 400)) {
+        const exercise = generateExercise({ level: 6, seed });
+        if (exercise.timeSignature.join('/') !== '3/4') continue;
+        const bar = exercise.timeSignature[0] / exercise.timeSignature[1];
+        for (const { start, end } of spans(exercise)) {
+          expect(end - start).toBeLessThanOrEqual(bar + 1e-9);
+        }
+      }
+    });
+
+    // The two documented fallbacks, both load-bearing.
+    it('still writes an exercise where every idiom outlasts the bar', () => {
+      for (const level of [1, 1.5, 2]) {
+        for (const seed of SEEDS) {
+          expect(generateExercise({ level, seed }).notes.length).toBeGreaterThan(0);
+        }
+      }
+    });
+
+    it('does not reach for a rest before rests are taught', () => {
+      for (const level of [1, 2, 2.9]) {
+        for (const seed of MANY.slice(0, 300)) {
+          const exercise = generateExercise({ level, seed });
+          expect(exercise.notes.every((note) => note.midi !== null)).toBe(true);
+        }
+      }
+    }, 20_000);
+  });
+
   it('introduces devices only once their level is reached', () => {
     const has = (level: number, predicate: (e: ReturnType<typeof generateExercise>) => boolean) =>
       SEEDS.some((seed) => predicate(generateExercise({ level, seed })));
