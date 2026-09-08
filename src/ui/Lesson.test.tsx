@@ -405,6 +405,24 @@ describe('the keyboard', () => {
     expect(screen.getByLabelText('Tip')).not.toBeNull();
   });
 
+  it('moves the rotation on, so a stop is never met by the tip before it', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+
+    const seen: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      await click(/^play$/i);
+      await click(/^stop$/i);
+      seen.push(screen.getByLabelText('Tip').textContent!);
+    }
+
+    // Five appearances, five different tips: the rotation walks the list in
+    // order rather than drawing from it, so nothing comes round twice before
+    // the rest have been offered.
+    expect(new Set(seen).size).toBe(seen.length);
+  });
+
   it('has the keys behind the greeting', async () => {
     asReturning();
     render(<Lesson />);

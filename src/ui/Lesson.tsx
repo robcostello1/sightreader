@@ -93,6 +93,13 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
    * the screen, and a stop would otherwise be greeted like an arrival.
    */
   const [welcomed, setWelcomed] = useState(false);
+  /**
+   * Where the tips have got to. Random at the top of a visit and walked in
+   * order from there, so no tip comes round twice before the rest have been
+   * offered — and it lives here rather than in the card, which is torn down
+   * and rebuilt every time an exercise takes the screen.
+   */
+  const [tipCursor, setTipCursor] = useState(() => Math.floor(Math.random() * 1000));
 
   useEffect(() => saveSetting('level', level), [level]);
   useEffect(() => saveSetting('instrument', instrumentId), [instrumentId]);
@@ -361,6 +368,8 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
                   onKeys={() => setKeysShown(true)}
                   welcome={!welcomed}
                   onWelcomed={() => setWelcomed(true)}
+                  cursor={tipCursor}
+                  onCursor={setTipCursor}
                 />
               )}
               {lesson.exercise && (
