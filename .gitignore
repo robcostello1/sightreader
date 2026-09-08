@@ -25,3 +25,9 @@ dist-ssr
 
 # Output of the generator distribution harness (see docs/note-distribution.md)
 distribution-report.txt
+
+# Imported repertoire and anything derived from it. Somebody else's music, whose
+# licensing has to be established per file — see docs/excerpt-import.md.
+excerpts.json
+public/excerpts.json
+scores/

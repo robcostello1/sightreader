@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc -b --noEmit",
     "dev:lan": "LAN=1 vite",
-    "tip-shots": "node scripts/tip-shots.mjs"
+    "tip-shots": "node scripts/tip-shots.mjs",
+    "import-scores": "node scripts/import-scores.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
