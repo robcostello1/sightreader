@@ -86,6 +86,17 @@ const FALLBACK_WIDTH = 720;
 /** Horizontal room a single note needs before it starts colliding. */
 const WIDTH_PER_NOTE = 34;
 /**
+ * And the least it can be given before the bar is drawn wider than the screen
+ * instead.
+ *
+ * A bar is indivisible — it cannot be wrapped like a line of text — so a busy
+ * one on a phone has to be squeezed, and past some point squeezing stops
+ * helping and starts printing noteheads on top of each other. Eighteen pixels
+ * still separates two quavers under a beam; below that the bar is drawn at the
+ * width it needs and the whole system is scaled down to fit instead.
+ */
+const MIN_WIDTH_PER_NOTE = 18;
+/**
  * And the most it should get. Filling the width with a sparse bar pushes its
  * notes so far apart that they stop reading as a phrase — a two-note bar spread
  * over a whole line is harder to follow than a compact one.
@@ -120,6 +131,26 @@ const MARGIN = 12;
  * signature — none of which is available to notes. A key signature grows with
  * its accidental count, so this is measured rather than fixed.
  */
+/**
+ * Lets an SVG VexFlow has just sized scale to whatever room it is given.
+ *
+ * VexFlow writes fixed width and height attributes, which is what put a stave
+ * wider than the screen off the edge of it. A viewBox over the same numbers
+ * keeps every coordinate VexFlow computed and leaves the fitting to CSS.
+ */
+function fitToContainer(host: HTMLElement, width: number, height: number): void {
+  const svg = host.querySelector('svg');
+  if (!svg) return;
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('preserveAspectRatio', 'xMinYMin meet');
+  svg.removeAttribute('width');
+  svg.removeAttribute('height');
+  // Written inline, because VexFlow writes its own width inline too and a
+  // stylesheet cannot outrank that.
+  svg.style.width = '100%';
+  svg.style.height = 'auto';
+}
+
 function leadingModifierWidth(accidentals: number, withTimeSignature: boolean): number {
   return 46 + 11 * Math.abs(accidentals) + (withTimeSignature ? 28 : 0);
 }
@@ -246,6 +277,8 @@ interface GuidePlan {
   anchor: HeardAnchor | null;
   width: number;
   height: number;
+  /** Container width over drawn width: 1 unless the music had to be shrunk. */
+  scale: number;
   grand: boolean;
   singleClef: string;
   writtenKey: MusicalKey;
@@ -407,12 +440,29 @@ export function Score({
     const clefAnnotation = instrument.id === 'guitar' ? '8vb' : undefined;
     const bars = layoutExercise(exercise);
 
-    // Width is driven by how many notes a bar holds. Giving every bar an equal
-    // share crams the busy ones until their notes overlap the bar line.
-    const barMinWidth = (bar: (typeof bars)[number]) =>
-      BAR_PADDING + Math.max(1, bar.notes.length) * WIDTH_PER_NOTE;
-
     const available = renderWidth - MARGIN * 2;
+    /** What one bar can have, once the clef and key signature have taken theirs. */
+    const roomForOneBar = Math.max(
+      1,
+      available - leadingModifierWidth(writtenKey.accidentals, true),
+    );
+
+    /*
+     * Width is driven by how many notes a bar holds. Giving every bar an equal
+     * share crams the busy ones until their notes overlap the bar line.
+     *
+     * A bar wider than the screen is squeezed towards MIN_WIDTH_PER_NOTE first.
+     * It used to keep its full width regardless, which on a phone drew a stave
+     * running off the right-hand edge — clipped by the SVG, so the last notes
+     * of the bar simply were not there. Wrapping is no answer: bars break
+     * between bar lines and this is one bar.
+     */
+    const barMinWidth = (bar: (typeof bars)[number]) => {
+      const notes = Math.max(1, bar.notes.length);
+      const ideal = BAR_PADDING + notes * WIDTH_PER_NOTE;
+      const floor = BAR_PADDING + notes * MIN_WIDTH_PER_NOTE;
+      return Math.min(ideal, Math.max(floor, roomForOneBar));
+    };
 
     // Pack bars into systems, wrapping rather than shrinking past legibility.
     const systems: (typeof bars)[] = [];
@@ -430,9 +480,26 @@ export function Score({
     }
     if (current.length > 0) systems.push(current);
 
+    /*
+     * And where even the floor does not fit — sixteen semiquavers on a phone —
+     * the music is drawn at the width it needs and the whole thing is scaled to
+     * the container by its viewBox. Small is legible; cut off is not, and a
+     * score you have to scroll sideways cannot be sight-read at all.
+     */
+    const needed = Math.max(
+      ...systems.map(
+        (system, index) =>
+          leadingModifierWidth(writtenKey.accidentals, index === 0) +
+          system.reduce((sum, bar) => sum + barMinWidth(bar), 0),
+      ),
+    );
+    const drawWidth = Math.max(renderWidth, needed + MARGIN * 2);
+    const drawAvailable = drawWidth - MARGIN * 2;
+
     const renderHeight = STAVE_TOP + systems.length * systemHeight;
     const renderer = new Renderer(staff, Renderer.Backends.SVG);
-    renderer.resize(renderWidth, renderHeight);
+    renderer.resize(drawWidth, renderHeight);
+    fitToContainer(staff, drawWidth, renderHeight);
     const context = renderer.getContext();
 
     /** Fragments of each source note, per system, so ties stay within a line. */
@@ -450,7 +517,7 @@ export function Score({
       // Every bar keeps its minimum; only what is left over is shared out, and
       // no bar grows past what its notes can use. A purely proportional split
       // starves a busy bar and stretches an empty one.
-      const spare = Math.max(0, available - leading - totalMin);
+      const spare = Math.max(0, drawAvailable - leading - totalMin);
       const y = STAVE_TOP + systemIndex * systemHeight;
       let x = MARGIN;
 
@@ -637,8 +704,11 @@ export function Score({
     // played. Handed over rather than drawn here: see GuidePlan.
     planRef.current = {
       anchor: heardAnchor,
-      width: renderWidth,
+      width: drawWidth,
       height: renderHeight,
+      // What the viewBox is doing to it, so the guide can move in the same
+      // units the eye sees rather than in the ones VexFlow drew in.
+      scale: renderWidth / drawWidth,
       grand,
       singleClef,
       writtenKey,
@@ -731,6 +801,7 @@ export function Score({
     layer.replaceChildren();
     const renderer = new Renderer(layer, Renderer.Backends.SVG);
     renderer.resize(plan.width, plan.height);
+    fitToContainer(layer, plan.width, plan.height);
     const context = renderer.getContext();
     context.openGroup('heard-note');
     // setStave took the score's context; this layer has its own.
@@ -746,8 +817,8 @@ export function Score({
     // else: the layer is drawn at the destination, offset back to where the eye
     // last had it, and then let go of. A pitch that has only just arrived has
     // nowhere to travel from and simply fades in.
-    const dx = from === null ? 0 : from.x - to.x;
-    const dy = from === null ? 0 : from.y - to.y;
+    const dx = from === null ? 0 : (from.x - to.x) * plan.scale;
+    const dy = from === null ? 0 : (from.y - to.y) * plan.scale;
     const travels = Math.abs(dx) <= GUIDE_JUMP_PX && Math.abs(dy) <= GUIDE_JUMP_PX;
     layer.classList.toggle('is-still', !travels || (dx === 0 && dy === 0));
     if (travels && (dx !== 0 || dy !== 0)) {

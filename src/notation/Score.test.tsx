@@ -131,6 +131,63 @@ describe('Score', () => {
     expect(markup).toContain(VERDICT_FALLBACKS.unclear);
   });
 
+  describe('on a screen narrower than the music', () => {
+    /** A bar that needs more width than a phone has: sixteen semiquavers. */
+    const dense: Exercise = {
+      ...simple,
+      notes: Array.from({ length: 16 }, (_, i) => ({
+        midi: 60 + (i % 8),
+        value: NOTE_VALUES.sixteenth,
+        idiomId: 'test',
+        instance: 0,
+      })),
+    };
+
+    const box = (container: HTMLElement) => {
+      const [, , width, height] = svgOf(container).getAttribute('viewBox')!.split(' ').map(Number);
+      return { width, height };
+    };
+
+    it('scales the music to the column instead of drawing past it', () => {
+      const { container } = render(<Score exercise={dense} width={320} />);
+      const svg = svgOf(container);
+
+      // Sized by its viewBox rather than by fixed attributes, so CSS can fit it.
+      expect(svg.getAttribute('viewBox')).not.toBeNull();
+      expect(svg.getAttribute('width')).toBeNull();
+      expect(svg.getAttribute('height')).toBeNull();
+    });
+
+    it('draws nothing outside the box it declares', () => {
+      const { container } = render(<Score exercise={dense} width={320} />);
+      const { width } = box(container);
+
+      // Every stave ends inside the drawn width. It used to end well past it,
+      // and an SVG clips: the last notes of the bar were simply missing.
+      const staves = [...container.querySelectorAll('.vf-stave')];
+      expect(staves.length).toBeGreaterThan(0);
+      for (const stave of staves) {
+        const rightmost = Math.max(
+          ...[...stave.querySelectorAll('path')].flatMap((path) =>
+            [...(path.getAttribute('d') ?? '').matchAll(/[ML]\s*([\d.]+)/g)].map((m) => Number(m[1])),
+          ),
+        );
+        expect(rightmost).toBeLessThanOrEqual(width + 1);
+      }
+    });
+
+    it('squeezes a bar before it resorts to shrinking the whole system', () => {
+      // Four notes fit a phone at a squeeze, so nothing is scaled for them.
+      const { container } = render(<Score exercise={simple} width={320} />);
+      expect(box(container).width).toBe(320);
+    });
+
+    it('leaves a roomy column drawn at its own size', () => {
+      const { container } = render(<Score exercise={dense} width={1200} />);
+      expect(box(container).width).toBe(1200);
+    });
+  });
+
   it('draws an octave sign over a passage instead of a stack of ledger lines', () => {
     // Seven ledger lines is not notation anyone sight-reads. The passage is
     // written an octave down with 8va over it, so it sits beside the staff.
