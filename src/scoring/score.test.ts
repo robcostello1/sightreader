@@ -144,17 +144,17 @@ describe('rests', () => {
     expect(scoreWindow(window, fillZone(window, () => ({})), DEFAULT_SCORING).passed).toBe(true);
   });
 
-  it('does not penalise sustain through a rest by default', () => {
+  it('fails a note held through a rest, which it now judges by default', () => {
     const result = scoreWindow(window, fillZone(window, played(60)), DEFAULT_SCORING);
-    expect(result.passed).toBe(true);
-    // The occupancy is still reported, so the policy can change without a reshape.
+    expect(result.passed).toBe(false);
+    // The silence ratio is still reported, though it is no longer what decides.
     expect(result.occupancy).toBe(0);
   });
 
-  it('fails a rung-through rest when penalisation is switched on', () => {
-    const strict = { ...DEFAULT_SCORING, penaliseSustainThroughRest: true };
-    expect(scoreWindow(window, fillZone(window, played(60)), strict).passed).toBe(false);
-    expect(scoreWindow(window, fillZone(window, () => ({})), strict).passed).toBe(true);
+  it('leaves a rest alone where the policy is switched off', () => {
+    const lenient = { ...DEFAULT_SCORING, penaliseSustainThroughRest: false };
+    expect(scoreWindow(window, fillZone(window, played(60)), lenient).passed).toBe(true);
+    expect(scoreWindow(window, fillZone(window, () => ({})), lenient).passed).toBe(true);
   });
 });
 

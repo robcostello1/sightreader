@@ -123,6 +123,20 @@ const pianoPositions: PositionDefinition[] = [
 ];
 
 
+/**
+ * Whether a rest means silence on this instrument.
+ *
+ * On anything you stop by letting go — a plucked string, a bow, a breath — a
+ * note still sounding through a rest is the player not having stopped, which is
+ * exactly what a rest teaches. A piano with the pedal down is a different
+ * matter: the note rings because the instrument is built to let it, and failing
+ * somebody for that would be marking the pedal wrong. See docs/spec.md §6 and
+ * scoring/rest.ts.
+ */
+export function judgesRests(instrument: InstrumentDefinition): boolean {
+  return instrument.family !== 'keyboard';
+}
+
 export const INSTRUMENTS: InstrumentDefinition[] = [
   {
     id: 'guitar',
