@@ -83,8 +83,6 @@ const MIDDLE_C = 60;
 const FALLBACK_WIDTH = 720;
 /** Room a note wants where there is room to give it. */
 const WIDTH_PER_NOTE = 34;
-/** And the least it can have and still be read: two beamed quavers, snugly. */
-const MIN_WIDTH_PER_NOTE = 18;
 /** Below this the column is a phone's, and bars are packed by the floor instead. */
 const CRAMPED_WIDTH = 560;
 /**
@@ -433,14 +431,62 @@ export function Score({
       available - leadingModifierWidth(writtenKey.accidentals, true),
     );
 
+    /**
+     * What VexFlow says a bar needs, in pixels of note area.
+     *
+     * Asked rather than guessed. A per-note estimate cannot know about
+     * accidentals, dots, beamed sixteenths or two hands sharing one bar, and
+     * where it guessed low the formatter drew the notes on top of each other.
+     * Throwaway voices, built and measured and dropped; the drawing pass builds
+     * its own.
+     */
+    const measured = new Map<(typeof bars)[number], number>();
+    const minNoteWidth = (bar: (typeof bars)[number]) => {
+      const found = measured.get(bar);
+      if (found !== undefined) return found;
+      const sides: ('treble' | 'bass' | null)[] = grand ? ['treble', 'bass'] : [null];
+      const voices: Voice[] = [];
+      for (const side of sides) {
+        const forThisStaff =
+          side === null ? bar.notes : notesForStaff(bar.notes, side, instrument);
+        const source = mergeRests(forThisStaff, exercise.timeSignature);
+        if (source.length === 0) continue;
+        const clef = side === null ? singleClef : side;
+        const octaveShift = octaveShiftFor(
+          clef,
+          source
+            .filter((notated) => notated.midi !== null)
+            .map((notated) => soundingToWritten(notated.midi!, instrument)),
+        );
+        const voice = new Voice({
+          numBeats: exercise.timeSignature[0],
+          beatValue: exercise.timeSignature[1],
+        });
+        voice.setMode(VoiceMode.SOFT);
+        voice.addTickables(
+          source.map((notated) => buildNote(notated, writtenKey, instrument, clef, octaveShift)),
+        );
+        Accidental.applyAccidentals([voice], writtenKey.name);
+        voices.push(voice);
+      }
+      if (voices.length === 0) {
+        measured.set(bar, 0);
+        return 0;
+      }
+      const formatter = new Formatter();
+      for (const voice of voices) formatter.joinVoices([voice]);
+      const width = formatter.preCalculateMinTotalWidth(voices);
+      measured.set(bar, width);
+      return width;
+    };
+
     const noteCount = (bar: (typeof bars)[number]) => Math.max(1, bar.notes.length);
-    /** The least a bar can be given and still be read. */
-    const barFloorWidth = (bar: (typeof bars)[number]) =>
-      Math.min(
-        BAR_PADDING + noteCount(bar) * MIN_WIDTH_PER_NOTE,
-        // Bounded, for the bar so busy it cannot fit even squeezed.
-        Math.max(BAR_PADDING + MIN_WIDTH_PER_NOTE, roomForOneBar),
-      );
+    /**
+     * The least a bar can be given: what VexFlow needs, plus the padding a bar
+     * line and its neighbours want. Never squeezed below it — that is what drew
+     * noteheads over each other.
+     */
+    const barFloorWidth = (bar: (typeof bars)[number]) => BAR_PADDING + minNoteWidth(bar);
     /** And the most, past which its notes stop reading as a phrase. */
     const barMaxWidth = (bar: (typeof bars)[number]) =>
       BAR_PADDING + noteCount(bar) * MAX_WIDTH_PER_NOTE;
