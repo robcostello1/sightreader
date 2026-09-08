@@ -131,6 +131,34 @@ describe('Score', () => {
     expect(markup).toContain(VERDICT_FALLBACKS.unclear);
   });
 
+  describe('scrolling', () => {
+    /** The area the score sits in, which is what actually scrolls. */
+    function inArea(node: React.ReactElement) {
+      const area = document.createElement('div');
+      area.className = 'score-area';
+      document.body.append(area);
+      const result = render(node, { container: area });
+      return { area, ...result };
+    }
+
+    it('starts a new exercise at its first line, wherever the last was read to', () => {
+      const { area, rerender } = inArea(<Score exercise={simple} activeIndex={0} />);
+      area.scrollTop = 200;
+
+      const next = { ...simple, notes: [...simple.notes].reverse() };
+      rerender(<Score exercise={next} activeIndex={0} />);
+      expect(area.scrollTop).toBe(0);
+    });
+
+    it('leaves the view alone while the same exercise is being read', () => {
+      const { area, rerender } = inArea(<Score exercise={simple} activeIndex={0} />);
+      area.scrollTop = 120;
+
+      rerender(<Score exercise={simple} activeIndex={1} />);
+      expect(area.scrollTop).toBe(120);
+    });
+  });
+
   describe('on a screen narrower than the music', () => {
     /** A bar that needs more width than a phone has: sixteen semiquavers. */
     const dense: Exercise = {

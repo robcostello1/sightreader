@@ -315,6 +315,9 @@ header .heading-1 {
    and something rebuilt that often can neither fade nor travel. */
 .score {
   position: relative;
+  /* Its own height, not the scroll area's: shrunk to fit, there is nothing for
+     the area to scroll and the music below the fold cannot be reached. */
+  flex: none;
 }
 
 /* Both layers scale to the column; the width itself is set inline, over VexFlow's. */

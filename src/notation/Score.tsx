@@ -68,12 +68,10 @@ function followPageColour(root: Element): void {
 }
 
 /**
- * Vertical budget. A part can run several ledger lines either side of the staff
- * — a guitar's open position reaches from E3, three lines below, up to G#5 just
- * above — so there is headroom above and considerably more below, or the
- * extremes get clipped.
+ * Headroom above the first staff, on top of the four ledger lines' worth
+ * VexFlow already reserves — which together was eighty pixels of empty page.
  */
-const STAVE_TOP = 40;
+const STAVE_TOP = 12;
 /** Vertical pitch between systems when the music wraps onto several lines. */
 const SYSTEM_HEIGHT = 175;
 /** A grand staff is two staves and needs room for both, plus their ledger lines. */
@@ -83,8 +81,12 @@ const GRAND_STAFF_GAP = 100;
 /** Where the hands divide. Middle C and above is the right hand's. */
 const MIDDLE_C = 60;
 const FALLBACK_WIDTH = 720;
-/** The least room a note can have and still be read: two beamed quavers, snugly. */
+/** Room a note wants where there is room to give it. */
+const WIDTH_PER_NOTE = 34;
+/** And the least it can have and still be read: two beamed quavers, snugly. */
 const MIN_WIDTH_PER_NOTE = 18;
+/** Below this the column is a phone's, and bars are packed by the floor instead. */
+const CRAMPED_WIDTH = 560;
 /**
  * And the most it should get. Filling the width with a sparse bar pushes its
  * notes so far apart that they stop reading as a phrase — a two-note bar spread
@@ -374,6 +376,8 @@ export function Score({
   const [measured, setMeasured] = useState<number | null>(null);
   /** Last system scrolled to, so the view moves on wrapping and not every frame. */
   const scrolledSystemRef = useRef<number | null>(null);
+  /** The exercise last drawn, so a new one can be recognised and scrolled back to. */
+  const engravedRef = useRef<Exercise | null>(null);
   /** What the last engraving left behind for the guide layer to draw against. */
   const planRef = useRef<GuidePlan | null>(null);
   /** Where the guide is now, so a move can start from where the eye left it. */
@@ -441,13 +445,25 @@ export function Score({
     const barMaxWidth = (bar: (typeof bars)[number]) =>
       BAR_PADDING + noteCount(bar) * MAX_WIDTH_PER_NOTE;
 
-    // Packed by what a bar needs, not by what it would like: a line that fits
-    // three bars snugly beats two roomy ones and a third on a line of its own.
+    /*
+     * What a bar is given when a line is packed. On a phone it is the floor —
+     * two bars snugly beats one bar and another on a line of its own — and
+     * anywhere with room it is what the bar would like, so a busy bar takes the
+     * next line rather than squeezing in beside a sparse one.
+     */
+    const packWidth = (bar: (typeof bars)[number]) =>
+      renderWidth < CRAMPED_WIDTH
+        ? barFloorWidth(bar)
+        : Math.min(
+            BAR_PADDING + noteCount(bar) * WIDTH_PER_NOTE,
+            Math.max(barFloorWidth(bar), roomForOneBar),
+          );
+
     const systems: (typeof bars)[] = [];
     let current: typeof bars = [];
     let currentWidth = leadingModifierWidth(writtenKey.accidentals, true);
     for (const bar of bars) {
-      const width = barFloorWidth(bar);
+      const width = packWidth(bar);
       if (current.length > 0 && currentWidth + width > available) {
         systems.push(current);
         current = [];
@@ -695,6 +711,14 @@ export function Score({
     // the top rather than centred, so the line after it is visible — a reader
     // needs to see what is coming, not just where they are.
     const scroller = host.parentElement;
+    // A new exercise starts at its first line, wherever the last one was read to.
+    if (exercise !== engravedRef.current) {
+      engravedRef.current = exercise;
+      scrolledSystemRef.current = null;
+      // Set rather than animated: the first line should be there already, not
+      // arriving.
+      if (scroller) scroller.scrollTop = 0;
+    }
     if (activeIndex === undefined) {
       scrolledSystemRef.current = null;
     } else if (scroller && scroller.scrollHeight > scroller.clientHeight) {
