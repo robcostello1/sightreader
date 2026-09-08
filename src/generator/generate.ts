@@ -3,6 +3,7 @@ import { levelConfig, type LevelConfig, type ScoringConfig } from '../config/lev
 import { DEFAULT_VIABILITY, isViable, type ViabilityConfig } from '../config/viability';
 import { IDIOM_LIBRARY, idiomDuration, instantiateIdiom, placementPitches } from '../idioms';
 import type { IdiomPlacement } from '../idioms';
+import { isCompound } from '../scheduler';
 import { decompose } from '../lib/duration';
 import { keysUpTo, type MusicalKey } from '../lib/key';
 import { midiToHz } from '../lib/pitch';
@@ -50,6 +51,19 @@ interface Candidate {
 
 function barDuration([beatsPerBar, beatUnit]: [number, number]): NoteValue {
   return beatsPerBar / beatUnit;
+}
+
+/**
+ * One beat of the meter as it is counted, in whole-note units.
+ *
+ * Simple time counts its written beats; compound time counts three of them at a
+ * time, which is why six-eight is two-in-a-bar and not six. Idioms are laid
+ * against this rather than against the written unit, so a figure in six-eight
+ * occupies whole dotted beats instead of ending halfway through one.
+ */
+function beatGroupDuration(signature: [number, number]): NoteValue {
+  const [, beatUnit] = signature;
+  return (isCompound(signature) ? 3 : 1) / beatUnit;
 }
 
 /**
@@ -126,6 +140,15 @@ function buildCandidates(
   barSize: NoteValue,
 ): Candidate[] {
   const candidates: Candidate[] = [];
+  /**
+   * Idioms too long for a bar, kept aside.
+   *
+   * Normally unused — see the bar rule below — but at the first levels an
+   * exercise can admit nothing shorter than a semibreve, and then every idiom
+   * in the library outlasts its bar. A shape across the bar line beats no
+   * exercise at all.
+   */
+  const oversized: Candidate[] = [];
   for (const idiom of idioms) {
     const longestEvent = Math.max(...idiom.events.map((event) => event.beats));
     for (const { value, weight } of noteValues) {
@@ -134,18 +157,19 @@ function buildCandidates(
       // tie across the bar line — dead time, and the reason this rule exists.
       if (longestEvent * value > barSize + 1e-9) continue;
       const placements = validPlacements(idiom, value, constraints);
-      if (placements.length > 0) {
-        candidates.push({
-          idiom,
-          unitValue: value,
-          weight,
-          placements,
-          duration: idiomDuration(idiom, value),
-        });
-      }
+      if (placements.length === 0) continue;
+      const duration = idiomDuration(idiom, value);
+      // Nor may the whole idiom outlast a bar. A shape longer than a bar cannot
+      // be read as one shape: it is heard against the bar it crosses, which is
+      // how a four-crotchet run in three-four comes to sound like common time
+      // written over the top. The same idiom is still available at a shorter
+      // unit value, where it fits — that is what the density dial is for.
+      const candidate = { idiom, unitValue: value, weight, placements, duration };
+      if (duration > barSize + 1e-9) oversized.push(candidate);
+      else candidates.push(candidate);
     }
   }
-  return candidates;
+  return candidates.length > 0 ? candidates : oversized;
 }
 
 function choosePlacement(
@@ -204,6 +228,12 @@ export function generateExercise(options: GenerateOptions): Exercise {
   // One signature per exercise, weighted, so a new one arrives gradually.
   let timeSignature = weightedPick(rng, config.timeSignatures, (entry) => entry.weight).value;
   let barSize = barDuration(timeSignature);
+  /**
+   * What counts as a beat for the purpose of laying idioms out: the written
+   * beat in simple time, and the dotted beat — three of them — in compound,
+   * because six-eight is counted in two and not in six.
+   */
+  let beatGroup = beatGroupDuration(timeSignature);
 
   // Viability is measured in beats, so it cannot be settled until the beat unit
   // is known: the same quaver lasts twice as long in 6/8 as in 4/4.
@@ -220,6 +250,7 @@ export function generateExercise(options: GenerateOptions): Exercise {
   if (phraseCandidates.length === 0 && barSize !== barDuration([4, 4])) {
     timeSignature = [4, 4];
     barSize = barDuration(timeSignature);
+    beatGroup = beatGroupDuration(timeSignature);
     constraints = withViability(timeSignature);
     phraseCandidates = buildCandidates(phrase, noteValues, constraints, barSize);
   }
@@ -255,15 +286,96 @@ export function generateExercise(options: GenerateOptions): Exercise {
   while (used === 0 || budget - used > 1e-9) {
     const remaining = budget - used;
     const fitting = phraseCandidates.filter((candidate) => candidate.duration <= remaining);
+    /*
+     * What is left of the bar being filled.
+     *
+     * Idioms used to be laid end to end against one total, with the bar line
+     * only consulted at the very end to round the length up. In common time
+     * that is invisible: the idioms are two, four and eight events long, so
+     * they tile a four-beat bar anyway. In three-four they do not — a
+     * four-crotchet run laid from the top of a bar ends a beat into the next
+     * one, and the run after it starts on beat two. Read back, that is a duple
+     * pattern superimposed on a triple bar, which is exactly what it sounds
+     * like. Sixty-two per cent of idioms in three-four straddled a bar line,
+     * against thirty-nine in four-four.
+     */
+    const inBar = used % barSize;
+    const restOfBar = barSize - (inBar < 1e-9 ? 0 : inBar);
+    /*
+     * Fitting the bar is not enough on its own: an idiom that ends partway
+     * through a beat leaves a remainder no other idiom can tile, and the next
+     * one crosses the bar line to use it up. So the first choice is idioms that
+     * both fit the bar and land on a beat — the dotted beat in compound time,
+     * where the three quavers of a group are one beat and a figure that ends
+     * halfway through the group is the same duple superimposition one bar down.
+     */
+    const lands = (candidate: Candidate) => {
+      const end = inBar + candidate.duration;
+      return end <= restOfBar + inBar + 1e-9 && Math.abs((end / beatGroup) % 1) < 1e-6;
+    };
+    const landing = fitting.filter(lands);
+    /*
+     * And of those, the ones that do not strand the rest of the bar. An idiom
+     * that leaves less room than the shortest idiom needs is the other way a
+     * bar line gets crossed: nothing fits the gap, so the next shape starts in
+     * it and finishes in the bar after.
+     */
+    const shortest = Math.min(...phraseCandidates.map((candidate) => candidate.duration));
+    const metrical = landing.filter((candidate) => {
+      const left = restOfBar - candidate.duration;
+      return left < 1e-9 || left >= shortest - 1e-9;
+    });
+    const withinBar = fitting.filter((candidate) => candidate.duration <= restOfBar + 1e-9);
     // The first idiom always goes in. If none fits the budget, take the
     // shortest available and let the bar count round up rather than emit
-    // nothing — an exercise is made of whole shapes.
+    // nothing — an exercise is made of whole shapes. And if none fits the bar,
+    // one that crosses it beats a bar padded out with rests: the rule is what
+    // an idiom should do, not something to stop the music for.
+    /*
+     * Nothing the bar can hold, but the exercise is not over: fill the rest of
+     * the bar with a rest and start the next shape where the next bar starts.
+     *
+     * This is the last of the three ways a bar line used to get crossed, and
+     * the one no filter can fix: with only crotchets admitted, a three-four bar
+     * holds one two-note idiom and has a beat left that nothing is short enough
+     * to fill. A beat of silence is ordinary music. A duple shape hanging over
+     * the bar line is what this whole arrangement is here to stop.
+     */
+    if (
+      metrical.length === 0 &&
+      landing.length === 0 &&
+      withinBar.length === 0 &&
+      used > 0 &&
+      restOfBar > 1e-9 &&
+      // Only where a rest is already part of the language. Below level three
+      // one has never been seen, and a bar tidied up with a device the reader
+      // has not met is a worse trade than a shape across a bar line. Three-four
+      // arrives at level four, so this is always available where it is needed.
+      config.restChance > 0 &&
+      // And only when something will follow it: an exercise that ends on
+      // silence ends on nothing, and the tail is the closing shortfall's to
+      // fill, which knows to put the breath before the last note instead.
+      remaining - restOfBar >= shortest - 1e-9
+    ) {
+      padTo(notes, restOfBar, instance, barSize, true);
+      used += restOfBar;
+      previous = null;
+      instance++;
+      continue;
+    }
+
     const fits =
-      fitting.length > 0
-        ? fitting
-        : used === 0
-          ? shortestOf(phraseCandidates)
-          : [];
+      metrical.length > 0
+        ? metrical
+        : landing.length > 0
+          ? landing
+          : withinBar.length > 0
+            ? withinBar
+            : fitting.length > 0
+              ? fitting
+              : used === 0
+                ? shortestOf(phraseCandidates)
+                : [];
     if (fits.length === 0) break;
 
     // A sequence repeats the previous shape on a new scale degree. It rewards
