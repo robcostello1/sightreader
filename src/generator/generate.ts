@@ -126,16 +126,30 @@ function keyCentreFor(key: MusicalKey, low: Midi): Midi {
   return candidate <= low ? candidate : candidate - 12;
 }
 
+/**
+ * The same idiom stopped early: its opening events, at their own lengths.
+ *
+ * A shape does not always get to finish. Cut off at a bar line what is left is
+ * still the shape — the reader has met it — and reading a familiar figure that
+ * stops is a different skill from reading one that resolves. Only the tail goes.
+ */
+function truncated(idiom: Idiom, events: number): Idiom {
+  return { ...idiom, events: idiom.events.slice(0, events) };
+}
+
 function buildCandidates(
   idioms: readonly Idiom[],
   noteValues: readonly { value: NoteValue; weight: number }[],
   constraints: Parameters<typeof validPlacements>[2],
   barSize: NoteValue,
+  signature: [number, number],
 ): Candidate[] {
   const candidates: Candidate[] = [];
   /** Only used at the first levels, where every idiom outlasts its bar. */
   const oversized: Candidate[] = [];
   for (const idiom of idioms) {
+    // A shuffle is two notes to a beat of three, and only compound time has one.
+    if (idiom.meter === 'compound' && !isCompound(signature)) continue;
     const longestEvent = Math.max(...idiom.events.map((event) => event.beats));
     for (const { value, weight } of noteValues) {
       // No single note may outlast a bar. In 3/4 and 6/8 a bar is three
@@ -241,7 +255,7 @@ export function generateExercise(options: GenerateOptions): Exercise {
   };
   let units = unitsFor(timeSignature);
 
-  let phraseCandidates = buildCandidates(phrase, units, constraints, barSize);
+  let phraseCandidates = buildCandidates(phrase, units, constraints, barSize, timeSignature);
   // A shorter bar can rule out every idiom when the exercise happens to admit
   // only long note values. Common time always leaves a candidate, so fall back
   // to it rather than emit nothing.
@@ -251,7 +265,7 @@ export function generateExercise(options: GenerateOptions): Exercise {
     beatGroup = beatGroupDuration(timeSignature);
     constraints = withViability(timeSignature);
     units = unitsFor(timeSignature);
-    phraseCandidates = buildCandidates(phrase, units, constraints, barSize);
+    phraseCandidates = buildCandidates(phrase, units, constraints, barSize, timeSignature);
   }
 
   const target = config.targetBars * barSize;
@@ -260,7 +274,7 @@ export function generateExercise(options: GenerateOptions): Exercise {
   // room to land, which is the whole point of having one.
   let cadence: { placement: IdiomPlacement; duration: NoteValue } | null = null;
   if (cadential.length > 0 && rng() < config.cadenceChance) {
-    const candidates = buildCandidates(cadential, units, constraints, barSize)
+    const candidates = buildCandidates(cadential, units, constraints, barSize, timeSignature)
       // Cadential idioms resolve to their anchor degree, so only a tonic anchor
       // actually lands the phrase on the tonic.
       .map((c) => ({ ...c, placements: c.placements.filter((p) => p.startDegree % 7 === 0) }))
@@ -350,18 +364,55 @@ export function generateExercise(options: GenerateOptions): Exercise {
       continue;
     }
 
+    /*
+     * Nothing whole fits what is left of the bar, so offer the openings of
+     * shapes that would. Gated on the level: a figure that stops is a harder
+     * read than one that resolves.
+     */
+    const cutShort =
+      metrical.length === 0 && rng() < config.truncationChance
+        ? phraseCandidates.flatMap((candidate) => {
+            const lengths = candidate.idiom.events.map(
+              (event) => event.beats * candidate.unitValue,
+            );
+            let taken = 0;
+            let events = 0;
+            while (events < lengths.length && taken + lengths[events] <= restOfBar + 1e-9) {
+              taken += lengths[events];
+              events++;
+            }
+            // Two events at least, and never the whole shape — that is not a
+            // truncation, and it would have been offered already.
+            if (events < 2 || events === lengths.length) return [];
+            // The placements have to be cut short too: they carry the idiom the
+            // notes are instantiated from, and a placement still holding the
+            // whole shape would write the whole shape.
+            const cut = truncated(candidate.idiom, events);
+            return [
+              {
+                ...candidate,
+                idiom: cut,
+                duration: taken,
+                placements: candidate.placements.map((placement) => ({ ...placement, idiom: cut })),
+              },
+            ];
+          })
+        : [];
+
     const fits =
       metrical.length > 0
         ? metrical
-        : landing.length > 0
-          ? landing
-          : withinBar.length > 0
-            ? withinBar
-            : fitting.length > 0
-              ? fitting
-              : used === 0
-                ? shortestOf(phraseCandidates)
-                : [];
+        : cutShort.length > 0
+          ? cutShort
+          : landing.length > 0
+            ? landing
+            : withinBar.length > 0
+              ? withinBar
+              : fitting.length > 0
+                ? fitting
+                : used === 0
+                  ? shortestOf(phraseCandidates)
+                  : [];
     if (fits.length === 0) break;
 
     // A sequence repeats the previous shape on a new scale degree. It rewards

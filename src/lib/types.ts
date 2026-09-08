@@ -47,13 +47,26 @@ export interface IdiomEvent {
   beats: number;
 }
 
-export type IdiomCategory = 'scalar' | 'arpeggio' | 'interval' | 'cadential';
+export type IdiomCategory = 'scalar' | 'arpeggio' | 'interval' | 'cadential' | 'rhythmic';
 
 export interface Idiom {
   id: string;
   name: string;
   category: IdiomCategory;
   events: IdiomEvent[];
+  /**
+   * Met on its own before it is met inside music. A rhythm is a harder thing to
+   * read than a shape, so the rhythmic idioms are introduced in the rhythm-only
+   * mode — see the exercise mode that reads this — and only then written into
+   * pitched exercises.
+   */
+  rhythmFirst?: boolean;
+  /**
+   * A meter this idiom only makes sense in. A shuffle is two notes to a beat of
+   * three, which is a beat only compound time has; written into common time the
+   * same proportions are a syncopation and mean something else.
+   */
+  meter?: 'compound';
 }
 
 // --- Generated exercise -----------------------------------------------------

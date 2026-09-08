@@ -72,6 +72,12 @@ export interface LevelConfig {
   sequenceChance: number;
   accidentalChance: number;
   /**
+   * Chance of offering the opening of a shape where no whole one fits the bar.
+   * A figure that stops is a harder read than one that resolves, so it arrives
+   * late and never becomes the ordinary case.
+   */
+  truncationChance: number;
+  /**
    * Keys are admitted by how many accidentals their signature carries. The
    * fraction is the chance of admitting one more than the whole part, so a new
    * key signature turns up occasionally before it turns up always.
@@ -203,6 +209,7 @@ export function levelConfig(rawLevel: number): LevelConfig {
     maxLocalInterval: lerp(2, 12, t),
     sequenceChance: lerp(0.2, 0.6, ramp(level, 4, MAX_LEVEL)) * adoption(level, 4),
     accidentalChance: lerp(0.1, 0.35, ramp(level, 6, MAX_LEVEL)) * adoption(level, 6),
+    truncationChance: lerp(0.15, 0.4, ramp(level, 6, MAX_LEVEL)) * adoption(level, 6),
     // Keys widen across the whole range rather than within one level, but they
     // still get the step at level 3 that everything else introduced there gets,
     // so the milestone's promise of new keys is immediately true.
@@ -214,6 +221,9 @@ export function levelConfig(rawLevel: number): LevelConfig {
       arpeggio: adoption(level, 3),
       // Governed by cadenceChance, which decides both availability and use.
       cadential: adoption(level, 4),
+      // Rhythm as the thing being read. After tuplets, which teach the reader
+      // that a beat can be divided at all.
+      rhythmic: adoption(level, 5),
     },
     cadenceChance: adoption(level, 4),
     targetBars: lerp(2, 4, ramp(level, 1, 5)),
