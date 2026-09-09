@@ -243,20 +243,27 @@ describe('Score', () => {
     // One hand silent for a bar: the rest belongs in the middle of it, not
     // hard against the note the other hand plays on the first beat.
     const piano = instrumentById('piano');
+    // A hand each, so the exercise is written on a grand staff at all: one that
+    // never leaves a hand is written on the single staff it uses.
     const oneHand: Exercise = {
       ...simple,
-      notes: [{ midi: 72, value: NOTE_VALUES.whole, idiomId: 't', instance: 0 }],
+      notes: [
+        { midi: 72, value: NOTE_VALUES.whole, idiomId: 't', instance: 0 },
+        { midi: 48, value: NOTE_VALUES.whole, idiomId: 't', instance: 1 },
+      ],
     };
     const { container } = render(
       <Score exercise={oneHand} instrument={piano} position={positionById(piano, 'grand-close')} />,
     );
-    // Treble note first, bass rest second — both stand at tick zero, so an
-    // uncentred rest would be drawn at the same x as the note.
+    // Bar by bar, each staff in turn: the first bar's treble note, then the
+    // whole-bar rest standing in for it in the bass. Both are at tick zero, so
+    // an uncentred rest would be drawn at the same x as the note.
     const xs = [...svgOf(container).querySelectorAll('.vf-notehead text')].map((glyph) =>
       Number(glyph.getAttribute('x')),
     );
-    expect(xs).toHaveLength(2);
-    expect(xs[1]).toBeGreaterThan(xs[0]);
+    expect(xs).toHaveLength(4);
+    const [note, rest] = xs;
+    expect(rest).toBeGreaterThan(note);
   });
 
   describe('scrolling', () => {
@@ -411,6 +418,55 @@ describe('Score', () => {
     });
   });
 
+  it('writes an exercise that stays in one hand on that hand alone', () => {
+    const piano = instrumentById('piano');
+    const close = positionById(piano, 'grand-close');
+    const staves = (exercise: Exercise) => {
+      const { container, unmount } = render(
+        <Score exercise={exercise} instrument={piano} position={close} />,
+      );
+      const count = container.querySelectorAll('.vf-stave').length;
+      unmount();
+      return count;
+    };
+
+    // Half the piano exercises the generator writes never leave one hand, and
+    // an empty staff still costs its five lines and the gap above it.
+    expect(staves(simple)).toBe(1);
+    expect(staves({ ...simple, notes: simple.notes.map((n) => ({ ...n, midi: n.midi === null ? null : 45 })) })).toBe(1);
+    // Both hands used, and both are drawn — one bar, so one system of two.
+    const twoHanded: Exercise = {
+      ...simple,
+      notes: [60, 62, 45, 64].map((midi, i) => ({
+        midi,
+        value: NOTE_VALUES.quarter,
+        idiomId: 't',
+        instance: i,
+      })),
+    };
+    expect(staves(twoHanded)).toBe(2);
+  });
+
+  it('keeps the heard-note guide on the page however far out the pitch is', () => {
+    // The staff an exercise does not use is not drawn, which puts that whole
+    // range off the page — and the microphone's own octave errors land there.
+    // A guide drawn outside the picture is lost at the moment it matters most.
+    const piano = instrumentById('piano');
+    const wide = positionById(piano, 'grand-wide');
+    for (const heard of [88, 67, 60, 48, 40, 28, 21]) {
+      const { container, unmount } = render(
+        <Score exercise={simple} instrument={piano} position={wide} activeIndex={0} heardMidi={heard} />,
+      );
+      const head = container.querySelector('.vf-heard-note .vf-notehead text');
+      const y = Number(head?.getAttribute('y'));
+      const [, , , height] = svgOf(container).getAttribute('viewBox')!.split(' ').map(Number);
+      unmount();
+      expect(Number.isFinite(y), `heard ${heard} drew no guide`).toBe(true);
+      expect(y, `heard ${heard}`).toBeGreaterThanOrEqual(0);
+      expect(y, `heard ${heard}`).toBeLessThanOrEqual(height);
+    }
+  });
+
   it('draws an octave sign over a passage instead of a stack of ledger lines', () => {
     // Seven ledger lines is not notation anyone sight-reads. The passage is
     // written an octave down with 8va over it, so it sits beside the staff.
@@ -555,9 +611,14 @@ describe('Score', () => {
   it('crosses to the other staff of a grand staff when the heard pitch lives there', () => {
     const piano = instrumentById('piano');
     const wide = positionById(piano, 'grand-wide');
+    // Both hands, so there is another staff to cross to.
+    const twoHanded: Exercise = {
+      ...simple,
+      notes: [...simple.notes, { midi: 45, value: NOTE_VALUES.quarter, idiomId: 't', instance: 1 }],
+    };
     const score = (heardMidi: number) => (
       <Score
-        exercise={simple}
+        exercise={twoHanded}
         instrument={piano}
         position={wide}
         activeIndex={0}

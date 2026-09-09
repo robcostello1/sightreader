@@ -149,11 +149,16 @@ const MIN_WIDTH_PER_CROTCHET = 22;
  *
  * It is only ever taken as far as it needs to go. Reducing an exercise that
  * already fits buys nothing and costs legibility, which is what a page of
- * eight notes shrunk to two thirds looked like. Half again is as far as it
- * goes: past that the staff is too small to read at a music stand, and the
- * honest answer is to scroll after all.
+ * eight notes shrunk to two thirds looked like.
+ *
+ * Three quarters is as far as it goes. Two thirds was, and the staff at that
+ * size was reported as hard to read; the tenth of exercises reduced hardest now
+ * stop at 0.80 rather than 0.70. It costs a little fitting — 97 per cent of
+ * grand-staff exercises held the screen at two thirds against 88 here — and
+ * the densest of them scroll instead, which is the right way round: a line that
+ * has to be chased is bad, a line that cannot be read is useless.
  */
-const MIN_ENGRAVING_SCALE = 0.66;
+const MIN_ENGRAVING_SCALE = 0.75;
 /**
  * The room the music is fitted into, mirroring the score area's own height in
  * index.css — 36rem on a phone, and about that on a desk once the controls and
@@ -187,6 +192,14 @@ const OCTAVE_SIGN_LINE = 1;
 const OCTAVE_LABEL_WIDTH: Record<number, number> = { 1: 20, 2: 30 };
 /** Length of the hook that closes the sign over its last note. */
 const OCTAVE_HOOK = 8;
+/**
+ * How far past its staff the heard-note guide may be drawn, in pixels.
+ *
+ * Four ledger lines either way, which is what a system reserves for the music
+ * itself — past that the guide is folded by octaves into somewhere it can be
+ * seen at all.
+ */
+const GHOST_REACH = 40;
 const OCTAVE_DASH = [4, 3];
 /**
  * Blank page either side of the music.
@@ -519,10 +532,30 @@ export function Score({
       -instrument.transposition.letters,
     );
     const staffMode = staffModeFor(instrument, position);
-    const grand = staffMode === 'grand';
+    /*
+     * A grand staff with nothing in one hand is written as the one staff it uses.
+     *
+     * Rather more than half the piano exercises the generator writes never leave
+     * one hand — 24 to 31 per cent for each hand, measured over 800 — and an
+     * empty staff still costs its five lines, its clef and the gap above it.
+     * That is a hundred pixels a line spent saying "and nothing here", on the
+     * page where pixels are scarcest: it halves the height of the median piano
+     * exercise on a phone, 538 down to 314.
+     *
+     * Only when a hand is unused for the whole exercise, never line by line: a
+     * staff that came and went between systems would be worse than the space it
+     * saved.
+     */
+    const hands = new Set(
+      exercise.notes
+        .filter((note) => note.midi !== null)
+        .map((note) => handFor(note.midi!, instrument)),
+    );
+    const usedMode = staffMode === 'grand' && hands.size === 1 ? [...hands][0] : staffMode;
+    const grand = usedMode === 'grand';
     const systemHeight = grand ? GRAND_SYSTEM_HEIGHT : SYSTEM_HEIGHT;
     const singleClef =
-      staffMode === 'bass' ? 'bass' : instrument.clef === 'alto' ? 'alto' : 'treble';
+      usedMode === 'bass' ? 'bass' : instrument.clef === 'alto' ? 'alto' : 'treble';
     // Only guitar carries the octave mark; other octave-transposing instruments
     // are conventionally written without one.
     const clefAnnotation = instrument.id === 'guitar' ? '8vb' : undefined;
@@ -1033,8 +1066,41 @@ export function Score({
     // are hidden and its head is always filled: the rhythm is the page's to
     // state. The ledger lines stay, since without them a pitch well off the
     // staff cannot be read at all.
+    /*
+     * Folded into the octaves the page can actually show.
+     *
+     * The guide is drawn on a layer the size of the music, so a pitch far
+     * enough outside the staff is drawn outside the picture and simply lost —
+     * and lost is the worst thing it can be, since the moment it matters most
+     * is the moment the player is furthest out. A piano exercise that stays in
+     * one hand is written on that hand's staff alone, which puts the other
+     * hand's whole range off the page; the microphone's own octave errors land
+     * there too.
+     *
+     * Whole octaves, so the note itself stays true and its ledger lines are
+     * drawn where they belong. What it cannot then say is how many octaves out
+     * the player is — the pitch beside the staff carries that.
+     */
+    // Its own system's band, and never past the edge of the drawing: below a
+    // staff is the next system's music, and past the last one is nothing at all.
+    const staveTop = Math.max(GHOST_REACH, stave.getYForLine(0));
+    const staveBottom = Math.min(plan.height - GHOST_REACH, stave.getYForLine(4));
+    const sounded = (midi: number) => {
+      const probe = new StaveNote({ keys: [midiToVexKey(midi, writtenKey)], duration: 'q', clef });
+      probe.setStave(stave);
+      return stave.getYForNote(probe.getKeyProps()[0].line);
+    };
+    let shown = written - 12 * shift;
+    for (let fold = 0; fold < 8; fold += 1) {
+      const y = sounded(shown);
+      // Smaller y is higher up the page, so a guide off the top is folded down
+      // an octave and one off the bottom is folded up.
+      if (y < staveTop - GHOST_REACH) shown -= 12;
+      else if (y > staveBottom + GHOST_REACH) shown += 12;
+      else break;
+    }
     const ghost = new StaveNote({
-      keys: [midiToVexKey(written - 12 * shift, writtenKey)],
+      keys: [midiToVexKey(shown, writtenKey)],
       duration: anchor.code,
       clef,
     });
@@ -1042,7 +1108,7 @@ export function Score({
     const filled = FILLED_HEAD[anchor.code];
     if (filled) for (const head of ghost.noteHeads) head.setText(filled);
 
-    const accidental = explicitAccidental(written, writtenKey);
+    const accidental = explicitAccidental(shown, writtenKey);
     if (accidental) ghost.addModifier(new Accidental(accidental), 0);
     // The page's own colour, not a verdict one. A guide tinted like a scored
     // note would read as a judgement, and one tinted like the active note would
