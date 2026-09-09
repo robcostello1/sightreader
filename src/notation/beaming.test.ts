@@ -9,6 +9,7 @@ const quarter = () => new StaveNote({ keys: ['c/4'], duration: 'q' });
 const sixteenth = () => new StaveNote({ keys: ['c/4'], duration: '16' });
 const high = () => new StaveNote({ keys: ['c/6'], duration: '8' });
 const rest = () => new StaveNote({ keys: ['b/4'], duration: '8r' });
+const dottedQuarterRest = () => new StaveNote({ keys: ['b/4'], duration: 'qr' });
 
 /** The notes beamBar reads lengths and tuplet membership from. */
 function sourceFor(notes: StaveNote[], groups: (number | undefined)[]): NotatedNote[] {
@@ -122,6 +123,22 @@ describe('beamBar', () => {
     // The same six quavers in common time fill the first half bar and spill
     // two into the second.
     expect(beamSizes(notes, none, [4, 4])).toEqual([4, 2]);
+  });
+
+  it('beams a compound beat whole, whatever it is made of', () => {
+    // A dotted crotchet beat of 8 16 8 16 is one beam, as its twin in the other
+    // hand is. Semiquavers inside it are secondary beams, not a new group.
+    const notes = [eighth(), sixteenth(), eighth(), sixteenth()];
+    expect(beamSizes(notes, Array(4).fill(undefined), [6, 8])).toEqual([4]);
+  });
+
+  it('beams a compound beat that a rest pushed off the bar line', () => {
+    // Reported in seed 472672957: beat one is silent, so VexFlow started
+    // counting its groups at the first note and split beat two 1 + 3.
+    const notes = [dottedQuarterRest(), eighth(), sixteenth(), eighth(), sixteenth()];
+    const source = sourceFor(notes, Array(5).fill(undefined));
+    source[0].dots = 1;
+    expect(beamBar(notes, source, [6, 8]).map((beam) => beam.getNotes().length)).toEqual([4]);
   });
 
   it('beams 3/4 in crotchet beats', () => {

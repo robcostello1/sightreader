@@ -6,21 +6,37 @@ import { generateExercise } from '../generator';
 import { levelConfig } from '../config/levels';
 import { instrumentById, positionById, soundingPool } from '../config/instruments';
 
+/** SMuFL augmentation dot, which VexFlow draws inside the notehead group. */
+const AUGMENTATION_DOT = '\ue1e7';
+
 /**
- * Smallest gap between consecutive noteheads of one voice, in SVG units.
+ * How far apart vertically two glyphs must be before they cannot collide
+ * whatever their x. Rather less than the gap between the hands, and rather
+ * more than a notehead is tall.
+ */
+const CLEAR_ABOVE = 40;
+
+/**
+ * Smallest horizontal gap between two glyphs close enough to collide.
  *
- * Voices are drawn one after another, so x running backwards marks the start of
- * the next one — which is how the two hands of a grand staff are told apart
- * without knowing where either staff sits.
+ * Which staff a note is on is not asked: two glyphs overlap when they are near
+ * in both directions, so the pairs far enough apart vertically — the two hands,
+ * a bar rest against the other staff's run — are simply not compared. A dot is
+ * part of the note before it rather than a glyph in its own right, so it is
+ * dropped before anything is measured.
  */
 function tightest(container: HTMLElement) {
+  const heads = [...container.querySelectorAll('.vf-notehead text')]
+    .filter((head) => !(head.textContent ?? '').startsWith(AUGMENTATION_DOT))
+    .map((head) => ({ x: Number(head.getAttribute('x')), y: Number(head.getAttribute('y')) }))
+    .filter((head) => !Number.isNaN(head.x) && !Number.isNaN(head.y));
+
   let worst = Infinity;
-  let previous = -Infinity;
-  for (const head of container.querySelectorAll('.vf-notehead text')) {
-    const x = Number(head.getAttribute('x'));
-    if (Number.isNaN(x)) continue;
-    if (x > previous) worst = Math.min(worst, x - previous);
-    previous = x;
+  for (let i = 0; i < heads.length; i++) {
+    for (let j = i + 1; j < heads.length; j++) {
+      if (Math.abs(heads[i].y - heads[j].y) > CLEAR_ABOVE) continue;
+      worst = Math.min(worst, Math.abs(heads[i].x - heads[j].x));
+    }
   }
   return worst;
 }

@@ -26,17 +26,46 @@ export function drawnValue(note: NotatedNote): NoteValue {
  * cross the middle: the eye finds beat three by looking for it, and a dotted
  * half rest over beats one to three hides it.
  */
-function candidates(position: NoteValue, barSize: NoteValue, common: boolean): NoteValue[] {
+function candidates(
+  position: NoteValue,
+  barSize: NoteValue,
+  common: boolean,
+  signature: [number, number],
+): NoteValue[] {
   const dotted = STANDARD_VALUES.flatMap((base) => [base * 1.75, base * 1.5, base]);
   const middle = barSize / 2;
+  const beat = beatOf(signature);
+  const intoBeat = position - Math.floor(position / beat + EPSILON) * beat;
+
   return dotted.filter((value) => {
-    if (Math.abs(position % value) > EPSILON && Math.abs((position % value) - value) > EPSILON) {
-      return false;
-    }
+    // Measured from the beat rather than from the bar, which is what compound
+    // time needs: three quavers into a six-eight bar is the second beat, and a
+    // crotchet rest there is ordinary — against the bar it divides nothing, and
+    // the rest came out as a dotted quaver and a semiquaver.
+    const divides =
+      Math.abs(intoBeat % value) < EPSILON || Math.abs((intoBeat % value) - value) < EPSILON;
+    // Or it finishes the beat off, which is how the rest of a compound beat is
+    // written after a note has taken the first of it: a quaver and a crotchet
+    // rest, not three quaver rests.
+    const completesBeat = Math.abs((intoBeat + value) % beat) < EPSILON;
+    if (!divides && !completesBeat) return false;
+
+    // And it stays inside the beat it starts in, unless it covers whole ones.
+    const end = position + value;
+    const sameBeat = Math.floor((end - EPSILON) / beat) === Math.floor((position + EPSILON) / beat);
+    const wholeBeats = intoBeat < EPSILON && Math.abs(end % beat) < EPSILON;
+    if (!sameBeat && !wholeBeats) return false;
+
     if (!common) return true;
     const wholeBar = position < EPSILON && Math.abs(value - barSize) < EPSILON;
     return wholeBar || position >= middle - EPSILON || position + value <= middle + EPSILON;
   });
+}
+
+/** One beat as the meter is counted: a dotted one in compound time. */
+export function beatOf([beats, unit]: [number, number]): NoteValue {
+  const compound = unit === 8 && beats % 3 === 0 && beats > 3;
+  return (compound ? 3 : 1) / unit;
 }
 
 /**
@@ -81,7 +110,7 @@ export function mergeRests(
     const inherited =
       notes.slice(start, index).find((note) => note.sourceIndex !== NO_SOURCE)?.sourceIndex ??
       NO_SOURCE;
-    const run = fill(position, total, barSize, common, inherited);
+    const run = fill(position, total, barSize, common, inherited, timeSignature);
     if (run === null) {
       // Not coverable — a part-tuplet run. Better the original fragments than
       // silence drawn at the wrong length.
@@ -102,13 +131,16 @@ function fill(
   barSize: NoteValue,
   common: boolean,
   sourceIndex: number,
+  signature: [number, number],
 ): NotatedNote[] | null {
   const rests: NotatedNote[] = [];
   let at = position;
   let remaining = total;
 
   while (remaining > EPSILON) {
-    const value = candidates(at, barSize, common).find((v) => v <= remaining + EPSILON);
+    const value = candidates(at, barSize, common, signature).find(
+      (v) => v <= remaining + EPSILON,
+    );
     const notated = value === undefined ? null : toNotated(value);
     if (value === undefined || notated === null) return null;
     rests.push({

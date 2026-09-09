@@ -88,6 +88,18 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
   const [theme, setTheme] = useState<ThemePreference>(loadTheme);
   const [keysShown, setKeysShown] = useState(false);
   /**
+   * Whether to show what an exercise was made from when it is held.
+   *
+   * On in dev, and on anywhere with ?debug in the address — a preview
+   * deployment is a production build, and a preview is where an exercise that
+   * looks wrong is usually seen.
+   */
+  const [debugging] = useState(
+    () =>
+      import.meta.env.DEV ||
+      (typeof location !== 'undefined' && new URLSearchParams(location.search).has('debug')),
+  );
+  /**
    * The greeting is owed once a visit, not once a session. It lives here
    * because the card that carries it is unmounted every time an exercise takes
    * the screen, and a stop would otherwise be greeted like an arrival.
@@ -337,6 +349,26 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
                   </span>
                 ) : lesson.phase === 'arming' ? (
                   <Text as="span" tone="muted">Requesting microphone…</Text>
+                ) : debugging && lesson.paused && lesson.exercise ? (
+                  /* Everything needed to write this exercise again: the seed
+                     alone does not do it, since the pool, the level and the
+                     tempo all feed the same generator. */
+                  <Text as="span" size="small" tone="muted">
+                    {[
+                      `seed ${lesson.seed}`,
+                      `L${level.toFixed(1)}`,
+                      `${instrumentId}${position ? `/${position.id}` : ''}`,
+                      `${effectiveBpm}bpm`,
+                      lesson.exercise.timeSignature.join('/'),
+                      [
+                        ...new Set(
+                          lesson.exercise.notes
+                            .map((note) => note.idiomId)
+                            .filter((id) => id !== 'padding'),
+                        ),
+                      ].join(' '),
+                    ].join(' · ')}
+                  </Text>
                 ) : lesson.phase === 'count-in' && !lesson.paused ? (
                   <span className="count-in">
                     Count-in <strong>{lesson.beatsUntilStart}</strong>

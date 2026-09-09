@@ -25,7 +25,8 @@ import {
   octaveSignLabel,
   type NotatedNote,
 } from './layout';
-import { NO_SOURCE, mergeRests } from './rests';
+import { mergeRests } from './rests';
+import { handFor, notesForStaff } from './hands';
 import {
   instrumentById,
   soundingToWritten,
@@ -78,8 +79,6 @@ const SYSTEM_HEIGHT = 175;
 const GRAND_SYSTEM_HEIGHT = 230;
 /** Treble stave top to bass stave top: sixty pixels between them, six ledger lines. */
 const GRAND_STAFF_GAP = 100;
-/** Where the hands divide. Middle C and above is the right hand's. */
-const MIDDLE_C = 60;
 const FALLBACK_WIDTH = 720;
 /** Room a note wants where there is room to give it. */
 const WIDTH_PER_NOTE = 34;
@@ -135,61 +134,6 @@ function fitToContainer(host: HTMLElement, width: number, height: number): void 
 
 function leadingModifierWidth(accidentals: number, withTimeSignature: boolean): number {
   return 46 + 11 * Math.abs(accidentals) + (withTimeSignature ? 28 : 0);
-}
-
-/**
- * Which hand a tuplet group is written in: wherever most of it sounds, and the
- * first note's hand when it is even.
- *
- * A group divided at middle C would otherwise be printed twice, a bracket over
- * the two notes in one hand and another over the one in the other. It is one
- * triplet, so it gets one bracket, and a note or two crosses onto the other
- * staff with a ledger line — which is what a printed part does.
- */
-function tupletStaves(
-  notes: readonly NotatedNote[],
-  instrument: InstrumentDefinition,
-): Map<number, 'treble' | 'bass'> {
-  const counts = new Map<number, { treble: number; bass: number; first: 'treble' | 'bass' }>();
-  for (const notated of notes) {
-    if (notated.tuplet === undefined || notated.midi === null) continue;
-    const side = handFor(notated.midi, instrument);
-    const entry = counts.get(notated.tuplet.group) ?? { treble: 0, bass: 0, first: side };
-    entry[side]++;
-    counts.set(notated.tuplet.group, entry);
-  }
-  return new Map(
-    [...counts].map(([group, { treble, bass, first }]) => [
-      group,
-      treble === bass ? first : treble > bass ? 'treble' : 'bass',
-    ]),
-  );
-}
-
-function handFor(midi: Midi, instrument: InstrumentDefinition): 'treble' | 'bass' {
-  return soundingToWritten(midi, instrument) >= MIDDLE_C ? 'treble' : 'bass';
-}
-
-/**
- * One staff's view of a bar: the notes that belong to it, with the other
- * staff's notes standing in as rests so both voices span the same bar.
- */
-function notesForStaff(
-  notes: readonly NotatedNote[],
-  side: 'treble' | 'bass',
-  instrument: InstrumentDefinition,
-): NotatedNote[] {
-  const tuplets = tupletStaves(notes, instrument);
-  return notes.map((notated) => {
-    if (notated.midi === null) return notated; // a rest is a rest in both hands
-    const belongs =
-      (notated.tuplet && tuplets.get(notated.tuplet.group)) ?? handFor(notated.midi, instrument);
-    // Not this staff's note at all, so it answers to no result and no cursor —
-    // it is only here so both voices count the same ticks.
-    return belongs === side
-      ? notated
-      : { ...notated, midi: null, tiedToNext: false, sourceIndex: NO_SOURCE };
-  });
 }
 
 export interface ScoreProps {
@@ -333,6 +277,7 @@ function buildNote(
   instrument: InstrumentDefinition,
   clef: string,
   octaveShift = 0,
+  barRest = false,
 ): StaveNote {
   const isRest = notated.midi === null;
   // Sounding pitch in, written pitch on the page — displaced by any octave sign
@@ -343,7 +288,10 @@ function buildNote(
 
   const note = new StaveNote({
     keys: [spelled],
-    duration: isRest ? `${notated.code}r` : notated.code,
+    // The dots belong in the duration as well as on the page: Dot.buildAndAttach
+    // draws them but does not lengthen the note, and a voice of notes an eighth
+    // short of their written value put the two hands out of line with each other.
+    duration: `${notated.code}${'d'.repeat(notated.dots)}${isRest ? 'r' : ''}`,
     // Without this a bass or alto staff would place every note as if it were
     // treble — the same line means a different pitch on each clef.
     clef,
@@ -351,7 +299,56 @@ function buildNote(
 
   for (let i = 0; i < notated.dots; i++) Dot.buildAndAttach([note], { all: true });
 
+  // A rest standing for a whole bar is centred in it, as printed music does.
+  if (isRest && barRest) note.setCenterAlignment(true);
+
   return note;
+}
+
+/**
+ * The tuplets a staff's notes belong to, built and attached.
+ *
+ * Building one is what divides its notes' ticks — three quavers in the space of
+ * two — so it must happen before the notes reach a voice: a voice adds up what
+ * it is given when it is given it, and a triplet reduced afterwards leaves the
+ * voice a third of a beat too long and the two hands disagreeing about where
+ * the next beat is.
+ *
+ * `sounds` marks the groups this staff actually plays. A group that reaches
+ * this staff as nothing but the other hand's stand-in rests still needs its
+ * ticks divided, but its bracket belongs over the hand that plays it.
+ */
+function tupletsFor(
+  source: readonly NotatedNote[],
+  notes: StaveNote[],
+): { all: Tuplet[]; sounding: Tuplet[] } {
+  const groups = new Map<
+    number,
+    { notes: StaveNote[]; num: number; inSpaceOf: number; sounds: boolean }
+  >();
+  source.forEach((notated, i) => {
+    if (!notated.tuplet) return;
+    const { group, num, inSpaceOf } = notated.tuplet;
+    const entry = groups.get(group) ?? { notes: [], num, inSpaceOf, sounds: false };
+    entry.notes.push(notes[i]);
+    entry.sounds = entry.sounds || notated.midi !== null;
+    groups.set(group, entry);
+  });
+
+  const all: Tuplet[] = [];
+  const sounding: Tuplet[] = [];
+  for (const group of groups.values()) {
+    // Short of its full count, the group was merged into one rest already
+    // carrying the whole of its length — dividing that again would halve it.
+    if (group.notes.length !== group.num) continue;
+    const tuplet = new Tuplet(group.notes, {
+      numNotes: group.num,
+      notesOccupied: group.inSpaceOf,
+    });
+    all.push(tuplet);
+    if (group.sounds) sounding.push(tuplet);
+  }
+  return { all, sounding };
 }
 
 /**
@@ -448,7 +445,9 @@ export function Score({
       const voices: Voice[] = [];
       for (const side of sides) {
         const forThisStaff =
-          side === null ? bar.notes : notesForStaff(bar.notes, side, instrument);
+          side === null
+            ? bar.notes
+            : notesForStaff(bar.notes, side, instrument, exercise.timeSignature);
         const source = mergeRests(forThisStaff, exercise.timeSignature);
         if (source.length === 0) continue;
         const clef = side === null ? singleClef : side;
@@ -463,9 +462,11 @@ export function Score({
           beatValue: exercise.timeSignature[1],
         });
         voice.setMode(VoiceMode.SOFT);
-        voice.addTickables(
-          source.map((notated) => buildNote(notated, writtenKey, instrument, clef, octaveShift)),
+        const notes = source.map((notated) =>
+          buildNote(notated, writtenKey, instrument, clef, octaveShift, source.length === 1),
         );
+        tupletsFor(source, notes);
+        voice.addTickables(notes);
         Accidental.applyAccidentals([voice], writtenKey.name);
         voices.push(voice);
       }
@@ -474,7 +475,9 @@ export function Score({
         return 0;
       }
       const formatter = new Formatter();
-      for (const voice of voices) formatter.joinVoices([voice]);
+      // One call, not one per voice: joinVoices is what makes the voices share
+      // tick contexts, and a voice joined alone is measured alone.
+      formatter.joinVoices(voices);
       const width = formatter.preCalculateMinTotalWidth(voices);
       measured.set(bar, width);
       return width;
@@ -577,7 +580,9 @@ export function Score({
           stave.setContext(context).draw();
 
           const forThisStaff =
-            side === null ? bar.notes : notesForStaff(bar.notes, side, instrument);
+            side === null
+            ? bar.notes
+            : notesForStaff(bar.notes, side, instrument, exercise.timeSignature);
           const source = mergeRests(forThisStaff, exercise.timeSignature);
           // One sign for the whole bar of this staff — see octaveShiftFor.
           const octaveShift = octaveShiftFor(
@@ -587,7 +592,14 @@ export function Score({
               .map((notated) => soundingToWritten(notated.midi!, instrument)),
           );
           const notes = source.map((notated) => {
-            const note = buildNote(notated, writtenKey, instrument, clef, octaveShift);
+            const note = buildNote(
+              notated,
+              writtenKey,
+              instrument,
+              clef,
+              octaveShift,
+              source.length === 1,
+            );
             const colour = colourFor(notated.sourceIndex, results, activeIndex, colours);
             note.setStyle({ fillStyle: colour, strokeStyle: colour });
             if (notated.sourceIndex === activeIndex && found.active === null) {
@@ -605,6 +617,9 @@ export function Score({
           });
           if (notes.length === 0) return null;
 
+          // Before the voice, which is what makes its arithmetic come out.
+          const tuplets = tupletsFor(source, notes);
+
           const voice = new Voice({
             numBeats: exercise.timeSignature[0],
             beatValue: exercise.timeSignature[1],
@@ -617,28 +632,9 @@ export function Score({
           // signature and what has already been altered earlier in the bar.
           Accidental.applyAccidentals([voice], writtenKey.name);
 
-          // Beams and tuplets must be constructed BEFORE the voice is drawn.
-          // Building a Beam is what tells its notes to suppress their own flags.
+          // Beams must be constructed BEFORE the voice is drawn: building one
+          // is what tells its notes to suppress their own flags.
           const beams = beamBar(notes, source, exercise.timeSignature);
-
-          const groups = new Map<
-            number,
-            { notes: StaveNote[]; num: number; inSpaceOf: number; sounds: boolean }
-          >();
-          source.forEach((notated, i) => {
-            if (!notated.tuplet) return;
-            const { group, num, inSpaceOf } = notated.tuplet;
-            const entry = groups.get(group) ?? { notes: [], num, inSpaceOf, sounds: false };
-            entry.notes.push(notes[i]);
-            // Stand-in rests keep their tuplet so both staves count the same
-            // ticks, but a bracket over nothing but rests belongs to the other
-            // hand — draw it there, not here.
-            entry.sounds = entry.sounds || notated.midi !== null;
-            groups.set(group, entry);
-          });
-          const tuplets = [...groups.values()]
-            .filter((g) => g.sounds && g.notes.length === g.num)
-            .map((g) => new Tuplet(g.notes, { numNotes: g.num, notesOccupied: g.inSpaceOf }));
 
           // The sign spans the sounding notes; a rest at either end is not part
           // of the passage and a bracket reaching over it reads as a mistake.
@@ -651,7 +647,7 @@ export function Score({
             stave,
             voice,
             beams,
-            tuplets,
+            tuplets: tuplets.sounding,
             ends,
             side,
             octaveShift,
@@ -668,9 +664,11 @@ export function Score({
         if (built.length === 0) return;
 
         // Both hands are formatted together, so a note in one lines up with
-        // whatever sounds against it in the other.
+        // whatever sounds against it in the other. That alignment is what one
+        // joinVoices call buys — joined one at a time they share no tick
+        // context, and the same beat lands at two different x.
         const formatter = new Formatter();
-        for (const entry of built) formatter.joinVoices([entry.voice]);
+        formatter.joinVoices(built.map((entry) => entry.voice));
         // Format to the stave's own note area, not its raw width: the leading
         // bar spends real space on clef, key and time signature.
         const usable = built[0].stave.getNoteEndX() - built[0].stave.getNoteStartX();

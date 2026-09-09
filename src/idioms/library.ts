@@ -1,4 +1,4 @@
-import type { Idiom } from '../lib/types';
+import { NOTE_VALUES, type Idiom } from '../lib/types';
 
 /**
  * The starting idiom set (spec §4), deliberately small so shapes recur often
@@ -123,11 +123,83 @@ export const CADENTIAL_IDIOMS: Idiom[] = [
   },
 ];
 
+/**
+ * Rhythm rather than shape: what is being learnt is where the notes fall, so
+ * the pitches stay as plain as they can be — a repeated note, a step, a
+ * neighbour. Every one is marked rhythmFirst, to be met on its own before it is
+ * met inside music.
+ *
+ * `beats` are relative, so these describe proportions and not note values: at a
+ * quaver unit, a syncopation of 1-2-1 is quaver, crotchet, quaver, and at a
+ * semiquaver unit the same shape is half as long.
+ */
+export const RHYTHMIC_IDIOMS: Idiom[] = [
+  {
+    id: 'syncopation-short-long-short',
+    name: 'Syncopation, short–long–short',
+    category: 'rhythmic',
+    rhythmFirst: true,
+    maxUnit: NOTE_VALUES.quarter,
+    // The weight lands off the beat, which is the whole of the lesson.
+    events: [beat(0, 1), beat(1, 2), beat(0, 1)],
+  },
+  {
+    id: 'syncopation-offbeat-pair',
+    name: 'Syncopation, off the beat and back',
+    category: 'rhythmic',
+    rhythmFirst: true,
+    maxUnit: NOTE_VALUES.quarter,
+    events: [beat(0, 1), beat(2, 2), beat(1, 2), beat(0, 1)],
+  },
+  {
+    id: 'shuffle-pair',
+    name: 'Shuffle, long then short',
+    category: 'rhythmic',
+    rhythmFirst: true,
+    // Two notes to a beat of three: a crotchet and a quaver inside a dotted
+    // crotchet. Compound time is what makes that a beat rather than a
+    // syncopation, so it is written where the beat already divides in three
+    // rather than faked with dots.
+    meter: 'compound',
+    events: [beat(0, 2), beat(1, 1), beat(0, 2), beat(1, 1)],
+  },
+  {
+    id: 'shuffle-run',
+    name: 'Shuffle, rising',
+    category: 'rhythmic',
+    rhythmFirst: true,
+    meter: 'compound',
+    events: [beat(0, 2), beat(1, 1), beat(2, 2), beat(3, 1)],
+  },
+  {
+    id: 'anticipation',
+    name: 'Anticipation',
+    category: 'rhythmic',
+    rhythmFirst: true,
+    // An anticipation is a quaver arriving early against a crotchet beat, or a
+    // semiquaver against a quaver in something faster. Written at minims the
+    // same proportions are just long notes, which is not the figure.
+    maxUnit: NOTE_VALUES.eighth,
+    // The arrival comes early and is held: the last note is struck before the
+    // beat it belongs to and lasts through it.
+    events: [beat(0, 2), beat(1, 1), beat(2, 3)],
+  },
+  {
+    id: 'anticipated-cadence',
+    name: 'Anticipated arrival',
+    category: 'rhythmic',
+    rhythmFirst: true,
+    maxUnit: NOTE_VALUES.eighth,
+    events: [beat(2, 2), beat(1, 1), beat(0, 5)],
+  },
+];
+
 export const IDIOM_LIBRARY: Idiom[] = [
   ...SCALAR_IDIOMS,
   ...ARPEGGIO_IDIOMS,
   ...INTERVAL_IDIOMS,
   ...CADENTIAL_IDIOMS,
+  ...RHYTHMIC_IDIOMS,
 ];
 
 export function idiomById(id: string): Idiom | undefined {

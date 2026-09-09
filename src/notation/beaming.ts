@@ -31,7 +31,26 @@ function halfBar(position: number): number {
 }
 
 /**
- * Beams one run, which by then lies within a single half bar.
+ * One beam over everything beamable in the run, broken where it cannot carry
+ * one — a rest or a note too long to beam stops it where it stands.
+ */
+function joinRun(run: StaveNote[]): Beam[] {
+  const beams: Beam[] = [];
+  let beamed: StaveNote[] = [];
+  const flush = () => {
+    if (beamed.length > 1) beams.push(beamOver(beamed));
+    beamed = [];
+  };
+  for (const note of run) {
+    if (isBeamable(note)) beamed.push(note);
+    else flush();
+  }
+  flush();
+  return beams;
+}
+
+/**
+ * Beams one run, which by then lies within a single half bar of common time.
  *
  * Quavers there are printed four to a beam: it shows the two-beat pulse the bar
  * is felt in, and stopping at the half bar keeps beat three visible, which is
@@ -45,20 +64,25 @@ function halfBar(position: number): number {
 function beamRun(run: StaveNote[], defaults: Fraction[]): Beam[] {
   const quavers = run.every((note) => !isBeamable(note) || note.getDuration() === '8');
   if (!quavers) return Beam.generateBeams(run, { groups: defaults });
+  return joinRun(run);
+}
 
-  const beams: Beam[] = [];
-  let beamed: StaveNote[] = [];
-  const flush = () => {
-    if (beamed.length > 1) beams.push(beamOver(beamed));
-    beamed = [];
+/**
+ * Which beam group of the bar a position falls in, counted from the bar line.
+ *
+ * The groups repeat: 6/8 is two dotted crotchets, 3/4 three crotchets. What
+ * matters is that they are measured from the bar line and not from the first
+ * note, which is the one thing generateBeams cannot do.
+ */
+function grouper(defaults: Fraction[]): (position: number) => number {
+  const sizes = defaults.map((group) => group.value());
+  return (position) => {
+    let at = 0;
+    for (let index = 0; ; index++) {
+      at += sizes[index % sizes.length];
+      if (position < at - EPSILON) return index;
+    }
   };
-  for (const note of run) {
-    // A rest or a longer note breaks the beam where it stands.
-    if (isBeamable(note)) beamed.push(note);
-    else flush();
-  }
-  flush();
-  return beams;
 }
 
 /**
@@ -71,8 +95,10 @@ function beamRun(run: StaveNote[], defaults: Fraction[]): Beam[] {
  *
  * It knows nothing about where in the bar it is, either — it counts ticks from
  * the first note it is handed and skips the ones it cannot beam, so a crotchet
- * followed by six quavers has it start counting at the second note. Common time
- * is therefore split at the half bar here, before it is asked.
+ * followed by six quavers has it start counting at the second note, and a bar
+ * whose first beat is a rest has every group after it off by that beat. The bar
+ * is therefore cut into groups here, from the bar line, before it is asked:
+ * half bars in common time, and the metre's own beam groups elsewhere.
  *
  * `source[i]` is the note `notes[i]` was drawn from, which carries both its
  * tuplet membership and its length.
@@ -107,15 +133,18 @@ export function beamBar(
       // the bracket alone still reads correctly.
       const segment = notes.slice(index, end);
       if (segment.length > 1 && segment.every(isBeamable)) beams.push(beamOver(segment));
-    } else if (!common) {
-      beams.push(...Beam.generateBeams(notes.slice(index, end), { groups: defaults }));
     } else {
+      // A whole beam group at a time, cut at the boundaries the metre counts:
+      // a compound beat is one beam whatever it is made of, so its run is
+      // joined outright rather than handed back to generateBeams.
+      const groupOf = common ? halfBar : grouper(defaults);
       let start = index;
       while (start < end) {
-        const half = halfBar(positions[start]);
+        const which = groupOf(positions[start]);
         let stop = start;
-        while (stop < end && halfBar(positions[stop]) === half) stop++;
-        beams.push(...beamRun(notes.slice(start, stop), defaults));
+        while (stop < end && groupOf(positions[stop]) === which) stop++;
+        const run = notes.slice(start, stop);
+        beams.push(...(common ? beamRun(run, defaults) : joinRun(run)));
         start = stop;
       }
     }

@@ -89,3 +89,43 @@ describe('mergeRests', () => {
     expect(merged[1].sourceIndex).toBe(4);
   });
 });
+
+describe('rests in compound time', () => {
+  const SIX_EIGHT: [number, number] = [6, 8];
+
+  it('writes a crotchet rest on the second beat, not a dotted quaver and a semiquaver', () => {
+    // A quaver note, then two quavers of silence, then a quaver note: the
+    // silence starts three quavers in, which is the second beat. Measured
+    // against the bar rather than the beat, a crotchet rest divides nothing
+    // there and the run came out as ♪. + ♬ — see the screenshot on #26.
+    const bar = [
+      rest('q', 0, 0),
+      note('8'),
+      rest('8'),
+      rest('8'),
+      note('8'),
+    ];
+    expect(shape(mergeRests(bar, SIX_EIGHT))).toEqual(['rq', 'n8', 'rq', 'n8']);
+  });
+
+  it('keeps a whole beat as one dotted crotchet rest', () => {
+    const bar = [note('8'), note('8'), note('8'), rest('8'), rest('8'), rest('8')];
+    expect(shape(mergeRests(bar, SIX_EIGHT))).toEqual(['n8', 'n8', 'n8', 'rq.']);
+  });
+
+  it('never lets a rest run across a beat without filling whole ones', () => {
+    // Silence from the second quaver to the fifth: two quavers of the first
+    // beat and one of the second, which is two symbols and not one.
+    const bar = [note('8'), rest('8'), rest('8'), rest('8'), note('8'), note('8')];
+    const merged = mergeRests(bar, SIX_EIGHT);
+    expect(shape(merged)).toEqual(['n8', 'rq', 'r8', 'n8', 'n8']);
+    expect(total(merged)).toBeCloseTo(6 / 8, 9);
+  });
+
+  it('leaves simple time counting from its own beat', () => {
+    // Two quavers of silence from the second quaver of 4/4 is still a quaver
+    // rest and a quaver rest: a crotchet rest there would cross a beat.
+    const bar = [note('8'), rest('8'), rest('8'), note('8'), note('q'), note('q')];
+    expect(shape(mergeRests(bar, [4, 4]))).toEqual(['n8', 'r8', 'r8', 'n8', 'nq', 'nq']);
+  });
+});

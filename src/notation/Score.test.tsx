@@ -7,7 +7,7 @@ import { generateExercise } from '../generator';
 import { NOTE_VALUES } from '../lib/types';
 import { keyByName } from '../lib/key';
 import { instrumentById, positionById } from '../config/instruments';
-import type { Exercise, NoteResult } from '../lib/types';
+import type { Exercise, ExerciseNote, NoteResult } from '../lib/types';
 
 afterEach(cleanup);
 
@@ -65,6 +65,35 @@ function ghostHead(container: HTMLElement): { x: number; y: number } {
   if (glyphs.length === 0) throw new Error('no ghost drawn');
   // The head is drawn first; an accidental is placed to its left afterwards.
   return { x: Number(glyphs[0].getAttribute('x')), y: Number(glyphs[0].getAttribute('y')) };
+}
+
+/** SMuFL augmentation dot, drawn inside its note's own group. */
+const AUGMENTATION_DOT = '\ue1e7';
+
+/**
+ * Each staff's glyph x positions, in order, for a grand-staff render.
+ *
+ * The hands are a hundred units apart and everything within one staff is much
+ * closer than that, so the widest gap in the sorted y values is the gap between
+ * the staves. Dots are dropped: a dot is part of the note before it.
+ */
+function staves(container: HTMLElement): [number[], number[]] {
+  const glyphs = [...svgOf(container).querySelectorAll('.vf-notehead text')]
+    .filter((glyph) => !(glyph.textContent ?? '').startsWith(AUGMENTATION_DOT))
+    .map((glyph) => ({ x: Number(glyph.getAttribute('x')), y: Number(glyph.getAttribute('y')) }));
+  const ys = [...new Set(glyphs.map((glyph) => glyph.y))].sort((a, b) => a - b);
+  let split = Infinity;
+  let widest = 0;
+  for (let i = 1; i < ys.length; i++) {
+    if (ys[i] - ys[i - 1] > widest) {
+      widest = ys[i] - ys[i - 1];
+      split = ys[i];
+    }
+  }
+  return [
+    glyphs.filter((glyph) => glyph.y < split).map((glyph) => glyph.x),
+    glyphs.filter((glyph) => glyph.y >= split).map((glyph) => glyph.x),
+  ];
 }
 
 describe('Score', () => {
@@ -129,6 +158,104 @@ describe('Score', () => {
     expect(markup).toContain(VERDICT_FALLBACKS.pass);
     expect(markup).toContain(VERDICT_FALLBACKS.fail);
     expect(markup).toContain(VERDICT_FALLBACKS.unclear);
+  });
+
+  it('lines the hands up on the beats they share', () => {
+    // A dotted note whose dot was drawn but not counted left its voice short,
+    // and every note after it in that hand drifted away from the other's. Here
+    // the bass plays through beat one while the treble rests, and both hands
+    // arrive together on beat two.
+    const piano = instrumentById('piano');
+    const value = (v: number, midi: number | null) => ({
+      midi,
+      value: v,
+      idiomId: 't',
+      instance: 0,
+    });
+    const together: Exercise = {
+      ...simple,
+      timeSignature: [6, 8],
+      notes: [
+        value(NOTE_VALUES.eighth, 48),
+        value(NOTE_VALUES.quarter, 50),
+        value(NOTE_VALUES.eighth, 72),
+        value(NOTE_VALUES.quarter, 74),
+      ],
+    };
+    const { container } = render(
+      <Score
+        exercise={together}
+        instrument={piano}
+        position={positionById(piano, 'grand-close')}
+      />,
+    );
+    // Treble: a dotted crotchet rest then the two notes. Bass: the two notes
+    // then a dotted crotchet rest. Both hands change over on beat two, so that
+    // x must appear on each staff.
+    const [treble, bass] = staves(container);
+    // The treble's first note and the bass's closing rest both begin beat two.
+    expect(treble[1]).toBe(bass[2]);
+  });
+
+  it('gives a triplet only the beat it occupies', () => {
+    // Reported: a triplet in one hand against a rest in the other was drawn
+    // across most of the bar. Building the tuplet after the voice was filled
+    // left the notes their undivided length, so the voice ran long and the
+    // hands parted company.
+    const piano = instrumentById('piano');
+    // A tuplet member's value is what it sounds for, not what it is written
+    // as: three of these in the space of two quavers.
+    const trip = (midi: number): ExerciseNote => ({
+      midi,
+      value: (NOTE_VALUES.eighth * 2) / 3,
+      idiomId: 't',
+      instance: 0,
+      tuplet: { group: 0, num: 3, inSpaceOf: 2 },
+    });
+    const against: Exercise = {
+      ...simple,
+      timeSignature: [3, 4],
+      notes: [
+        trip(72),
+        trip(74),
+        trip(76),
+        { midi: 48, value: NOTE_VALUES.quarter, idiomId: 't', instance: 0 },
+        { midi: 50, value: NOTE_VALUES.quarter, idiomId: 't', instance: 0 },
+      ],
+    };
+    const { container } = render(
+      <Score exercise={against} instrument={piano} position={positionById(piano, 'grand-close')} />,
+    );
+    const [treble, bass] = staves(container);
+
+    // Treble: three triplet quavers then a minim rest. Bass: a crotchet rest
+    // covering the triplet, then the two crotchets. Beat two is where the
+    // triplet ends and the bass's first note begins.
+    expect(treble).toHaveLength(4);
+    expect(bass).toHaveLength(3);
+    expect(treble[3]).toBe(bass[1]);
+    // And the whole triplet fits inside that first beat.
+    expect(treble[2]).toBeLessThan(bass[1]);
+  });
+
+  it('centres a rest that stands for a whole bar', () => {
+    // One hand silent for a bar: the rest belongs in the middle of it, not
+    // hard against the note the other hand plays on the first beat.
+    const piano = instrumentById('piano');
+    const oneHand: Exercise = {
+      ...simple,
+      notes: [{ midi: 72, value: NOTE_VALUES.whole, idiomId: 't', instance: 0 }],
+    };
+    const { container } = render(
+      <Score exercise={oneHand} instrument={piano} position={positionById(piano, 'grand-close')} />,
+    );
+    // Treble note first, bass rest second — both stand at tick zero, so an
+    // uncentred rest would be drawn at the same x as the note.
+    const xs = [...svgOf(container).querySelectorAll('.vf-notehead text')].map((glyph) =>
+      Number(glyph.getAttribute('x')),
+    );
+    expect(xs).toHaveLength(2);
+    expect(xs[1]).toBeGreaterThan(xs[0]);
   });
 
   describe('scrolling', () => {
