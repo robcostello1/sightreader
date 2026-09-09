@@ -34,8 +34,9 @@ import {
   type InstrumentDefinition,
   type PositionDefinition,
 } from '../config/instruments';
+import { notatedValue } from '../lib/duration';
 import { transposeKey } from '../lib/key';
-import type { Exercise, Midi, NoteResult } from '../lib/types';
+import { NOTE_VALUES, type Exercise, type Midi, type NoteResult } from '../lib/types';
 import type { MusicalKey } from '../lib/key';
 
 /**
@@ -92,16 +93,50 @@ const GRAND_SYSTEM_HEIGHT = 250;
  */
 const GRAND_STAFF_GAP = 120;
 const FALLBACK_WIDTH = 720;
-/** Room a note wants where there is room to give it. */
-const WIDTH_PER_NOTE = 34;
-/** Below this the column is a phone's, and bars are packed by the floor instead. */
-const CRAMPED_WIDTH = 560;
+/**
+ * How room grows with a note's length: as its square root, so each halving of
+ * the length takes about seven tenths of the space rather than half of it.
+ *
+ * Engraving spaces notes neither equally nor in proportion to their length. A
+ * minim is wider than a crotchet but nowhere near twice as wide, and the usual
+ * rule is a factor of the square root of two per halving — which is what an
+ * exponent of a half gives. Spaced in strict proportion, a bar of semibreves
+ * wastes half a line and a run of semiquavers is unreadable; spaced equally,
+ * the long notes read as the quick ones.
+ */
+const SPACING_EXPONENT = 0.5;
+/** Room a crotchet wants where there is room to give it. The curve does the rest. */
+const WIDTH_PER_CROTCHET = 34;
+/**
+ * How far the drawing may be reduced to fit the page, and the room it is fitting.
+ *
+ * A phone column is three hundred-odd pixels. Engraved at its own width a grand
+ * staff runs to about 790 pixels of music where 576 are visible, so two thirds
+ * of exercises had to be scrolled — and following a moving cursor down a
+ * scrolling page is the one thing a sight-reading page must not ask for. Drawn
+ * wider and scaled to the column instead, everything shrinks together, staves
+ * and noteheads and spacing alike, so the reduction costs size but no
+ * proportion.
+ *
+ * It is only ever taken as far as it needs to go. Reducing an exercise that
+ * already fits buys nothing and costs legibility, which is what a page of
+ * eight notes shrunk to two thirds looked like. Half again is as far as it
+ * goes: past that the staff is too small to read at a music stand, and the
+ * honest answer is to scroll after all.
+ */
+const MIN_ENGRAVING_SCALE = 0.66;
+/**
+ * The room the music is fitted into, mirroring the score area's own height in
+ * index.css — 36rem on a phone, and about that on a desk once the controls and
+ * the cards below have taken theirs.
+ */
+const PAGE_BUDGET = 576;
 /**
  * And the most it should get. Filling the width with a sparse bar pushes its
  * notes so far apart that they stop reading as a phrase — a two-note bar spread
  * over a whole line is harder to follow than a compact one.
  */
-const MAX_WIDTH_PER_NOTE = 64;
+const MAX_WIDTH_PER_CROTCHET = 64;
 const BAR_PADDING = 26;
 /**
  * The octave sign is drawn here rather than with VexFlow's TextBracket.
@@ -406,7 +441,8 @@ export function Score({
     return () => observer.disconnect();
   }, []);
 
-  const renderWidth = width ?? measured ?? FALLBACK_WIDTH;
+  /** The column the drawing is displayed in. */
+  const containerWidth = width ?? measured ?? FALLBACK_WIDTH;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -432,13 +468,6 @@ export function Score({
     // are conventionally written without one.
     const clefAnnotation = instrument.id === 'guitar' ? '8vb' : undefined;
     const bars = layoutExercise(exercise);
-
-    const available = renderWidth - MARGIN * 2;
-    /** What one bar can have, once the clef and key signature have taken theirs. */
-    const roomForOneBar = Math.max(
-      1,
-      available - leadingModifierWidth(writtenKey.accidentals, true),
-    );
 
     /**
      * What VexFlow says a bar needs, in pixels of note area.
@@ -495,7 +524,29 @@ export function Score({
       return width;
     };
 
-    const noteCount = (bar: (typeof bars)[number]) => Math.max(1, bar.notes.length);
+    /**
+     * What one bar's notes ask for, in crotchets' worth of room.
+     *
+     * A crotchet counts one, a quaver 0.71 and a minim 1.41, by the curve
+     * above. Summed over the bar this is the width the bar wants relative to
+     * its neighbours — so a bar of eight quavers asks for 5.7 against a bar of
+     * four crotchets' 4, and comes out the wider of the two without coming out
+     * twice as wide.
+     */
+    const barDemand = (bar: (typeof bars)[number]) =>
+      Math.max(
+        SPACING_EXPONENT,
+        bar.notes.reduce((sum, note) => {
+          const written = notatedValue(note);
+          // A tuplet's notes are shorter than they are written: three quavers
+          // in the time of two are each two thirds of a quaver, and three of
+          // them rightly ask for more room than the crotchet they replace.
+          const sounded = note.tuplet
+            ? (written * note.tuplet.inSpaceOf) / note.tuplet.num
+            : written;
+          return sum + (sounded / NOTE_VALUES.quarter) ** SPACING_EXPONENT;
+        }, 0),
+      );
     /**
      * The least a bar can be given: what VexFlow needs, plus the padding a bar
      * line and its neighbours want. Never squeezed below it — that is what drew
@@ -504,50 +555,92 @@ export function Score({
     const barFloorWidth = (bar: (typeof bars)[number]) => BAR_PADDING + minNoteWidth(bar);
     /** And the most, past which its notes stop reading as a phrase. */
     const barMaxWidth = (bar: (typeof bars)[number]) =>
-      BAR_PADDING + noteCount(bar) * MAX_WIDTH_PER_NOTE;
+      BAR_PADDING + barDemand(bar) * MAX_WIDTH_PER_CROTCHET;
+
+    /**
+     * Breaks the bars into lines for a given engraving width, and says how tall
+     * and wide the result comes out.
+     *
+     * A function of the width because the width is not known yet: how much
+     * music a line holds is what decides how many lines there are, which is
+     * what decides whether the page fits. The bar measurements it leans on are
+     * cached across calls, so trying a handful of widths costs little.
+     */
+    const layoutAt = (engraved: number) => {
+      const available = engraved - MARGIN * 2;
+      /** What one bar can have, once the clef and key signature have taken theirs. */
+      const roomForOneBar = Math.max(
+        1,
+        available - leadingModifierWidth(writtenKey.accidentals, true),
+      );
+      /*
+       * What a bar is given when a line is packed: what the bar would like, so
+       * a busy bar takes the next line rather than squeezing in beside a sparse
+       * one.
+       */
+      const packWidth = (bar: (typeof bars)[number]) =>
+        Math.min(
+          BAR_PADDING + barDemand(bar) * WIDTH_PER_CROTCHET,
+          Math.max(barFloorWidth(bar), roomForOneBar),
+        );
+
+      const systems: (typeof bars)[] = [];
+      let current: typeof bars = [];
+      let currentWidth = leadingModifierWidth(writtenKey.accidentals, true);
+      for (const bar of bars) {
+        const width = packWidth(bar);
+        if (current.length > 0 && currentWidth + width > available) {
+          systems.push(current);
+          current = [];
+          currentWidth = leadingModifierWidth(writtenKey.accidentals, false);
+        }
+        current.push(bar);
+        currentWidth += width;
+      }
+      if (current.length > 0) systems.push(current);
+
+      // And where even the floor does not fit, draw at the width it needs and
+      // let the viewBox scale it: small is legible, cut off is not.
+      const needed = Math.max(
+        ...systems.map(
+          (system, index) =>
+            leadingModifierWidth(writtenKey.accidentals, index === 0) +
+            system.reduce((sum, bar) => sum + barFloorWidth(bar), 0),
+        ),
+      );
+      const drawWidth = Math.max(engraved, needed + MARGIN * 2);
+      const height = STAVE_TOP + systems.length * systemHeight;
+      return {
+        systems,
+        drawWidth,
+        height,
+        /** What the drawing measures once scaled to the column it is shown in. */
+        shownHeight: (height * containerWidth) / drawWidth,
+      };
+    };
 
     /*
-     * What a bar is given when a line is packed. On a phone it is the floor —
-     * two bars snugly beats one bar and another on a line of its own — and
-     * anywhere with room it is what the bar would like, so a busy bar takes the
-     * next line rather than squeezing in beside a sparse one.
+     * Engrave at the column's own width if the music fits in it, and only widen
+     * — which is to say, only shrink what the reader sees — until it does.
+     *
+     * Widening is what buys bars per line: a line that holds four bars instead
+     * of two halves the number of lines, and the drawing scaled down to the
+     * column is shorter for it even though nothing was cut. Applied to every
+     * exercise alike it also shrank the ones that already fitted, which is a
+     * loss and nothing else. Stepped like this, a short exercise is drawn full
+     * size and a long one is reduced exactly as far as fitting requires.
      */
-    const packWidth = (bar: (typeof bars)[number]) =>
-      renderWidth < CRAMPED_WIDTH
-        ? barFloorWidth(bar)
-        : Math.min(
-            BAR_PADDING + noteCount(bar) * WIDTH_PER_NOTE,
-            Math.max(barFloorWidth(bar), roomForOneBar),
-          );
-
-    const systems: (typeof bars)[] = [];
-    let current: typeof bars = [];
-    let currentWidth = leadingModifierWidth(writtenKey.accidentals, true);
-    for (const bar of bars) {
-      const width = packWidth(bar);
-      if (current.length > 0 && currentWidth + width > available) {
-        systems.push(current);
-        current = [];
-        currentWidth = leadingModifierWidth(writtenKey.accidentals, false);
-      }
-      current.push(bar);
-      currentWidth += width;
+    let plan = layoutAt(containerWidth);
+    for (let scale = 0.95; plan.shownHeight > PAGE_BUDGET && scale >= MIN_ENGRAVING_SCALE; scale -= 0.05) {
+      const wider = layoutAt(containerWidth / scale);
+      // A width that buys nothing is not worth the size it costs.
+      if (wider.shownHeight >= plan.shownHeight) continue;
+      plan = wider;
     }
-    if (current.length > 0) systems.push(current);
-
-    // And where even the floor does not fit, draw at the width it needs and
-    // let the viewBox scale it: small is legible, cut off is not.
-    const needed = Math.max(
-      ...systems.map(
-        (system, index) =>
-          leadingModifierWidth(writtenKey.accidentals, index === 0) +
-          system.reduce((sum, bar) => sum + barFloorWidth(bar), 0),
-      ),
-    );
-    const drawWidth = Math.max(renderWidth, needed + MARGIN * 2);
+    const { systems, drawWidth } = plan;
     const drawAvailable = drawWidth - MARGIN * 2;
 
-    const renderHeight = STAVE_TOP + systems.length * systemHeight;
+    const renderHeight = plan.height;
     const renderer = new Renderer(staff, Renderer.Backends.SVG);
     renderer.resize(drawWidth, renderHeight);
     fitToContainer(staff, drawWidth, renderHeight);
@@ -562,24 +655,39 @@ export function Score({
       const leading = leadingModifierWidth(writtenKey.accidentals, systemIndex === 0);
       const minWidths = system.map(barFloorWidth);
       const maxWidths = system.map(barMaxWidth);
-      const totalMin = minWidths.reduce((sum, w) => sum + w, 0);
+      const demands = system.map(barDemand);
+      const totalDemand = demands.reduce((sum, d) => sum + d, 0);
       /*
-       * Every bar keeps its floor; what is left over is shared equally.
+       * One density for the whole line, and every bar is that density times
+       * what its notes ask for.
        *
-       * Equally, because every bar holds the same amount of music — that is
-       * what a bar is. Shared by note count instead, a bar of eight quavers
-       * took more than twice the extra a bar of three crotchets did, so the
-       * quavers ended up further apart than the crotchets, which reads as
-       * though the long notes were the quick ones.
+       * A line settled bar by bar cannot hold the curve across bar lines: the
+       * spare width was shared equally before, and since a busy bar starts from
+       * a much higher floor it stayed wider than its share of the music, so at
+       * a wide window a crotchet ended up no roomier than a quaver. Deciding
+       * one figure for the line and multiplying instead keeps a crotchet the
+       * square root of two wider than a quaver wherever either of them is.
+       *
+       * It is also what makes a narrow screen work. Less room lowers the
+       * density and nothing else, so the whole line closes up together and the
+       * long notes stay long relative to the short ones — rather than the
+       * differences between them being squeezed out first.
        */
-      const spare = Math.max(0, drawAvailable - leading - totalMin);
-      const share = spare / system.length;
+      const roomForNotes = drawAvailable - leading - system.length * BAR_PADDING;
+      const density = Math.min(
+        MAX_WIDTH_PER_CROTCHET,
+        Math.max(0, roomForNotes) / totalDemand,
+      );
       const y = STAVE_TOP + systemIndex * systemHeight;
       let x = MARGIN;
 
       system.forEach((bar, barIndex) => {
-        const given = minWidths[barIndex] + share;
-        const width = Math.min(given, maxWidths[barIndex]) + (barIndex === 0 ? leading : 0);
+        const given = BAR_PADDING + density * demands[barIndex];
+        // The floor is what VexFlow says the notes actually need; below it they
+        // are drawn on top of each other, so it outranks the curve.
+        const width =
+          Math.min(Math.max(given, minWidths[barIndex]), maxWidths[barIndex]) +
+          (barIndex === 0 ? leading : 0);
         const first = barIndex === 0;
         const last = barIndex === system.length - 1;
 
@@ -758,7 +866,7 @@ export function Score({
       width: drawWidth,
       height: renderHeight,
       // So the guide travels in the units the eye sees, not the ones VexFlow drew in.
-      scale: renderWidth / drawWidth,
+      scale: containerWidth / drawWidth,
       grand,
       singleClef,
       writtenKey,
@@ -795,7 +903,9 @@ export function Score({
         scroller.scrollTo({ top: activeSystem * systemHeight, behavior: 'smooth' });
       }
     }
-  }, [exercise, instrument, position, results, activeIndex, renderWidth]);
+    // renderWidth is a function of containerWidth, so the column alone is what
+    // this watches: a narrower phone re-scales the drawing without re-engraving it.
+  }, [exercise, instrument, position, results, activeIndex, containerWidth]);
 
   // The guide note, on its own layer over the staff. Drawn whenever the pitch
   // heard changes or the score is re-engraved under it.

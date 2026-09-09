@@ -330,10 +330,52 @@ describe('Score', () => {
       }
     });
 
-    it('squeezes a bar before it resorts to shrinking the whole system', () => {
-      // Four notes fit a phone at a squeeze, so nothing is scaled for them.
+    it('draws music that already fits at the column its own size', () => {
+      // Four notes are one line on a phone. Reducing them buys no room and
+      // costs legibility, which is what shrinking every exercise alike did.
       const { container } = render(<Score exercise={simple} width={320} />);
       expect(box(container).width).toBe(320);
+    });
+
+    /** Bars of plain crotchets, to make an exercise of a given length. */
+    const bars = (count: number): Exercise => ({
+      ...simple,
+      notes: Array.from({ length: count * 4 }, (_, i) => ({
+        midi: 60 + (i % 8),
+        value: NOTE_VALUES.quarter,
+        idiomId: 'test',
+        instance: 0,
+      })),
+    });
+    const long = bars(8);
+
+    it('reduces music that does not fit until it does', () => {
+      const { container } = render(<Score exercise={long} width={320} />);
+      const { width, height } = box(container);
+
+      // Engraved wider than the column, so a line holds more bars and the
+      // drawing scaled into the column is shorter for it.
+      expect(width).toBeGreaterThan(320);
+      // Which is the point of it: eight bars now fit the page they are shown
+      // on, where at the column's own width they ran half again past it.
+      expect((height * 320) / width).toBeLessThanOrEqual(576);
+    });
+
+    it('stops reducing at the point the staff stops being readable', () => {
+      // Sixteen bars do not fit a phone at any size worth reading. The answer
+      // then is to scroll, not to shrink the staff until it cannot be read.
+      const { container } = render(<Score exercise={bars(16)} width={320} />);
+      expect(box(container).width).toBeLessThanOrEqual(320 / 0.66 + 1);
+    });
+
+    it('reduces both directions together, so nothing is distorted', () => {
+      // One viewBox scales the whole drawing, so a system is the same shape on
+      // a phone as on a desk, only smaller. A stave is 5 lines wherever it is.
+      const { container } = render(<Score exercise={long} width={320} />);
+      const svg = svgOf(container);
+      expect(svg.getAttribute('preserveAspectRatio')).toBe('xMinYMin meet');
+      expect(svg.style.width).toBe('100%');
+      expect(svg.style.height).toBe('auto');
     });
 
     it('leaves a roomy column drawn at its own size', () => {

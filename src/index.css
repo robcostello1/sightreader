@@ -1113,10 +1113,20 @@ input[type='range'] {
 }
 
 @media (max-width: 560px) {
-  /* Taller, because a phone fits one bar to a line and needs the lines. The
-     page scrolls at this width anyway, so the room costs nothing above it. */
+  /*
+   * Sized to the music, between a floor and a ceiling.
+   *
+   * A fixed height had to be the tallest exercise's, which left the ordinary
+   * one — 372 pixels of the 400 measured, drawn at the phone's scale — sitting
+   * in a box half again as tall as itself. The floor is that ordinary height,
+   * so nine exercises in ten fill the box exactly and the cards below them do
+   * not move from one to the next; the ceiling is where the rare tall one
+   * starts to scroll instead of pushing the rest of the page off the screen.
+   */
   .score-area {
-    height: 36rem;
+    height: auto;
+    min-height: 24rem;
+    max-height: 36rem;
   }
 }
 
