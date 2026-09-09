@@ -194,6 +194,45 @@ function fitToContainer(host: HTMLElement, width: number, height: number): void 
   svg.style.height = 'auto';
 }
 
+/**
+ * Shares a line's note area out between its bars, in proportion to what each
+ * one's notes ask for, without letting any bar fall below the floor its own
+ * notes need.
+ *
+ * The lifting has to be paid for. A bar raised to its floor while the others
+ * keep their full share makes the line wider than the page it was measured
+ * against, and the notes at the end of it are drawn off the edge and clipped —
+ * which is what happened. So a bar that cannot live on its share is pinned at
+ * its floor and the rest share what is left over, repeatedly, until every bar
+ * still sharing is above its own floor.
+ *
+ * When the floors alone outgrow the room, every bar ends up pinned and the line
+ * is wider than asked for. That is the case the drawing widens itself for, so
+ * the total here never exceeds what the page was sized to hold.
+ */
+function shareLine(demands: readonly number[], floors: readonly number[], room: number): number[] {
+  const pinned = demands.map(() => false);
+  for (let pass = 0; pass <= demands.length; pass += 1) {
+    const spoken = floors.reduce((sum, floor, i) => sum + (pinned[i] ? floor : 0), 0);
+    const sharing = demands.reduce((sum, demand, i) => sum + (pinned[i] ? 0 : demand), 0);
+    const left = room - spoken;
+    let pinnedAny = false;
+    for (let i = 0; i < demands.length; i += 1) {
+      if (pinned[i] || sharing <= 0) continue;
+      if ((left * demands[i]) / sharing < floors[i]) {
+        pinned[i] = true;
+        pinnedAny = true;
+      }
+    }
+    if (!pinnedAny) {
+      return demands.map((demand, i) =>
+        pinned[i] || sharing <= 0 ? floors[i] : (left * demand) / sharing,
+      );
+    }
+  }
+  return [...floors];
+}
+
 function leadingModifierWidth(accidentals: number, withTimeSignature: boolean): number {
   return 46 + 11 * Math.abs(accidentals) + (withTimeSignature ? 28 : 0);
 }
@@ -568,10 +607,6 @@ export function Score({
      * noteheads over each other.
      */
     const barFloorWidth = (bar: (typeof bars)[number]) => BAR_PADDING + minNoteWidth(bar);
-    /** And the most, past which its notes stop reading as a phrase. */
-    const barMaxWidth = (bar: (typeof bars)[number]) =>
-      BAR_PADDING + barDemand(bar) * MAX_WIDTH_PER_CROTCHET;
-
     /**
      * Breaks the bars into lines for a given engraving width, and says how tall
      * and wide the result comes out.
@@ -668,10 +703,9 @@ export function Score({
 
     systems.forEach((system, systemIndex) => {
       const leading = leadingModifierWidth(writtenKey.accidentals, systemIndex === 0);
-      const minWidths = system.map(barFloorWidth);
-      const maxWidths = system.map(barMaxWidth);
+      /** What VexFlow says each bar's notes need, without the bar's own padding. */
+      const noteFloors = system.map(minNoteWidth);
       const demands = system.map(barDemand);
-      const totalDemand = demands.reduce((sum, d) => sum + d, 0);
       /*
        * One density for the whole line, and every bar is that density times
        * what its notes ask for.
@@ -689,20 +723,19 @@ export function Score({
        * differences between them being squeezed out first.
        */
       const roomForNotes = drawAvailable - leading - system.length * BAR_PADDING;
-      const density = Math.min(
-        MAX_WIDTH_PER_CROTCHET,
-        Math.max(0, roomForNotes) / totalDemand,
-      );
+      const shares = shareLine(demands, noteFloors, Math.max(0, roomForNotes));
       const y = STAVE_TOP + systemIndex * systemHeight;
       let x = MARGIN;
 
       system.forEach((bar, barIndex) => {
-        const given = BAR_PADDING + density * demands[barIndex];
-        // The floor is what VexFlow says the notes actually need; below it they
-        // are drawn on top of each other, so it outranks the curve.
-        const width =
-          Math.min(Math.max(given, minWidths[barIndex]), maxWidths[barIndex]) +
-          (barIndex === 0 ? leading : 0);
+        // Its share, kept off the ceiling that stops a sparse bar sprawling and
+        // off the floor VexFlow says its notes need — the floor outranks both,
+        // because below it the noteheads are drawn on top of each other.
+        const notes = Math.max(
+          noteFloors[barIndex],
+          Math.min(shares[barIndex], MAX_WIDTH_PER_CROTCHET * demands[barIndex]),
+        );
+        const width = BAR_PADDING + notes + (barIndex === 0 ? leading : 0);
         const first = barIndex === 0;
         const last = barIndex === system.length - 1;
 

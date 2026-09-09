@@ -6,7 +6,8 @@ import { VERDICT_FALLBACKS } from './colours';
 import { generateExercise } from '../generator';
 import { NOTE_VALUES } from '../lib/types';
 import { keyByName } from '../lib/key';
-import { instrumentById, positionById } from '../config/instruments';
+import { instrumentById, positionById, soundingPool } from '../config/instruments';
+import { levelConfig } from '../config/levels';
 import type { Exercise, ExerciseNote, NoteResult } from '../lib/types';
 
 afterEach(cleanup);
@@ -311,6 +312,32 @@ describe('Score', () => {
       expect(svg.getAttribute('viewBox')).not.toBeNull();
       expect(svg.getAttribute('width')).toBeNull();
       expect(svg.getAttribute('height')).toBeNull();
+    });
+
+    it('keeps every note inside the box, whatever the bars need', () => {
+      // A bar lifted to the floor its notes need was not paid for by the rest
+      // of the line, so the line outgrew the width it had been measured
+      // against and the notes at the end of it were drawn past the edge and
+      // clipped. Mixed bar densities are what provoke it: one bar that cannot
+      // be squeezed beside others that can.
+      const piano = instrumentById('piano');
+      const position = positionById(piano, 'grand-wide');
+      const pool = soundingPool(piano, position!);
+      for (const column of [320, 358, 390, 520]) {
+        for (let seed = 1; seed <= 12; seed += 1) {
+          const exercise = generateExercise({ level: levelConfig(10), pool, seed });
+          const { container, unmount } = render(
+            <Score exercise={exercise} instrument={piano} position={position} width={column} />,
+          );
+          const { width } = box(container);
+          const xs = [...container.querySelectorAll('.vf-notehead text')]
+            .map((head) => Number(head.getAttribute('x')))
+            .filter(Number.isFinite);
+          unmount();
+          if (xs.length === 0) continue;
+          expect(Math.max(...xs), `seed ${seed} in a ${column}px column`).toBeLessThanOrEqual(width);
+        }
+      }
     });
 
     it('draws nothing outside the box it declares', () => {
