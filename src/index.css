@@ -1114,18 +1114,20 @@ input[type='range'] {
 
 @media (max-width: 560px) {
   /*
-   * Sized to the music, between a floor and a ceiling.
+   * Sized to the music.
    *
-   * A fixed height had to be the tallest exercise's, which left the ordinary
-   * one — 372 pixels of the 400 measured, drawn at the phone's scale — sitting
-   * in a box half again as tall as itself. The floor is that ordinary height,
-   * so nine exercises in ten fill the box exactly and the cards below them do
-   * not move from one to the next; the ceiling is where the rare tall one
-   * starts to scroll instead of pushing the rest of the page off the screen.
+   * The floor was the ordinary exercise's height, so the cards below would not
+   * move from one exercise to the next. But a short exercise then sat at the
+   * top of a box three times its height, with the page's own scrollbar beside
+   * all that nothing — and a player who never scrolls this page by hand reads
+   * that as a fault. Steadiness underneath is not worth a screen of blank
+   * paper above; the floor is only what an empty stage needs to say something
+   * useful, and the ceiling is where a tall exercise starts to scroll rather
+   * than push the rest of the page off the screen.
    */
   .score-area {
     height: auto;
-    min-height: 24rem;
+    min-height: 9rem;
     max-height: 36rem;
   }
 }
