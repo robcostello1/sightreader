@@ -30,7 +30,7 @@ const PORT = 9444;
 const SHOTS = [
   {
     id: 'controls',
-    setup: `document.querySelector('.transport [aria-label="Start"]').click()`,
+    setup: `document.querySelector('.transport [aria-label="Play"]').click()`,
     settle: 900,
     // The transport, not the row it sits in: the row is a third of the screen
     // wide and mostly empty, which would shrink the buttons to nothing.
@@ -45,11 +45,22 @@ const SHOTS = [
   // 'guide' is not here: the guide note only appears against live playing, and
   // the crop of it in public/tips was drawn by hand from the notation preview.
   // Leave it alone — this script will not overwrite what it does not generate.
-  { id: 'tuning', elements: `[document.querySelector('.monitor')]` },
+  {
+    // Playing, so the readout has a pitch in it and the waveform a wave. Taken
+    // at rest it was a dash, a flat line and an empty slider — a picture of the
+    // thing switched off, which tells a reader nothing about what it does.
+    id: 'tuning',
+    setup: `document.querySelector('.transport [aria-label="Play"]').click()`,
+    settle: 1200,
+    // A note, not the dash that stands for nothing heard yet.
+    waitFor: `/[A-G]#?\\d/.test(document.querySelector('.monitor')?.textContent ?? '')`,
+    elements: `[document.querySelector('.monitor')]`,
+  },
 ];
 
 const PAD = 8;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 
 const chrome = spawn(CHROME, [
   '--headless=new', `--remote-debugging-port=${PORT}`, '--disable-gpu', '--no-first-run',
@@ -113,6 +124,18 @@ for (const theme of ['light', 'dark']) {
     await open(theme);
     if (shot.setup) await evaluate(shot.setup);
     await sleep(shot.settle ?? 250);
+    // Some shots want a state that arrives when it arrives — a pitch has to be
+    // heard and detected before the readout has anything in it, and how long
+    // that takes is Chrome's business, not ours. Waiting a fixed time got a
+    // reading in one theme and a dash in the other.
+    if (shot.waitFor) {
+      const deadline = Date.now() + 10000;
+      // eslint-disable-next-line no-await-in-loop
+      while (!(await evaluate(shot.waitFor)) && Date.now() < deadline) await sleep(200);
+      if (Date.now() >= deadline) {
+        console.warn(`  ${shot.id}-${theme}: gave up waiting; shot may be empty`);
+      }
+    }
 
     const box = await evaluate(`(() => {
       const boxes = [...${shot.elements}].map((el) => el.getBoundingClientRect());
