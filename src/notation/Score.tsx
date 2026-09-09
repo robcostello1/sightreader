@@ -306,6 +306,52 @@ function buildNote(
 }
 
 /**
+ * The tuplets a staff's notes belong to, built and attached.
+ *
+ * Building one is what divides its notes' ticks — three quavers in the space of
+ * two — so it must happen before the notes reach a voice: a voice adds up what
+ * it is given when it is given it, and a triplet reduced afterwards leaves the
+ * voice a third of a beat too long and the two hands disagreeing about where
+ * the next beat is.
+ *
+ * `sounds` marks the groups this staff actually plays. A group that reaches
+ * this staff as nothing but the other hand's stand-in rests still needs its
+ * ticks divided, but its bracket belongs over the hand that plays it.
+ */
+function tupletsFor(
+  source: readonly NotatedNote[],
+  notes: StaveNote[],
+): { all: Tuplet[]; sounding: Tuplet[] } {
+  const groups = new Map<
+    number,
+    { notes: StaveNote[]; num: number; inSpaceOf: number; sounds: boolean }
+  >();
+  source.forEach((notated, i) => {
+    if (!notated.tuplet) return;
+    const { group, num, inSpaceOf } = notated.tuplet;
+    const entry = groups.get(group) ?? { notes: [], num, inSpaceOf, sounds: false };
+    entry.notes.push(notes[i]);
+    entry.sounds = entry.sounds || notated.midi !== null;
+    groups.set(group, entry);
+  });
+
+  const all: Tuplet[] = [];
+  const sounding: Tuplet[] = [];
+  for (const group of groups.values()) {
+    // Short of its full count, the group was merged into one rest already
+    // carrying the whole of its length — dividing that again would halve it.
+    if (group.notes.length !== group.num) continue;
+    const tuplet = new Tuplet(group.notes, {
+      numNotes: group.num,
+      notesOccupied: group.inSpaceOf,
+    });
+    all.push(tuplet);
+    if (group.sounds) sounding.push(tuplet);
+  }
+  return { all, sounding };
+}
+
+/**
  * Renders a generated exercise as standard notation, colouring each note once
  * its window has been scored. VexFlow does the engraving; layoutExercise has
  * already done the bar splitting it expects.
@@ -416,11 +462,11 @@ export function Score({
           beatValue: exercise.timeSignature[1],
         });
         voice.setMode(VoiceMode.SOFT);
-        voice.addTickables(
-          source.map((notated) =>
-            buildNote(notated, writtenKey, instrument, clef, octaveShift, source.length === 1),
-          ),
+        const notes = source.map((notated) =>
+          buildNote(notated, writtenKey, instrument, clef, octaveShift, source.length === 1),
         );
+        tupletsFor(source, notes);
+        voice.addTickables(notes);
         Accidental.applyAccidentals([voice], writtenKey.name);
         voices.push(voice);
       }
@@ -571,6 +617,9 @@ export function Score({
           });
           if (notes.length === 0) return null;
 
+          // Before the voice, which is what makes its arithmetic come out.
+          const tuplets = tupletsFor(source, notes);
+
           const voice = new Voice({
             numBeats: exercise.timeSignature[0],
             beatValue: exercise.timeSignature[1],
@@ -583,28 +632,9 @@ export function Score({
           // signature and what has already been altered earlier in the bar.
           Accidental.applyAccidentals([voice], writtenKey.name);
 
-          // Beams and tuplets must be constructed BEFORE the voice is drawn.
-          // Building a Beam is what tells its notes to suppress their own flags.
+          // Beams must be constructed BEFORE the voice is drawn: building one
+          // is what tells its notes to suppress their own flags.
           const beams = beamBar(notes, source, exercise.timeSignature);
-
-          const groups = new Map<
-            number,
-            { notes: StaveNote[]; num: number; inSpaceOf: number; sounds: boolean }
-          >();
-          source.forEach((notated, i) => {
-            if (!notated.tuplet) return;
-            const { group, num, inSpaceOf } = notated.tuplet;
-            const entry = groups.get(group) ?? { notes: [], num, inSpaceOf, sounds: false };
-            entry.notes.push(notes[i]);
-            // Stand-in rests keep their tuplet so both staves count the same
-            // ticks, but a bracket over nothing but rests belongs to the other
-            // hand — draw it there, not here.
-            entry.sounds = entry.sounds || notated.midi !== null;
-            groups.set(group, entry);
-          });
-          const tuplets = [...groups.values()]
-            .filter((g) => g.sounds && g.notes.length === g.num)
-            .map((g) => new Tuplet(g.notes, { numNotes: g.num, notesOccupied: g.inSpaceOf }));
 
           // The sign spans the sounding notes; a rest at either end is not part
           // of the passage and a bracket reaching over it reads as a mistake.
@@ -617,7 +647,7 @@ export function Score({
             stave,
             voice,
             beams,
-            tuplets,
+            tuplets: tuplets.sounding,
             ends,
             side,
             octaveShift,

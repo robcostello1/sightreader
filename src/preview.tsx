@@ -46,6 +46,9 @@ const PIANO: { position: string; level: number; seed: number; bpm?: number }[] =
   // by note it left that semiquaver alone in the bass under most of a bar of
   // rests; the whole beat belongs to the treble.
   { position: 'grand-close', level: 10, seed: 472672957, bpm: 240 },
+  // Reported: a triplet in one hand against a rest in the other, which was
+  // drawn across most of the bar instead of the beat it occupies.
+  { position: 'grand-close', level: 6, seed: 63 },
 ];
 
 // The ghost note, at the distances from the written pitch that matter: dead on,
