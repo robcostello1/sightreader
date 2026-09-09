@@ -446,3 +446,39 @@ describe('the keyboard', () => {
     expect(screen.getByRole('dialog')).not.toBeNull();
   });
 });
+
+describe('the debug readout', () => {
+  it('says nothing unless it is asked for', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+    await click(/^play$/i);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+      await Promise.resolve();
+    });
+    // Vitest runs as dev, so the readout is on; what it must never do is show
+    // while the music is running.
+    expect(document.querySelector('.control-status')!.textContent).toMatch(/seed \d+/);
+  });
+
+  it('carries everything needed to write the exercise again', async () => {
+    asReturning();
+    render(<Lesson />);
+    await settle();
+    await click(/^play$/i);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+      await Promise.resolve();
+    });
+
+    const line = document.querySelector('.control-status')!.textContent!;
+    // Seed, level, instrument and position, tempo, metre, and what it was made
+    // from — the seed alone does not reproduce anything.
+    expect(line).toMatch(/seed \d+/);
+    expect(line).toMatch(/L\d\.\d/);
+    expect(line).toMatch(/guitar/);
+    expect(line).toMatch(/\d+bpm/);
+    expect(line).toMatch(/\d+\/\d+/);
+  });
+});
