@@ -288,7 +288,10 @@ function buildNote(
 
   const note = new StaveNote({
     keys: [spelled],
-    duration: isRest ? `${notated.code}r` : notated.code,
+    // The dots belong in the duration as well as on the page: Dot.buildAndAttach
+    // draws them but does not lengthen the note, and a voice of notes an eighth
+    // short of their written value put the two hands out of line with each other.
+    duration: `${notated.code}${'d'.repeat(notated.dots)}${isRest ? 'r' : ''}`,
     // Without this a bass or alto staff would place every note as if it were
     // treble — the same line means a different pitch on each clef.
     clef,
@@ -426,7 +429,9 @@ export function Score({
         return 0;
       }
       const formatter = new Formatter();
-      for (const voice of voices) formatter.joinVoices([voice]);
+      // One call, not one per voice: joinVoices is what makes the voices share
+      // tick contexts, and a voice joined alone is measured alone.
+      formatter.joinVoices(voices);
       const width = formatter.preCalculateMinTotalWidth(voices);
       measured.set(bar, width);
       return width;
@@ -629,9 +634,11 @@ export function Score({
         if (built.length === 0) return;
 
         // Both hands are formatted together, so a note in one lines up with
-        // whatever sounds against it in the other.
+        // whatever sounds against it in the other. That alignment is what one
+        // joinVoices call buys — joined one at a time they share no tick
+        // context, and the same beat lands at two different x.
         const formatter = new Formatter();
-        for (const entry of built) formatter.joinVoices([entry.voice]);
+        formatter.joinVoices(built.map((entry) => entry.voice));
         // Format to the stave's own note area, not its raw width: the leading
         // bar spends real space on clef, key and time signature.
         const usable = built[0].stave.getNoteEndX() - built[0].stave.getNoteStartX();

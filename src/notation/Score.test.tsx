@@ -131,6 +131,51 @@ describe('Score', () => {
     expect(markup).toContain(VERDICT_FALLBACKS.unclear);
   });
 
+  it('lines the hands up on the beats they share', () => {
+    // A dotted note whose dot was drawn but not counted left its voice short,
+    // and every note after it in that hand drifted away from the other's. Here
+    // the bass plays through beat one while the treble rests, and both hands
+    // arrive together on beat two.
+    const piano = instrumentById('piano');
+    const value = (v: number, midi: number | null) => ({
+      midi,
+      value: v,
+      idiomId: 't',
+      instance: 0,
+    });
+    const together: Exercise = {
+      ...simple,
+      timeSignature: [6, 8],
+      notes: [
+        value(NOTE_VALUES.eighth, 48),
+        value(NOTE_VALUES.quarter, 50),
+        value(NOTE_VALUES.eighth, 72),
+        value(NOTE_VALUES.quarter, 74),
+      ],
+    };
+    const { container } = render(
+      <Score
+        exercise={together}
+        instrument={piano}
+        position={positionById(piano, 'grand-close')}
+      />,
+    );
+    // Treble: a dotted crotchet rest then the two notes. Bass: the two notes
+    // then a dotted crotchet rest. Both hands change over on beat two, so that
+    // x must appear on each staff.
+    const xs = [...svgOf(container).querySelectorAll('.vf-notehead text')]
+      // The augmentation dot is drawn in the notehead's own group; it is part
+      // of the note before it, not a position of its own.
+      .filter((glyph) => !(glyph.textContent ?? '').startsWith('\ue1e7'))
+      .map((glyph) => ({ x: Number(glyph.getAttribute('x')), y: Number(glyph.getAttribute('y')) }));
+    // The staves are a hundred units apart; the treble's glyphs are the top half.
+    const split = (Math.min(...xs.map((g) => g.y)) + Math.max(...xs.map((g) => g.y))) / 2;
+    const treble = xs.filter((glyph) => glyph.y < split).map((glyph) => glyph.x);
+    const bass = xs.filter((glyph) => glyph.y >= split).map((glyph) => glyph.x);
+    // The treble's first note and the bass's closing rest both begin beat two.
+    expect(treble[1]).toBe(bass[2]);
+  });
+
   it('centres a rest that stands for a whole bar', () => {
     // One hand silent for a bar: the rest belongs in the middle of it, not
     // hard against the note the other hand plays on the first beat.
