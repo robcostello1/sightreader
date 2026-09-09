@@ -1173,3 +1173,46 @@ input[type='range'] {
     width: auto;
   }
 }
+
+/* Recognition mode. Dev-only for now — see src/flash.tsx. */
+.flash {
+  max-width: 44rem;
+}
+
+/* A fixed stage, so the question does not appear somewhere other than where the
+   pattern was: the eye should stay where it was looking. */
+.flash-stage {
+  min-height: 12rem;
+  display: flex;
+  align-items: center;
+}
+
+.flash-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+  margin-bottom: var(--gap);
+}
+
+.flash-option {
+  display: flex;
+  align-items: center;
+  min-width: 5rem;
+}
+
+.flash-option.is-right {
+  border-color: var(--pass);
+  color: var(--pass);
+}
+
+.flash-option.is-wrong {
+  border-color: var(--fail);
+  color: var(--fail);
+}
+
+.flash-verdict {
+  display: flex;
+  align-items: baseline;
+  gap: var(--gap);
+  margin-bottom: var(--gap);
+}
