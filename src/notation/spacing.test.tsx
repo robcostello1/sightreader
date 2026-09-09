@@ -147,8 +147,11 @@ function highestInk(container: HTMLElement): number {
  * How far a tuplet's number rises above its bracket. VexFlow centres the digit
  * on the bracket line, and jsdom measures no text, so the number's own position
  * never reaches the DOM — this is the room the bracket must leave for it.
+ *
+ * Nine and a third, measured in Chrome: a 40px Bravura digit whose ink is
+ * fifteen pixels tall, sitting on a baseline 5.7 below the bracket.
  */
-const TUPLET_NUMBER_RISE = 8;
+const TUPLET_NUMBER_RISE = 10;
 
 it('leaves room above the staff for a triplet over the highest note', () => {
   const piano = instrumentById('piano');

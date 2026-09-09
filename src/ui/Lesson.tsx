@@ -348,12 +348,17 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
                     Could not start: {lesson.error}
                   </span>
                 ) : lesson.phase === 'arming' ? (
-                  <Text as="span" tone="muted">Requesting microphone…</Text>
+                  /* Longer than the count-in, and the one message that can run
+                     out of room on a narrow phone — so it ellipsises. */
+                  <Text as="span" tone="muted" className="control-message">
+                    Requesting microphone…
+                  </Text>
                 ) : debugging && lesson.paused && lesson.exercise ? (
                   /* Everything needed to write this exercise again: the seed
                      alone does not do it, since the pool, the level and the
-                     tempo all feed the same generator. */
-                  <Text as="span" size="small" tone="muted">
+                     tempo all feed the same generator. Longer than the row can
+                     hold, so it ellipsises rather than being cut mid-word. */
+                  <Text as="span" size="small" tone="muted" className="control-message">
                     {[
                       `seed ${lesson.seed}`,
                       `L${level.toFixed(1)}`,
