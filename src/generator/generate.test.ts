@@ -331,6 +331,25 @@ describe('generateExercise', () => {
     expect(restsAt(3.9)).toBeGreaterThan(restsAt(3));
   });
 
+  describe('how large a rhythmic figure is written', () => {
+    it('never writes an anticipation in minims', () => {
+      const longest = new Map<string, number>();
+      for (const seed of Array.from({ length: 600 }, (_, i) => i + 1)) {
+        const exercise = generateExercise({ level: 8, seed });
+        for (const note of exercise.notes) {
+          if (!note.idiomId.startsWith('anticipat')) continue;
+          longest.set(note.idiomId, Math.max(longest.get(note.idiomId) ?? 0, note.value));
+        }
+      }
+      expect(longest.size).toBeGreaterThan(0);
+      for (const [id, value] of longest) {
+        // Five quaver-beats is the longest event either figure holds, and the
+        // padding no longer stretches the last note of one to fill a bar.
+        expect(value, id).toBeLessThanOrEqual(5 * NOTE_VALUES.eighth + 1e-9);
+      }
+    }, 20_000);
+  });
+
   describe('shapes cut short', () => {
     const MANY_SEEDS = Array.from({ length: 800 }, (_, i) => i + 1);
 

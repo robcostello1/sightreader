@@ -67,6 +67,12 @@ export interface Idiom {
    * same proportions are a syncopation and mean something else.
    */
   meter?: 'compound';
+  /**
+   * Longest unit value this idiom is worth writing at. An anticipation is a
+   * crotchet-or-shorter figure — a quaver arriving early against a beat — and
+   * the same proportions at minims are just long notes.
+   */
+  maxUnit?: NoteValue;
 }
 
 // --- Generated exercise -----------------------------------------------------

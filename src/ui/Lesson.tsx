@@ -337,6 +337,20 @@ export function Lesson({ troubleshooting = false, onTroubleshooting }: LessonPro
                   </span>
                 ) : lesson.phase === 'arming' ? (
                   <Text as="span" tone="muted">Requesting microphone…</Text>
+                ) : import.meta.env.DEV && lesson.paused && lesson.exercise ? (
+                  /* Dev only: what the generator actually reached for, and the
+                     seed that produced it, so an odd-looking exercise can be
+                     reported by number rather than by screenshot. */
+                  <Text as="span" size="small" tone="muted">
+                    seed {lesson.seed} ·{' '}
+                    {[
+                      ...new Set(
+                        lesson.exercise.notes
+                          .map((note) => note.idiomId)
+                          .filter((id) => id !== 'padding'),
+                      ),
+                    ].join(', ')}
+                  </Text>
                 ) : lesson.phase === 'count-in' && !lesson.paused ? (
                   <span className="count-in">
                     Count-in <strong>{lesson.beatsUntilStart}</strong>

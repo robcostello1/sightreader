@@ -168,3 +168,22 @@ describe('the rhythmic idioms', () => {
     }
   });
 });
+
+describe('how large a figure may be written', () => {
+  it('keeps an anticipation at the scale it is played on', () => {
+    // A quaver arriving early against a crotchet beat, or a semiquaver against
+    // a quaver. At minims the same proportions are just long notes.
+    for (const id of ['anticipation', 'anticipated-cadence']) {
+      expect(idiomById(id)!.maxUnit, id).toBe(NOTE_VALUES.eighth);
+    }
+  });
+
+  it('caps the syncopations too, and leaves the shapes alone', () => {
+    for (const idiom of RHYTHMIC_IDIOMS.filter((i) => i.id.startsWith('syncopation'))) {
+      expect(idiom.maxUnit, idiom.id).toBe(NOTE_VALUES.quarter);
+    }
+    for (const idiom of IDIOM_LIBRARY.filter((i) => i.category !== 'rhythmic')) {
+      expect(idiom.maxUnit, idiom.id).toBeUndefined();
+    }
+  });
+});

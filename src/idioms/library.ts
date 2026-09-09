@@ -1,4 +1,4 @@
-import type { Idiom } from '../lib/types';
+import { NOTE_VALUES, type Idiom } from '../lib/types';
 
 /**
  * The starting idiom set (spec §4), deliberately small so shapes recur often
@@ -139,6 +139,7 @@ export const RHYTHMIC_IDIOMS: Idiom[] = [
     name: 'Syncopation, short–long–short',
     category: 'rhythmic',
     rhythmFirst: true,
+    maxUnit: NOTE_VALUES.quarter,
     // The weight lands off the beat, which is the whole of the lesson.
     events: [beat(0, 1), beat(1, 2), beat(0, 1)],
   },
@@ -147,6 +148,7 @@ export const RHYTHMIC_IDIOMS: Idiom[] = [
     name: 'Syncopation, off the beat and back',
     category: 'rhythmic',
     rhythmFirst: true,
+    maxUnit: NOTE_VALUES.quarter,
     events: [beat(0, 1), beat(2, 2), beat(1, 2), beat(0, 1)],
   },
   {
@@ -174,6 +176,10 @@ export const RHYTHMIC_IDIOMS: Idiom[] = [
     name: 'Anticipation',
     category: 'rhythmic',
     rhythmFirst: true,
+    // An anticipation is a quaver arriving early against a crotchet beat, or a
+    // semiquaver against a quaver in something faster. Written at minims the
+    // same proportions are just long notes, which is not the figure.
+    maxUnit: NOTE_VALUES.eighth,
     // The arrival comes early and is held: the last note is struck before the
     // beat it belongs to and lasts through it.
     events: [beat(0, 2), beat(1, 1), beat(2, 3)],
@@ -183,6 +189,7 @@ export const RHYTHMIC_IDIOMS: Idiom[] = [
     name: 'Anticipated arrival',
     category: 'rhythmic',
     rhythmFirst: true,
+    maxUnit: NOTE_VALUES.eighth,
     events: [beat(2, 2), beat(1, 1), beat(0, 5)],
   },
 ];

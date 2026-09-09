@@ -1,7 +1,13 @@
 import { OPEN_POSITION, regionPool } from '../config/regions';
 import { levelConfig, type LevelConfig, type ScoringConfig } from '../config/levels';
 import { DEFAULT_VIABILITY, isViable, type ViabilityConfig } from '../config/viability';
-import { IDIOM_LIBRARY, idiomDuration, instantiateIdiom, placementPitches } from '../idioms';
+import {
+  IDIOM_LIBRARY,
+  idiomById,
+  idiomDuration,
+  instantiateIdiom,
+  placementPitches,
+} from '../idioms';
 import type { IdiomPlacement } from '../idioms';
 import { isCompound } from '../scheduler';
 import { decompose } from '../lib/duration';
@@ -155,6 +161,8 @@ function buildCandidates(
       // No single note may outlast a bar. In 3/4 and 6/8 a bar is three
       // quarters of a whole note, so a two-beat event at minim density would
       // tie across the bar line — dead time, and the reason this rule exists.
+      // Some figures stop being themselves written large: see maxUnit.
+      if (idiom.maxUnit !== undefined && value > idiom.maxUnit + 1e-9) continue;
       if (longestEvent * value > barSize + 1e-9) continue;
       const placements = validPlacements(idiom, value, constraints);
       if (placements.length === 0) continue;
@@ -577,7 +585,11 @@ function padTo(
   cadenceFollows: boolean,
 ): void {
   const last = notes[notes.length - 1];
-  const extendable = last !== undefined && last.tuplet === undefined;
+  // A figure written at a capped size is not stretched to fill a bar: an
+  // anticipation held for seven quavers is no longer an anticipation, it is a
+  // long note. Those bars are padded with rests instead.
+  const capped = last !== undefined && idiomById(last.idiomId)?.maxUnit !== undefined;
+  const extendable = last !== undefined && last.tuplet === undefined && !capped;
   const headroom = extendable ? Math.max(0, barSize - last.value) : 0;
 
   let remaining = shortfall;
