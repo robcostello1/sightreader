@@ -8,12 +8,11 @@ const piano = instrumentById('piano');
 
 /** A bar's worth of notated notes, given as [midi, value] pairs. */
 const bar = (pairs: [number | null, number][]): NotatedNote[] =>
-  pairs.map(([midi, value], index) => ({
-    midi,
-    ...toNotated(value),
-    tiedToNext: false,
-    sourceIndex: index,
-  }));
+  pairs.map(([midi, value], index) => {
+    const notated = toNotated(value);
+    if (notated === null) throw new Error(`not a notatable value: ${value}`);
+    return { midi, ...notated, tiedToNext: false, sourceIndex: index };
+  });
 
 const sounding = (notes: NotatedNote[]) => notes.map((note) => note.midi);
 
