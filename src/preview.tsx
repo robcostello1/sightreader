@@ -31,7 +31,7 @@ const SAMPLES = [
 
 // The grand staff has its own failure modes — a hand full of stand-in rests,
 // tuplet brackets over the wrong staff — so it gets its own row of samples.
-const PIANO = [
+const PIANO: { position: string; level: number; seed: number; bpm?: number }[] = [
   { position: 'grand-close', level: 4, seed: 3 },
   { position: 'grand-close', level: 7, seed: 12 },
   { position: 'grand-wide', level: 5, seed: 21 },
@@ -42,6 +42,10 @@ const PIANO = [
   { position: 'grand-close', level: 8, seed: 8 },
   { position: 'grand-close', level: 8, seed: 9 },
   { position: 'grand-wide', level: 9, seed: 5 },
+  // Reported: a figure that dips under middle C for one semiquaver. Split note
+  // by note it left that semiquaver alone in the bass under most of a bar of
+  // rests; the whole beat belongs to the treble.
+  { position: 'grand-close', level: 10, seed: 472672957, bpm: 240 },
 ];
 
 // The ghost note, at the distances from the written pitch that matter: dead on,
@@ -93,7 +97,7 @@ function Preview() {
       })}
 
       <Heading level={1} className="preview-title">Piano</Heading>
-      {PIANO.map(({ position: positionId, level, seed }) => {
+      {PIANO.map(({ position: positionId, level, seed, bpm }) => {
         const instrument = instrumentById('piano');
         const position = positionById(instrument, positionId)!;
         const config = levelConfig(level);
@@ -101,6 +105,7 @@ function Preview() {
           level: config,
           pool: soundingPool(instrument, position),
           seed,
+          bpm,
         });
         return (
           <section key={`piano-${positionId}-${level}-${seed}`}>
@@ -109,7 +114,8 @@ function Preview() {
                 {position.label} · level {level.toFixed(1)}
               </strong>{' '}
               · {exercise.key.name} major · {exercise.timeSignature.join('/')} ·{' '}
-              {exercise.notes.length} notes
+              {exercise.notes.length} notes · seed {seed}
+              {bpm === undefined ? '' : ` · ${bpm}bpm`}
             </Text>
             <Score exercise={exercise} instrument={instrument} position={position} />
           </section>
