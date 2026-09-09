@@ -915,15 +915,20 @@ export function Score({
           };
         }
 
-        // The brace and the joined barlines are what make two staves read as one
-        // instrument rather than two parts.
+        /*
+         * The joined barlines are what make two staves read as one instrument
+         * rather than two parts.
+         *
+         * A brace used to stand outside them. VexFlow draws it to the left of
+         * where the stave starts, so it needs page margin to live in, and the
+         * margin is down to four pixels — a phone has none to spare and the
+         * brace was drawn mostly outside the picture and clipped. It says the
+         * same thing the barline down the left already says, so it is gone
+         * rather than paid for.
+         */
         if (grand && built.length === 2) {
           const [top, bottom] = built;
           if (first) {
-            new StaveConnector(top.stave, bottom.stave)
-              .setType('brace')
-              .setContext(context)
-              .draw();
             new StaveConnector(top.stave, bottom.stave)
               .setType('singleLeft')
               .setContext(context)
