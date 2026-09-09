@@ -63,7 +63,7 @@ function candidates(
 }
 
 /** One beat as the meter is counted: a dotted one in compound time. */
-function beatOf([beats, unit]: [number, number]): NoteValue {
+export function beatOf([beats, unit]: [number, number]): NoteValue {
   const compound = unit === 8 && beats % 3 === 0 && beats > 3;
   return (compound ? 3 : 1) / unit;
 }

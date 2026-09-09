@@ -131,6 +131,26 @@ describe('Score', () => {
     expect(markup).toContain(VERDICT_FALLBACKS.unclear);
   });
 
+  it('centres a rest that stands for a whole bar', () => {
+    // One hand silent for a bar: the rest belongs in the middle of it, not
+    // hard against the note the other hand plays on the first beat.
+    const piano = instrumentById('piano');
+    const oneHand: Exercise = {
+      ...simple,
+      notes: [{ midi: 72, value: NOTE_VALUES.whole, idiomId: 't', instance: 0 }],
+    };
+    const { container } = render(
+      <Score exercise={oneHand} instrument={piano} position={positionById(piano, 'grand-close')} />,
+    );
+    // Treble note first, bass rest second — both stand at tick zero, so an
+    // uncentred rest would be drawn at the same x as the note.
+    const xs = [...svgOf(container).querySelectorAll('.vf-notehead text')].map((glyph) =>
+      Number(glyph.getAttribute('x')),
+    );
+    expect(xs).toHaveLength(2);
+    expect(xs[1]).toBeGreaterThan(xs[0]);
+  });
+
   describe('scrolling', () => {
     /** The area the score sits in, which is what actually scrolls. */
     function inArea(node: React.ReactElement) {
