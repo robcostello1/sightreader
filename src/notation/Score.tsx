@@ -80,8 +80,15 @@ function followPageColour(root: Element): void {
  * outside the drawing and were cut off by its top edge.
  */
 const STAVE_TOP = 40;
-/** Vertical pitch between systems when the music wraps onto several lines. */
-const SYSTEM_HEIGHT = 175;
+/**
+ * Vertical pitch between systems when the music wraps onto several lines.
+ *
+ * A hundred and seventy-five once, of which the lowest mark ever drawn reached
+ * 122 — fifty-three pixels of every line were blank by construction. A staff
+ * with its ledger lines and an 8vb under it is 122; the rest is the air that
+ * separates one line from the next, and thirty of that is plenty.
+ */
+const SYSTEM_HEIGHT = 152;
 /** A grand staff is two staves and needs room for both, plus their ledger lines. */
 const GRAND_SYSTEM_HEIGHT = 250;
 /**
@@ -106,7 +113,7 @@ const FALLBACK_WIDTH = 720;
  */
 const SPACING_EXPONENT = 0.5;
 /** Room a crotchet wants where there is room to give it. The curve does the rest. */
-const WIDTH_PER_CROTCHET = 34;
+const WIDTH_PER_CROTCHET = 24;
 /**
  * How far the drawing may be reduced to fit the page, and the room it is fitting.
  *
@@ -136,7 +143,7 @@ const PAGE_BUDGET = 576;
  * notes so far apart that they stop reading as a phrase — a two-note bar spread
  * over a whole line is harder to follow than a compact one.
  */
-const MAX_WIDTH_PER_CROTCHET = 64;
+const MAX_WIDTH_PER_CROTCHET = 46;
 const BAR_PADDING = 26;
 /**
  * The octave sign is drawn here rather than with VexFlow's TextBracket.
@@ -159,7 +166,15 @@ const OCTAVE_LABEL_WIDTH: Record<number, number> = { 1: 20, 2: 30 };
 /** Length of the hook that closes the sign over its last note. */
 const OCTAVE_HOOK = 8;
 const OCTAVE_DASH = [4, 3];
-const MARGIN = 12;
+/**
+ * Blank page either side of the music.
+ *
+ * Twelve once, which on a phone is seven per cent of the column spent on
+ * nothing, on top of the page's own padding outside the drawing. The staff
+ * needs a little air so its barlines do not sit against the edge, and four is
+ * enough for that.
+ */
+const MARGIN = 4;
 
 /**
  * Space the leading bar of a system spends on its clef, key signature and time
