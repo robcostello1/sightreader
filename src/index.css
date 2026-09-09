@@ -431,7 +431,14 @@ header .heading-1 {
 }
 
 /*
- * The count-in, a notice, a hint — whatever the phase has to say, on one line.
+ * The count-in, a notice, a hint — whatever the phase has to say, on one line
+ * beside the buttons.
+ *
+ * Beside them at every width, including a phone's. It had a row of its own
+ * below 560px, on the grounds that three slots would not fit; measured, the
+ * count-in wants 93 pixels against the 124 left over at 320, so it always did.
+ * The row it no longer needs is forty pixels of music.
+ *
  * Wrapping is what it must not do, so a long message is clipped with an
  * ellipsis and carries the whole of itself in its title attribute instead.
  */
@@ -1097,34 +1104,31 @@ input[type='range'] {
   }
 
   /* Its own height, rather than whatever is left of a viewport it no longer
-     has to fit inside — still two lines' worth. */
+     has to fit inside. Two lines' worth of a single staff was twenty-three rem;
+     a grand staff is two staves and a line of it is half again as tall. */
   .score-area {
     flex: none;
-    height: 23rem;
+    height: 30rem;
   }
 }
 
-/*
- * Too narrow for three slots side by side. The status moves to its own row
- * rather than squeezing, and that row is reserved whether or not anything is in
- * it — the point of the whole arrangement is that the music below never moves,
- * and a row that appears with the count-in would move it. Two rem is the
- * count-in numeral's own height, which is the tallest thing that lands here.
- */
 @media (max-width: 560px) {
-  .stage-controls {
-    grid-template-columns: minmax(0, 1fr);
-    row-gap: 0.5rem;
-  }
-
-  .control-status {
-    min-height: 2rem;
-  }
-
-  /* Taller, because a phone fits one bar to a line and needs the lines. The
-     page scrolls at this width anyway, so the room costs nothing above it. */
+  /*
+   * Sized to the music.
+   *
+   * The floor was the ordinary exercise's height, so the cards below would not
+   * move from one exercise to the next. But a short exercise then sat at the
+   * top of a box three times its height, with the page's own scrollbar beside
+   * all that nothing — and a player who never scrolls this page by hand reads
+   * that as a fault. Steadiness underneath is not worth a screen of blank
+   * paper above; the floor is only what an empty stage needs to say something
+   * useful, and the ceiling is where a tall exercise starts to scroll rather
+   * than push the rest of the page off the screen.
+   */
   .score-area {
-    height: 30rem;
+    height: auto;
+    min-height: 9rem;
+    max-height: 36rem;
   }
 }
 

@@ -4,6 +4,8 @@ import { it, expect } from 'vitest';
 import { Score } from './Score';
 import { generateExercise } from '../generator';
 import { levelConfig } from '../config/levels';
+import { NOTE_VALUES, type Exercise } from '../lib/types';
+import { keyByName } from '../lib/key';
 import { instrumentById, positionById, soundingPool } from '../config/instruments';
 
 /** SMuFL augmentation dot, which VexFlow draws inside the notehead group. */
@@ -48,6 +50,14 @@ function tightest(container: HTMLElement) {
  */
 const COLLISION = 6.5;
 
+const simple: Exercise = {
+  notes: [],
+  keyCenter: 60,
+  key: keyByName('C'),
+  timeSignature: [4, 4],
+  bpm: 60,
+};
+
 it('never squeezes a bar past the point its notes collide', () => {
   const piano = instrumentById('piano');
   const position = positionById(piano, 'grand-wide');
@@ -66,4 +76,107 @@ it('never squeezes a bar past the point its notes collide', () => {
       }
     }
   }
+});
+
+/** Average gap between consecutive noteheads of one voice, per bar. */
+function spacingPerBar(container: HTMLElement, counts: readonly number[]): number[] {
+  const xs = [...container.querySelectorAll('.vf-notehead text')].map((head) =>
+    Number(head.getAttribute('x')),
+  );
+  const spacings: number[] = [];
+  let at = 0;
+  for (const count of counts) {
+    const bar = xs.slice(at, at + count);
+    at += count;
+    const gaps = bar.slice(1).map((x, i) => x - bar[i]);
+    spacings.push(gaps.reduce((sum, gap) => sum + gap, 0) / Math.max(1, gaps.length));
+  }
+  return spacings;
+}
+
+it('gives a long note at least as much room as a short one', () => {
+  // Three crotchets, then eight quavers. Sharing the spare width by note count
+  // gave the busy bar more than twice the extra, so its quavers ended up
+  // further apart than the crotchets — which reads as though the long notes
+  // were the quick ones.
+  const exercise: Exercise = {
+    ...simple,
+    notes: [
+      ...Array.from({ length: 3 }, () => ({
+        midi: 67,
+        value: NOTE_VALUES.quarter,
+        idiomId: 't',
+        instance: 0,
+      })),
+      { midi: 67, value: NOTE_VALUES.quarter, idiomId: 't', instance: 0 },
+      ...Array.from({ length: 8 }, () => ({
+        midi: 67,
+        value: NOTE_VALUES.eighth,
+        idiomId: 't',
+        instance: 1,
+      })),
+    ],
+  };
+  // Narrow enough that the leftover width is what decides, rather than both
+  // bars reaching the ceiling on their own.
+  const { container } = render(<Score exercise={exercise} width={700} />);
+  const [crotchets, quavers] = spacingPerBar(container, [4, 8]);
+  // Not merely wider: clearly wider. Sharing by note count left them at 54
+  // against 48, which is near enough equal to read as a mistake.
+  expect(crotchets / quavers).toBeGreaterThan(1.3);
+});
+
+/**
+ * Topmost ink in the drawing, in SVG units. Zero is the top edge; anything
+ * negative has been drawn off the page and is invisible.
+ */
+function highestInk(container: HTMLElement): number {
+  let top = Infinity;
+  for (const shape of container.querySelectorAll('rect, line, path, text')) {
+    for (const attribute of ['y', 'y1', 'y2']) {
+      const value = shape.getAttribute(attribute);
+      if (value === null) continue;
+      const y = Number(value);
+      if (Number.isFinite(y)) top = Math.min(top, y);
+    }
+  }
+  return top;
+}
+
+/**
+ * How far a tuplet's number rises above its bracket. VexFlow centres the digit
+ * on the bracket line, and jsdom measures no text, so the number's own position
+ * never reaches the DOM — this is the room the bracket must leave for it.
+ *
+ * Nine and a third, measured in Chrome: a 40px Bravura digit whose ink is
+ * fifteen pixels tall, sitting on a baseline 5.7 below the bracket.
+ */
+const TUPLET_NUMBER_RISE = 10;
+
+it('leaves room above the staff for a triplet over the highest note', () => {
+  const piano = instrumentById('piano');
+  const position = positionById(piano, 'grand-wide');
+  // C6: the top of the written range, above which the music is written an
+  // octave down under an 8va sign and stops climbing.
+  const triplet = (midi: number) => ({
+    midi,
+    value: NOTE_VALUES.quarter * (2 / 3),
+    idiomId: 't',
+    instance: 0,
+    tuplet: { group: 0, num: 3, inSpaceOf: 2 },
+  });
+  const exercise: Exercise = {
+    ...simple,
+    notes: [
+      triplet(84),
+      triplet(82),
+      triplet(81),
+      { midi: 79, value: NOTE_VALUES.quarter, idiomId: 't', instance: 1 },
+      { midi: 77, value: NOTE_VALUES.quarter, idiomId: 't', instance: 1 },
+    ],
+  };
+  const { container } = render(
+    <Score exercise={exercise} instrument={piano} position={position} />,
+  );
+  expect(highestInk(container)).toBeGreaterThanOrEqual(TUPLET_NUMBER_RISE);
 });

@@ -34,8 +34,9 @@ import {
   type InstrumentDefinition,
   type PositionDefinition,
 } from '../config/instruments';
+import { notatedValue } from '../lib/duration';
 import { transposeKey } from '../lib/key';
-import type { Exercise, Midi, NoteResult } from '../lib/types';
+import { NOTE_VALUES, type Exercise, type Midi, type NoteResult } from '../lib/types';
 import type { MusicalKey } from '../lib/key';
 
 /**
@@ -70,26 +71,106 @@ function followPageColour(root: Element): void {
 
 /**
  * Headroom above the first staff, on top of the four ledger lines' worth
- * VexFlow already reserves — which together was eighty pixels of empty page.
+ * VexFlow already reserves.
+ *
+ * Twelve once, which was eighty pixels of empty page below a bar of plain
+ * crotchets and not enough for a triplet: the bracket over a note at the top of
+ * the written range sits twenty-five pixels above the staff, and VexFlow
+ * centres the number on the bracket line, another nine above that. Both fell
+ * outside the drawing and were cut off by its top edge.
  */
-const STAVE_TOP = 12;
-/** Vertical pitch between systems when the music wraps onto several lines. */
-const SYSTEM_HEIGHT = 175;
+const STAVE_TOP = 40;
+/**
+ * Vertical pitch between systems when the music wraps onto several lines.
+ *
+ * A hundred and seventy-five once, of which the lowest mark ever drawn reached
+ * 122 — fifty-three pixels of every line were blank by construction. A staff
+ * with its ledger lines and an 8vb under it is 122; the rest is the air that
+ * separates one line from the next, and thirty of that is plenty.
+ */
+const SYSTEM_HEIGHT = 152;
 /** A grand staff is two staves and needs room for both, plus their ledger lines. */
-const GRAND_SYSTEM_HEIGHT = 230;
-/** Treble stave top to bass stave top: sixty pixels between them, six ledger lines. */
-const GRAND_STAFF_GAP = 100;
+const GRAND_SYSTEM_HEIGHT = 250;
+/**
+ * How far down its own marks a system can actually reach, measured across the
+ * generator's whole output — the rest of its height is the air before the next
+ * one. Only the last system on a page has no next one, so only its share of
+ * that air is worth reclaiming, and the drawing ends where its music does.
+ */
+const SYSTEM_INK = 122;
+const GRAND_SYSTEM_INK = 248;
+/**
+ * Treble stave top to bass stave top: eighty pixels of air between them.
+ *
+ * Tightened to sixty once, which was too far — a right hand written under its
+ * own staff reaches into the gap, and at sixty it reached into the left hand's
+ * notes.
+ */
+const GRAND_STAFF_GAP = 120;
 const FALLBACK_WIDTH = 720;
-/** Room a note wants where there is room to give it. */
-const WIDTH_PER_NOTE = 34;
-/** Below this the column is a phone's, and bars are packed by the floor instead. */
-const CRAMPED_WIDTH = 560;
+/**
+ * How room grows with a note's length.
+ *
+ * Engraving spaces notes neither equally nor in proportion to their length. A
+ * minim is wider than a crotchet but nowhere near twice as wide, and the usual
+ * rule is a factor of the square root of two per halving. Spaced in strict
+ * proportion a bar of semibreves wastes half a line and a run of semiquavers is
+ * unreadable; spaced equally, the long notes read as the quick ones.
+ *
+ * The square root of the length is what that rule says, and 0.5 is what this
+ * was. Measured on the page it came out at 1.26 rather than 1.41, because
+ * VexFlow gives every note a minimum of its own whatever its length, and that
+ * fixed part of a bar's width falls hardest on the bar with the most notes in
+ * it. Allotting on a slightly steeper curve pays that back: 0.6 measures 1.35
+ * to 1.41 between a crotchet and a quaver, which is the ratio the rule is
+ * after.
+ */
+const SPACING_EXPONENT = 0.6;
+/**
+ * The least room a crotchet's worth of music may be given, and so — by the
+ * curve — the least any note may be given.
+ *
+ * A line that cannot afford this for every bar on it is holding too much
+ * music, and the answer is to break it sooner rather than to set it tighter.
+ * That is what keeps the ratios: squeezing is the thing that destroys them,
+ * because it never falls evenly on every bar.
+ */
+const MIN_WIDTH_PER_CROTCHET = 22;
+/**
+ * How far the drawing may be reduced to fit the page, and the room it is fitting.
+ *
+ * A phone column is three hundred-odd pixels. Engraved at its own width a grand
+ * staff runs to about 790 pixels of music where 576 are visible, so two thirds
+ * of exercises had to be scrolled — and following a moving cursor down a
+ * scrolling page is the one thing a sight-reading page must not ask for. Drawn
+ * wider and scaled to the column instead, everything shrinks together, staves
+ * and noteheads and spacing alike, so the reduction costs size but no
+ * proportion.
+ *
+ * It is only ever taken as far as it needs to go. Reducing an exercise that
+ * already fits buys nothing and costs legibility, which is what a page of
+ * eight notes shrunk to two thirds looked like.
+ *
+ * Three quarters is as far as it goes. Two thirds was, and the staff at that
+ * size was reported as hard to read; the tenth of exercises reduced hardest now
+ * stop at 0.80 rather than 0.70. It costs a little fitting — 97 per cent of
+ * grand-staff exercises held the screen at two thirds against 88 here — and
+ * the densest of them scroll instead, which is the right way round: a line that
+ * has to be chased is bad, a line that cannot be read is useless.
+ */
+const MIN_ENGRAVING_SCALE = 0.75;
+/**
+ * The room the music is fitted into, mirroring the score area's own height in
+ * index.css — 36rem on a phone, and about that on a desk once the controls and
+ * the cards below have taken theirs.
+ */
+const PAGE_BUDGET = 576;
 /**
  * And the most it should get. Filling the width with a sparse bar pushes its
  * notes so far apart that they stop reading as a phrase — a two-note bar spread
  * over a whole line is harder to follow than a compact one.
  */
-const MAX_WIDTH_PER_NOTE = 64;
+const MAX_WIDTH_PER_CROTCHET = 46;
 const BAR_PADDING = 26;
 /**
  * The octave sign is drawn here rather than with VexFlow's TextBracket.
@@ -111,8 +192,24 @@ const OCTAVE_SIGN_LINE = 1;
 const OCTAVE_LABEL_WIDTH: Record<number, number> = { 1: 20, 2: 30 };
 /** Length of the hook that closes the sign over its last note. */
 const OCTAVE_HOOK = 8;
+/**
+ * How far past its staff the heard-note guide may be drawn, in pixels.
+ *
+ * Four ledger lines either way, which is what a system reserves for the music
+ * itself — past that the guide is folded by octaves into somewhere it can be
+ * seen at all.
+ */
+const GHOST_REACH = 40;
 const OCTAVE_DASH = [4, 3];
-const MARGIN = 12;
+/**
+ * Blank page either side of the music.
+ *
+ * Twelve once, which on a phone is seven per cent of the column spent on
+ * nothing, on top of the page's own padding outside the drawing. The staff
+ * needs a little air so its barlines do not sit against the edge, and four is
+ * enough for that.
+ */
+const MARGIN = 4;
 
 /**
  * Space the leading bar of a system spends on its clef, key signature and time
@@ -132,8 +229,30 @@ function fitToContainer(host: HTMLElement, width: number, height: number): void 
   svg.style.height = 'auto';
 }
 
-function leadingModifierWidth(accidentals: number, withTimeSignature: boolean): number {
-  return 46 + 11 * Math.abs(accidentals) + (withTimeSignature ? 28 : 0);
+/**
+ * What the clef, key and time signature take out of a bar, measured rather than
+ * estimated.
+ *
+ * It used to be `46 + 11 per accidental + 28 for the time signature`, which is
+ * close but not equal to what VexFlow lays out — and the difference all lands
+ * on the first bar of every line, since that is the only bar carrying them. Fed
+ * an estimate that ran high, the first bar kept the surplus as note room: a bar
+ * of quavers at the head of a line came out roomier per note than a bar of
+ * crotchets after it, which is the wrong way round however the notes are
+ * spaced.
+ *
+ * A throwaway stave is cheap and knows the answer exactly.
+ */
+function measureLeading(
+  clef: string,
+  annotation: string | undefined,
+  keyName: string,
+  timeSignature: string | null,
+): number {
+  const probe = new Stave(0, 0, 500);
+  probe.addClef(clef, undefined, annotation).addKeySignature(keyName);
+  if (timeSignature !== null) probe.addTimeSignature(timeSignature);
+  return probe.getNoteStartX() - probe.getX();
 }
 
 export interface ScoreProps {
@@ -394,7 +513,8 @@ export function Score({
     return () => observer.disconnect();
   }, []);
 
-  const renderWidth = width ?? measured ?? FALLBACK_WIDTH;
+  /** The column the drawing is displayed in. */
+  const containerWidth = width ?? measured ?? FALLBACK_WIDTH;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -412,21 +532,54 @@ export function Score({
       -instrument.transposition.letters,
     );
     const staffMode = staffModeFor(instrument, position);
-    const grand = staffMode === 'grand';
+    /*
+     * A grand staff with nothing in one hand is written as the one staff it uses.
+     *
+     * Rather more than half the piano exercises the generator writes never leave
+     * one hand — 24 to 31 per cent for each hand, measured over 800 — and an
+     * empty staff still costs its five lines, its clef and the gap above it.
+     * That is a hundred pixels a line spent saying "and nothing here", on the
+     * page where pixels are scarcest: it halves the height of the median piano
+     * exercise on a phone, 538 down to 314.
+     *
+     * Only when a hand is unused for the whole exercise, never line by line: a
+     * staff that came and went between systems would be worse than the space it
+     * saved.
+     */
+    const hands = new Set(
+      exercise.notes
+        .filter((note) => note.midi !== null)
+        .map((note) => handFor(note.midi!, instrument)),
+    );
+    const usedMode = staffMode === 'grand' && hands.size === 1 ? [...hands][0] : staffMode;
+    const grand = usedMode === 'grand';
     const systemHeight = grand ? GRAND_SYSTEM_HEIGHT : SYSTEM_HEIGHT;
     const singleClef =
-      staffMode === 'bass' ? 'bass' : instrument.clef === 'alto' ? 'alto' : 'treble';
+      usedMode === 'bass' ? 'bass' : instrument.clef === 'alto' ? 'alto' : 'treble';
     // Only guitar carries the octave mark; other octave-transposing instruments
     // are conventionally written without one.
     const clefAnnotation = instrument.id === 'guitar' ? '8vb' : undefined;
     const bars = layoutExercise(exercise);
 
-    const available = renderWidth - MARGIN * 2;
-    /** What one bar can have, once the clef and key signature have taken theirs. */
-    const roomForOneBar = Math.max(
-      1,
-      available - leadingModifierWidth(writtenKey.accidentals, true),
-    );
+    /**
+     * The measured leading, cached: only two answers exist per engraving, one
+     * for the line that carries the time signature and one for the rest.
+     */
+    const leadingCache = new Map<boolean, number>();
+    const leadingModifierWidth = (withTimeSignature: boolean) => {
+      const found = leadingCache.get(withTimeSignature);
+      if (found !== undefined) return found;
+      // The treble stave of a grand staff is the one the notes are formatted
+      // to, so it is the one whose modifiers decide the room they have.
+      const width = measureLeading(
+        grand ? 'treble' : singleClef,
+        clefAnnotation,
+        writtenKey.name,
+        withTimeSignature ? exercise.timeSignature.join('/') : null,
+      );
+      leadingCache.set(withTimeSignature, width);
+      return width;
+    };
 
     /**
      * What VexFlow says a bar needs, in pixels of note area.
@@ -483,59 +636,135 @@ export function Score({
       return width;
     };
 
-    const noteCount = (bar: (typeof bars)[number]) => Math.max(1, bar.notes.length);
     /**
-     * The least a bar can be given: what VexFlow needs, plus the padding a bar
-     * line and its neighbours want. Never squeezed below it — that is what drew
-     * noteheads over each other.
+     * What one bar's notes ask for, in crotchets' worth of room.
+     *
+     * A crotchet counts one, a quaver 0.71 and a minim 1.41, by the curve
+     * above. Summed over the bar this is the width the bar wants relative to
+     * its neighbours — so a bar of eight quavers asks for 5.7 against a bar of
+     * four crotchets' 4, and comes out the wider of the two without coming out
+     * twice as wide.
      */
-    const barFloorWidth = (bar: (typeof bars)[number]) => BAR_PADDING + minNoteWidth(bar);
-    /** And the most, past which its notes stop reading as a phrase. */
-    const barMaxWidth = (bar: (typeof bars)[number]) =>
-      BAR_PADDING + noteCount(bar) * MAX_WIDTH_PER_NOTE;
+    const barDemand = (bar: (typeof bars)[number]) =>
+      Math.max(
+        SPACING_EXPONENT,
+        bar.notes.reduce((sum, note) => {
+          const written = notatedValue(note);
+          // A tuplet's notes are shorter than they are written: three quavers
+          // in the time of two are each two thirds of a quaver, and three of
+          // them rightly ask for more room than the crotchet they replace.
+          const sounded = note.tuplet
+            ? (written * note.tuplet.inSpaceOf) / note.tuplet.num
+            : written;
+          return sum + (sounded / NOTE_VALUES.quarter) ** SPACING_EXPONENT;
+        }, 0),
+      );
+    /**
+     * The tightest a line may be set, and what its music adds up to.
+     *
+     * One density for the whole line — pixels per crotchet's worth of music —
+     * because that is the only way a crotchet stays wider than a quaver in the
+     * bar next door as well as its own. Bars used to be given a share each and
+     * any that fell under the floor its notes needed was lifted to it out of
+     * its neighbours' share, which is precisely how a dense bar of quavers
+     * ended up roomier than the sparse bar of crotchets beside it.
+     *
+     * So the floor is a property of the line, not of a bar in it: the bar that
+     * needs the most room per crotchet sets the density for all of them, and
+     * every bar is that density times what its own notes ask for. Nothing is
+     * taken from anything else, and the ratios hold across the line.
+     */
+    const lineFloor = (system: (typeof bars)[number][]) => {
+      let density = MIN_WIDTH_PER_CROTCHET;
+      let demand = 0;
+      for (const bar of system) {
+        const asked = barDemand(bar);
+        demand += asked;
+        density = Math.max(density, minNoteWidth(bar) / asked);
+      }
+      return { density, demand };
+    };
+    /** What a line costs at that density, bar padding and clef included. */
+    const lineWidth = (system: (typeof bars)[number][], first: boolean) => {
+      const { density, demand } = lineFloor(system);
+      return (
+        leadingModifierWidth(first) +
+        system.length * BAR_PADDING +
+        density * demand
+      );
+    };
+    /**
+     * Breaks the bars into lines for a given engraving width, and says how tall
+     * and wide the result comes out.
+     *
+     * A function of the width because the width is not known yet: how much
+     * music a line holds is what decides how many lines there are, which is
+     * what decides whether the page fits. The bar measurements it leans on are
+     * cached across calls, so trying a handful of widths costs little.
+     */
+    const layoutAt = (engraved: number) => {
+      const available = engraved - MARGIN * 2;
+      /*
+       * A line takes another bar for as long as it can still afford to set
+       * every bar on it at the tightest density any of them needs.
+       *
+       * That is the whole line-breaking rule now. A bar was measured on its own
+       * before, against a figure it would like rather than one it could live
+       * with, so a line could accept a bar it then had to squeeze — and the
+       * squeezing came out of whichever bars could take it. Asking what the
+       * line as a whole would cost, before committing to it, is what turns an
+       * overcrowded line into two readable ones.
+       */
+      const systems: (typeof bars)[] = [];
+      let current: typeof bars = [];
+      for (const bar of bars) {
+        if (current.length > 0 && lineWidth([...current, bar], systems.length === 0) > available) {
+          systems.push(current);
+          current = [];
+        }
+        current.push(bar);
+      }
+      if (current.length > 0) systems.push(current);
+
+      // And where even one bar alone does not fit, draw at the width it needs
+      // and let the viewBox scale it: small is legible, cut off is not.
+      const needed = Math.max(
+        ...systems.map((system, index) => lineWidth(system, index === 0)),
+      );
+      const drawWidth = Math.max(engraved, needed + MARGIN * 2);
+      const height =
+        STAVE_TOP + (systems.length - 1) * systemHeight + (grand ? GRAND_SYSTEM_INK : SYSTEM_INK);
+      return {
+        systems,
+        drawWidth,
+        height,
+        /** What the drawing measures once scaled to the column it is shown in. */
+        shownHeight: (height * containerWidth) / drawWidth,
+      };
+    };
 
     /*
-     * What a bar is given when a line is packed. On a phone it is the floor —
-     * two bars snugly beats one bar and another on a line of its own — and
-     * anywhere with room it is what the bar would like, so a busy bar takes the
-     * next line rather than squeezing in beside a sparse one.
+     * Engrave at the column's own width if the music fits in it, and only widen
+     * — which is to say, only shrink what the reader sees — until it does.
+     *
+     * Widening is what buys bars per line: a line that holds four bars instead
+     * of two halves the number of lines, and the drawing scaled down to the
+     * column is shorter for it even though nothing was cut. Applied to every
+     * exercise alike it also shrank the ones that already fitted, which is a
+     * loss and nothing else. Stepped like this, a short exercise is drawn full
+     * size and a long one is reduced exactly as far as fitting requires.
      */
-    const packWidth = (bar: (typeof bars)[number]) =>
-      renderWidth < CRAMPED_WIDTH
-        ? barFloorWidth(bar)
-        : Math.min(
-            BAR_PADDING + noteCount(bar) * WIDTH_PER_NOTE,
-            Math.max(barFloorWidth(bar), roomForOneBar),
-          );
-
-    const systems: (typeof bars)[] = [];
-    let current: typeof bars = [];
-    let currentWidth = leadingModifierWidth(writtenKey.accidentals, true);
-    for (const bar of bars) {
-      const width = packWidth(bar);
-      if (current.length > 0 && currentWidth + width > available) {
-        systems.push(current);
-        current = [];
-        currentWidth = leadingModifierWidth(writtenKey.accidentals, false);
-      }
-      current.push(bar);
-      currentWidth += width;
+    let plan = layoutAt(containerWidth);
+    for (let scale = 0.95; plan.shownHeight > PAGE_BUDGET && scale >= MIN_ENGRAVING_SCALE; scale -= 0.05) {
+      const wider = layoutAt(containerWidth / scale);
+      // A width that buys nothing is not worth the size it costs.
+      if (wider.shownHeight >= plan.shownHeight) continue;
+      plan = wider;
     }
-    if (current.length > 0) systems.push(current);
-
-    // And where even the floor does not fit, draw at the width it needs and
-    // let the viewBox scale it: small is legible, cut off is not.
-    const needed = Math.max(
-      ...systems.map(
-        (system, index) =>
-          leadingModifierWidth(writtenKey.accidentals, index === 0) +
-          system.reduce((sum, bar) => sum + barFloorWidth(bar), 0),
-      ),
-    );
-    const drawWidth = Math.max(renderWidth, needed + MARGIN * 2);
+    const { systems, drawWidth } = plan;
     const drawAvailable = drawWidth - MARGIN * 2;
 
-    const renderHeight = STAVE_TOP + systems.length * systemHeight;
+    const renderHeight = plan.height;
     const renderer = new Renderer(staff, Renderer.Backends.SVG);
     renderer.resize(drawWidth, renderHeight);
     fitToContainer(staff, drawWidth, renderHeight);
@@ -547,22 +776,40 @@ export function Score({
     let heardAnchor: HeardAnchor | null = null;
 
     systems.forEach((system, systemIndex) => {
-      const leading = leadingModifierWidth(writtenKey.accidentals, systemIndex === 0);
-      const minWidths = system.map(barFloorWidth);
-      const maxWidths = system.map(barMaxWidth);
-      const totalMin = minWidths.reduce((sum, w) => sum + w, 0);
-      // Every bar keeps its floor; only what is left over is shared out, by
-      // note count, and no bar grows past what its notes can use. A purely
-      // proportional split starves a busy bar and stretches an empty one.
-      const spare = Math.max(0, drawAvailable - leading - totalMin);
-      const weights = system.map(noteCount);
-      const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+      const leading = leadingModifierWidth(systemIndex === 0);
+      const demands = system.map(barDemand);
+      const { density: tightest, demand: totalDemand } = lineFloor(system);
+      /*
+       * One density for the whole line, and every bar is that density times
+       * what its notes ask for.
+       *
+       * A line settled bar by bar cannot hold the curve across bar lines: the
+       * spare width was shared equally before, and since a busy bar starts from
+       * a much higher floor it stayed wider than its share of the music, so at
+       * a wide window a crotchet ended up no roomier than a quaver. Deciding
+       * one figure for the line and multiplying instead keeps a crotchet the
+       * square root of two wider than a quaver wherever either of them is.
+       *
+       * It is also what makes a narrow screen work. Less room lowers the
+       * density and nothing else, so the whole line closes up together and the
+       * long notes stay long relative to the short ones — rather than the
+       * differences between them being squeezed out first.
+       */
+      const roomForNotes = drawAvailable - leading - system.length * BAR_PADDING;
+      /*
+       * Fill the line, but never tighter than its tightest bar can bear and
+       * never looser than notes still read as a phrase.
+       */
+      const density = Math.max(
+        tightest,
+        Math.min(MAX_WIDTH_PER_CROTCHET, Math.max(0, roomForNotes) / totalDemand),
+      );
       const y = STAVE_TOP + systemIndex * systemHeight;
       let x = MARGIN;
 
       system.forEach((bar, barIndex) => {
-        const share = minWidths[barIndex] + (spare * weights[barIndex]) / totalWeight;
-        const width = Math.min(share, maxWidths[barIndex]) + (barIndex === 0 ? leading : 0);
+        const width =
+          BAR_PADDING + density * demands[barIndex] + (barIndex === 0 ? leading : 0);
         const first = barIndex === 0;
         const last = barIndex === system.length - 1;
 
@@ -701,15 +948,20 @@ export function Score({
           };
         }
 
-        // The brace and the joined barlines are what make two staves read as one
-        // instrument rather than two parts.
+        /*
+         * The joined barlines are what make two staves read as one instrument
+         * rather than two parts.
+         *
+         * A brace used to stand outside them. VexFlow draws it to the left of
+         * where the stave starts, so it needs page margin to live in, and the
+         * margin is down to four pixels — a phone has none to spare and the
+         * brace was drawn mostly outside the picture and clipped. It says the
+         * same thing the barline down the left already says, so it is gone
+         * rather than paid for.
+         */
         if (grand && built.length === 2) {
           const [top, bottom] = built;
           if (first) {
-            new StaveConnector(top.stave, bottom.stave)
-              .setType('brace')
-              .setContext(context)
-              .draw();
             new StaveConnector(top.stave, bottom.stave)
               .setType('singleLeft')
               .setContext(context)
@@ -741,7 +993,7 @@ export function Score({
       width: drawWidth,
       height: renderHeight,
       // So the guide travels in the units the eye sees, not the ones VexFlow drew in.
-      scale: renderWidth / drawWidth,
+      scale: containerWidth / drawWidth,
       grand,
       singleClef,
       writtenKey,
@@ -778,7 +1030,9 @@ export function Score({
         scroller.scrollTo({ top: activeSystem * systemHeight, behavior: 'smooth' });
       }
     }
-  }, [exercise, instrument, position, results, activeIndex, renderWidth]);
+    // renderWidth is a function of containerWidth, so the column alone is what
+    // this watches: a narrower phone re-scales the drawing without re-engraving it.
+  }, [exercise, instrument, position, results, activeIndex, containerWidth]);
 
   // The guide note, on its own layer over the staff. Drawn whenever the pitch
   // heard changes or the score is re-engraved under it.
@@ -812,8 +1066,41 @@ export function Score({
     // are hidden and its head is always filled: the rhythm is the page's to
     // state. The ledger lines stay, since without them a pitch well off the
     // staff cannot be read at all.
+    /*
+     * Folded into the octaves the page can actually show.
+     *
+     * The guide is drawn on a layer the size of the music, so a pitch far
+     * enough outside the staff is drawn outside the picture and simply lost —
+     * and lost is the worst thing it can be, since the moment it matters most
+     * is the moment the player is furthest out. A piano exercise that stays in
+     * one hand is written on that hand's staff alone, which puts the other
+     * hand's whole range off the page; the microphone's own octave errors land
+     * there too.
+     *
+     * Whole octaves, so the note itself stays true and its ledger lines are
+     * drawn where they belong. What it cannot then say is how many octaves out
+     * the player is — the pitch beside the staff carries that.
+     */
+    // Its own system's band, and never past the edge of the drawing: below a
+    // staff is the next system's music, and past the last one is nothing at all.
+    const staveTop = Math.max(GHOST_REACH, stave.getYForLine(0));
+    const staveBottom = Math.min(plan.height - GHOST_REACH, stave.getYForLine(4));
+    const sounded = (midi: number) => {
+      const probe = new StaveNote({ keys: [midiToVexKey(midi, writtenKey)], duration: 'q', clef });
+      probe.setStave(stave);
+      return stave.getYForNote(probe.getKeyProps()[0].line);
+    };
+    let shown = written - 12 * shift;
+    for (let fold = 0; fold < 8; fold += 1) {
+      const y = sounded(shown);
+      // Smaller y is higher up the page, so a guide off the top is folded down
+      // an octave and one off the bottom is folded up.
+      if (y < staveTop - GHOST_REACH) shown -= 12;
+      else if (y > staveBottom + GHOST_REACH) shown += 12;
+      else break;
+    }
     const ghost = new StaveNote({
-      keys: [midiToVexKey(written - 12 * shift, writtenKey)],
+      keys: [midiToVexKey(shown, writtenKey)],
       duration: anchor.code,
       clef,
     });
@@ -821,7 +1108,7 @@ export function Score({
     const filled = FILLED_HEAD[anchor.code];
     if (filled) for (const head of ghost.noteHeads) head.setText(filled);
 
-    const accidental = explicitAccidental(written, writtenKey);
+    const accidental = explicitAccidental(shown, writtenKey);
     if (accidental) ghost.addModifier(new Accidental(accidental), 0);
     // The page's own colour, not a verdict one. A guide tinted like a scored
     // note would read as a judgement, and one tinted like the active note would

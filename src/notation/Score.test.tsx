@@ -6,7 +6,8 @@ import { VERDICT_FALLBACKS } from './colours';
 import { generateExercise } from '../generator';
 import { NOTE_VALUES } from '../lib/types';
 import { keyByName } from '../lib/key';
-import { instrumentById, positionById } from '../config/instruments';
+import { instrumentById, positionById, soundingPool } from '../config/instruments';
+import { levelConfig } from '../config/levels';
 import type { Exercise, ExerciseNote, NoteResult } from '../lib/types';
 
 afterEach(cleanup);
@@ -242,20 +243,27 @@ describe('Score', () => {
     // One hand silent for a bar: the rest belongs in the middle of it, not
     // hard against the note the other hand plays on the first beat.
     const piano = instrumentById('piano');
+    // A hand each, so the exercise is written on a grand staff at all: one that
+    // never leaves a hand is written on the single staff it uses.
     const oneHand: Exercise = {
       ...simple,
-      notes: [{ midi: 72, value: NOTE_VALUES.whole, idiomId: 't', instance: 0 }],
+      notes: [
+        { midi: 72, value: NOTE_VALUES.whole, idiomId: 't', instance: 0 },
+        { midi: 48, value: NOTE_VALUES.whole, idiomId: 't', instance: 1 },
+      ],
     };
     const { container } = render(
       <Score exercise={oneHand} instrument={piano} position={positionById(piano, 'grand-close')} />,
     );
-    // Treble note first, bass rest second — both stand at tick zero, so an
-    // uncentred rest would be drawn at the same x as the note.
+    // Bar by bar, each staff in turn: the first bar's treble note, then the
+    // whole-bar rest standing in for it in the bass. Both are at tick zero, so
+    // an uncentred rest would be drawn at the same x as the note.
     const xs = [...svgOf(container).querySelectorAll('.vf-notehead text')].map((glyph) =>
       Number(glyph.getAttribute('x')),
     );
-    expect(xs).toHaveLength(2);
-    expect(xs[1]).toBeGreaterThan(xs[0]);
+    expect(xs).toHaveLength(4);
+    const [note, rest] = xs;
+    expect(rest).toBeGreaterThan(note);
   });
 
   describe('scrolling', () => {
@@ -313,6 +321,32 @@ describe('Score', () => {
       expect(svg.getAttribute('height')).toBeNull();
     });
 
+    it('keeps every note inside the box, whatever the bars need', () => {
+      // A bar lifted to the floor its notes need was not paid for by the rest
+      // of the line, so the line outgrew the width it had been measured
+      // against and the notes at the end of it were drawn past the edge and
+      // clipped. Mixed bar densities are what provoke it: one bar that cannot
+      // be squeezed beside others that can.
+      const piano = instrumentById('piano');
+      const position = positionById(piano, 'grand-wide');
+      const pool = soundingPool(piano, position!);
+      for (const column of [320, 358, 390, 520]) {
+        for (let seed = 1; seed <= 12; seed += 1) {
+          const exercise = generateExercise({ level: levelConfig(10), pool, seed });
+          const { container, unmount } = render(
+            <Score exercise={exercise} instrument={piano} position={position} width={column} />,
+          );
+          const { width } = box(container);
+          const xs = [...container.querySelectorAll('.vf-notehead text')]
+            .map((head) => Number(head.getAttribute('x')))
+            .filter(Number.isFinite);
+          unmount();
+          if (xs.length === 0) continue;
+          expect(Math.max(...xs), `seed ${seed} in a ${column}px column`).toBeLessThanOrEqual(width);
+        }
+      }
+    });
+
     it('draws nothing outside the box it declares', () => {
       const { container } = render(<Score exercise={dense} width={320} />);
       const { width } = box(container);
@@ -330,16 +364,107 @@ describe('Score', () => {
       }
     });
 
-    it('squeezes a bar before it resorts to shrinking the whole system', () => {
-      // Four notes fit a phone at a squeeze, so nothing is scaled for them.
+    it('draws music that already fits at the column its own size', () => {
+      // Four notes are one line on a phone. Reducing them buys no room and
+      // costs legibility, which is what shrinking every exercise alike did.
       const { container } = render(<Score exercise={simple} width={320} />);
       expect(box(container).width).toBe(320);
+    });
+
+    /** Bars of plain crotchets, to make an exercise of a given length. */
+    const bars = (count: number): Exercise => ({
+      ...simple,
+      notes: Array.from({ length: count * 4 }, (_, i) => ({
+        midi: 60 + (i % 8),
+        value: NOTE_VALUES.quarter,
+        idiomId: 'test',
+        instance: 0,
+      })),
+    });
+    const long = bars(8);
+
+    it('reduces music that does not fit until it does', () => {
+      const { container } = render(<Score exercise={long} width={320} />);
+      const { width, height } = box(container);
+
+      // Engraved wider than the column, so a line holds more bars and the
+      // drawing scaled into the column is shorter for it.
+      expect(width).toBeGreaterThan(320);
+      // Which is the point of it: eight bars now fit the page they are shown
+      // on, where at the column's own width they ran half again past it.
+      expect((height * 320) / width).toBeLessThanOrEqual(576);
+    });
+
+    it('stops reducing at the point the staff stops being readable', () => {
+      // Sixteen bars do not fit a phone at any size worth reading. The answer
+      // then is to scroll, not to shrink the staff until it cannot be read.
+      const { container } = render(<Score exercise={bars(16)} width={320} />);
+      expect(box(container).width).toBeLessThanOrEqual(320 / 0.66 + 1);
+    });
+
+    it('reduces both directions together, so nothing is distorted', () => {
+      // One viewBox scales the whole drawing, so a system is the same shape on
+      // a phone as on a desk, only smaller. A stave is 5 lines wherever it is.
+      const { container } = render(<Score exercise={long} width={320} />);
+      const svg = svgOf(container);
+      expect(svg.getAttribute('preserveAspectRatio')).toBe('xMinYMin meet');
+      expect(svg.style.width).toBe('100%');
+      expect(svg.style.height).toBe('auto');
     });
 
     it('leaves a roomy column drawn at its own size', () => {
       const { container } = render(<Score exercise={dense} width={1200} />);
       expect(box(container).width).toBe(1200);
     });
+  });
+
+  it('writes an exercise that stays in one hand on that hand alone', () => {
+    const piano = instrumentById('piano');
+    const close = positionById(piano, 'grand-close');
+    const staves = (exercise: Exercise) => {
+      const { container, unmount } = render(
+        <Score exercise={exercise} instrument={piano} position={close} />,
+      );
+      const count = container.querySelectorAll('.vf-stave').length;
+      unmount();
+      return count;
+    };
+
+    // Half the piano exercises the generator writes never leave one hand, and
+    // an empty staff still costs its five lines and the gap above it.
+    expect(staves(simple)).toBe(1);
+    expect(staves({ ...simple, notes: simple.notes.map((n) => ({ ...n, midi: n.midi === null ? null : 45 })) })).toBe(1);
+    // Both hands used, and both are drawn — one bar, so one system of two.
+    const twoHanded: Exercise = {
+      ...simple,
+      notes: [60, 62, 45, 64].map((midi, i) => ({
+        midi,
+        value: NOTE_VALUES.quarter,
+        idiomId: 't',
+        instance: i,
+      })),
+    };
+    expect(staves(twoHanded)).toBe(2);
+  });
+
+  it('keeps the heard-note guide on the page however far out the pitch is', () => {
+    // The staff an exercise does not use is not drawn, which puts that whole
+    // range off the page — and the microphone's own octave errors land there.
+    // A guide drawn outside the picture is lost at the moment it matters most.
+    const piano = instrumentById('piano');
+    const wide = positionById(piano, 'grand-wide');
+    for (const heard of [88, 67, 60, 48, 40, 28, 21]) {
+      const { container, unmount } = render(
+        <Score exercise={simple} instrument={piano} position={wide} activeIndex={0} heardMidi={heard} />,
+      );
+      const head = container.querySelector('.vf-heard-note .vf-notehead text');
+      const y = Number(head?.getAttribute('y'));
+      const [, , , height] = svgOf(container).getAttribute('viewBox')!.split(' ').map(Number);
+      unmount();
+      expect(Number.isFinite(y), `heard ${heard} drew no guide`).toBe(true);
+      expect(y, `heard ${heard}`).toBeGreaterThanOrEqual(0);
+      expect(y, `heard ${heard}`).toBeLessThanOrEqual(height);
+    }
   });
 
   it('draws an octave sign over a passage instead of a stack of ledger lines', () => {
@@ -486,9 +611,14 @@ describe('Score', () => {
   it('crosses to the other staff of a grand staff when the heard pitch lives there', () => {
     const piano = instrumentById('piano');
     const wide = positionById(piano, 'grand-wide');
+    // Both hands, so there is another staff to cross to.
+    const twoHanded: Exercise = {
+      ...simple,
+      notes: [...simple.notes, { midi: 45, value: NOTE_VALUES.quarter, idiomId: 't', instance: 1 }],
+    };
     const score = (heardMidi: number) => (
       <Score
-        exercise={simple}
+        exercise={twoHanded}
         instrument={piano}
         position={wide}
         activeIndex={0}
