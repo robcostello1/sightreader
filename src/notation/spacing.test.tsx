@@ -125,3 +125,55 @@ it('gives a long note at least as much room as a short one', () => {
   // against 48, which is near enough equal to read as a mistake.
   expect(crotchets / quavers).toBeGreaterThan(1.3);
 });
+
+/**
+ * Topmost ink in the drawing, in SVG units. Zero is the top edge; anything
+ * negative has been drawn off the page and is invisible.
+ */
+function highestInk(container: HTMLElement): number {
+  let top = Infinity;
+  for (const shape of container.querySelectorAll('rect, line, path, text')) {
+    for (const attribute of ['y', 'y1', 'y2']) {
+      const value = shape.getAttribute(attribute);
+      if (value === null) continue;
+      const y = Number(value);
+      if (Number.isFinite(y)) top = Math.min(top, y);
+    }
+  }
+  return top;
+}
+
+/**
+ * How far a tuplet's number rises above its bracket. VexFlow centres the digit
+ * on the bracket line, and jsdom measures no text, so the number's own position
+ * never reaches the DOM — this is the room the bracket must leave for it.
+ */
+const TUPLET_NUMBER_RISE = 8;
+
+it('leaves room above the staff for a triplet over the highest note', () => {
+  const piano = instrumentById('piano');
+  const position = positionById(piano, 'grand-wide');
+  // C6: the top of the written range, above which the music is written an
+  // octave down under an 8va sign and stops climbing.
+  const triplet = (midi: number) => ({
+    midi,
+    value: NOTE_VALUES.quarter * (2 / 3),
+    idiomId: 't',
+    instance: 0,
+    tuplet: { group: 0, num: 3, inSpaceOf: 2 },
+  });
+  const exercise: Exercise = {
+    ...simple,
+    notes: [
+      triplet(84),
+      triplet(82),
+      triplet(81),
+      { midi: 79, value: NOTE_VALUES.quarter, idiomId: 't', instance: 1 },
+      { midi: 77, value: NOTE_VALUES.quarter, idiomId: 't', instance: 1 },
+    ],
+  };
+  const { container } = render(
+    <Score exercise={exercise} instrument={piano} position={position} />,
+  );
+  expect(highestInk(container)).toBeGreaterThanOrEqual(TUPLET_NUMBER_RISE);
+});

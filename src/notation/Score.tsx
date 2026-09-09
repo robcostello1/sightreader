@@ -70,9 +70,14 @@ function followPageColour(root: Element): void {
 
 /**
  * Headroom above the first staff, on top of the four ledger lines' worth
- * VexFlow already reserves — which together was eighty pixels of empty page.
+ * VexFlow already reserves.
+ *
+ * Twelve once, which was eighty pixels of empty page below a bar of plain
+ * crotchets and not enough for a triplet: the bracket over a note at the top of
+ * the written range sits twenty-five pixels above the staff, its number another
+ * eight above that, and both were cut off by the top edge of the drawing.
  */
-const STAVE_TOP = 12;
+const STAVE_TOP = 36;
 /** Vertical pitch between systems when the music wraps onto several lines. */
 const SYSTEM_HEIGHT = 175;
 /** A grand staff is two staves and needs room for both, plus their ledger lines. */
