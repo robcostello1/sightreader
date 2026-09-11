@@ -14,7 +14,12 @@ export interface ScoringConfig {
   confidenceGate: number;
   /** Half-width of the pitch match window, in cents. */
   toleranceCents: number;
-  /** v1 recommendation: do not penalise a note ringing through a rest (§6). */
+  /**
+   * Whether a note still sounding through a rest counts against it. Safe to
+   * have on since the rest test stopped reading a silence ratio — see
+   * scoring/rest.ts — and applied only where a rest means silence, which is
+   * every instrument you stop by letting go. See judgesRests.
+   */
   penaliseSustainThroughRest: boolean;
 }
 
@@ -24,7 +29,7 @@ export const DEFAULT_SCORING: ScoringConfig = {
   minSamples: 4,
   confidenceGate: 0.8,
   toleranceCents: 50,
-  penaliseSustainThroughRest: false,
+  penaliseSustainThroughRest: true,
 };
 
 export interface WeightedTuplet {

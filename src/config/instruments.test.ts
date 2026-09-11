@@ -3,6 +3,7 @@ import {
   DEFAULT_INSTRUMENT_ID,
   INSTRUMENTS,
   instrumentById,
+  judgesRests,
   positionById,
   soundingPool,
   soundingToWritten,
@@ -180,5 +181,17 @@ describe('staff mode', () => {
     const piano = instrumentById('piano');
     expect(staffModeFor(piano, positionById(piano, 'lh-5-finger'))).toBe('bass');
     expect(staffModeFor(piano, positionById(piano, 'grand-close'))).toBe('grand');
+  });
+});
+
+describe('whether a rest means silence', () => {
+  it('judges rests on anything you stop by letting go', () => {
+    for (const id of ['guitar', 'violin', 'flute', 'trumpet-bb']) {
+      expect(judgesRests(instrumentById(id)), id).toBe(true);
+    }
+  });
+
+  it('leaves the piano alone, where the pedal is what rings and not the player', () => {
+    expect(judgesRests(instrumentById('piano'))).toBe(false);
   });
 });

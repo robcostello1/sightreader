@@ -15,6 +15,7 @@ import { levelConfig } from '../config/levels';
 import { DEFAULT_PROGRESSION, advanceLevel, advanceUnscored } from '../config/progression';
 import {
   instrumentById,
+  judgesRests,
   positionById,
   soundingPool,
   DEFAULT_INSTRUMENT_ID,
@@ -316,17 +317,27 @@ export function useLesson(options: UseLessonOptions) {
     const now = current.context.currentTime * 1000;
     const samples = samplesRef.current;
     const judging = settingsRef.current.scoringEnabled;
-    const scoring = levelConfig(settingsRef.current.level).scoring;
+    const level = levelConfig(settingsRef.current.level);
+    const instrument = instrumentById(settingsRef.current.instrumentId);
+    const scoring = {
+      ...level.scoring,
+      // A piano rings through a rest because of the pedal, not because the
+      // player failed to stop.
+      penaliseSustainThroughRest:
+        level.scoring.penaliseSustainThroughRest && judgesRests(instrument),
+    };
 
     // Score every window that has closed since the last frame. With no
     // microphone there is nothing to score against, and marking every note
     // as silence would be a verdict rather than the absence of one.
     const closed: NoteResult[] = [];
     if (judging) {
+      // The app's own clicks, so a rest is not failed by the metronome.
+      const clicks = scheduleRef.current.clicks.map((click) => click.timeMs);
       for (const window of scheduleRef.current.windows) {
         if (now < window.endMs || scoredRef.current.has(window.index)) continue;
         scoredRef.current.add(window.index);
-        closed.push(scoreWindow(window, samples, scoring));
+        closed.push(scoreWindow(window, samples, scoring, clicks));
       }
     }
 

@@ -1,4 +1,5 @@
 import { matchesTarget, nearestMidi } from '../lib/pitch';
+import { restEvidence } from './rest';
 import type { ScoringConfig } from '../config/levels';
 import type { Midi, NoteResult, NoteValue, NoteWindow, PitchSample } from '../lib/types';
 import type { Schedule } from '../scheduler/schedule';
@@ -69,13 +70,15 @@ export function scoreWindow(
   window: NoteWindow,
   samples: readonly PitchSample[],
   config: ScoringConfig,
+  /** When the metronome sounded, so a rest is not failed by the app's own noise. */
+  clicks: readonly number[] = [],
 ): NoteResult {
   const zone = samples.filter(
     (s) => s.timestamp >= window.scoreFromMs && s.timestamp < window.endMs,
   );
   const confident = zone.filter((s) => s.hz !== null && s.confidence >= config.confidenceGate);
 
-  if (window.note.midi === null) return scoreRest(window, zone, confident, config);
+  if (window.note.midi === null) return scoreRest(window, zone, confident, config, clicks);
 
   // Judged on the whole zone, not just the confident frames: a window with no
   // samples at all is unscorable, whereas one full of silence is a real miss.
@@ -128,31 +131,37 @@ function classifyFailure(
 
 /**
  * A rest asks "did the previous note stop ringing", not "was a pitch present".
- * v1 does not penalise sustain through a rest by default, but the occupancy is
- * still reported so the behaviour can be revisited without changing the shape.
+ *
+ * Which is why it is not scored on a silence ratio any more. A ratio counts the
+ * metronome, a chair, a fret buzz and a note held through the bar alike, and
+ * only the last of those is a mistake — see restEvidence, which tells them
+ * apart by asking how long one pitch held steady rather than whether any pitch
+ * was there. The ratio is still reported as the occupancy, since that is what
+ * the field means for every other verdict.
  */
 function scoreRest(
   window: NoteWindow,
   zone: readonly PitchSample[],
   confident: readonly PitchSample[],
   config: ScoringConfig,
+  clicks: readonly number[],
 ): NoteResult {
   const silence = zone.length === 0 ? 1 : (zone.length - confident.length) / zone.length;
-
-  if (!config.penaliseSustainThroughRest) {
-    return { index: window.index, passed: true, verdict: 'pass', occupancy: silence, sampleCount: zone.length };
-  }
-  if (zone.length < config.minSamples) {
-    return { index: window.index, passed: false, verdict: 'unscorable', occupancy: silence, sampleCount: zone.length };
-  }
-  const passed = silence >= config.passThreshold;
-  return {
+  const result = (passed: boolean, verdict: NoteResult['verdict']): NoteResult => ({
     index: window.index,
     passed,
-    verdict: passed ? 'pass' : 'wrong-pitch',
+    verdict,
     occupancy: silence,
     sampleCount: zone.length,
-  };
+  });
+
+  if (!config.penaliseSustainThroughRest) return result(true, 'pass');
+
+  const evidence = restEvidence(zone, config, clicks);
+  // Too short to judge: a rest briefer than the steadiness test cannot fail it,
+  // and passing it would be a verdict rather than the absence of one.
+  if (evidence.tooShort) return result(false, 'unscorable');
+  return evidence.sounding ? result(false, 'wrong-pitch') : result(true, 'pass');
 }
 
 export function scoreExercise(
@@ -160,7 +169,8 @@ export function scoreExercise(
   samples: readonly PitchSample[],
   config: ScoringConfig,
 ): NoteResult[] {
-  return schedule.windows.map((window) => scoreWindow(window, samples, config));
+  const clicks = schedule.clicks.map((click) => click.timeMs);
+  return schedule.windows.map((window) => scoreWindow(window, samples, config, clicks));
 }
 
 export interface ExerciseSummary {
